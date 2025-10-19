@@ -190,7 +190,7 @@
     function schedule(fn){ if(rafId) cancelAnimationFrame(rafId); rafId=requestAnimationFrame(function(){rafId=null; fn();}); }
 
     // Shared chat context captured from site chat_log requests (used for our private chat_log calls)
-    var CHAT_CTX = { caction:'', last:'', room:'', notify:'', curset:'' };
+    var CHAT_CTX = { caction:'', last:'', lastp: '', room:'', notify:'', curset:'', pcount:0 };
 
     // Normalize various request body types to a query-string
     function normalizeBodyToQuery(body){
@@ -381,20 +381,12 @@
     function saveSentAll(map){ try{ localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch(e){} }
     var SENT_ALL = loadSentAll();
 
-    // Per-user last private log id map (for lastp)
-    var LAST_PRIV_MAP_KEY = 'onlyfemales.lastPrivPerUser';
-    function loadLastPrivMap(){ try{ var raw=localStorage.getItem(LAST_PRIV_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }catch(e){ return {}; } }
-    function saveLastPrivMap(m){ try{ localStorage.setItem(LAST_PRIV_MAP_KEY, JSON.stringify(m||{})); }catch(e){} }
-    var LAST_PRIV_MAP = loadLastPrivMap();
-    function getLastPrivFor(uid){ try{ return Number(LAST_PRIV_MAP && LAST_PRIV_MAP[uid])||0; }catch(e){ return 0; } }
-    function setLastPrivFor(uid, id){ try{ if(!uid) return; LAST_PRIV_MAP[uid]=Number(id)||0; saveLastPrivMap(LAST_PRIV_MAP); }catch(e){} }
-
     // Persisted per-user last processed pcount to avoid refetching same batch
-    var LAST_PCOUNT_MAP_KEY='onlyfemales.lastPcountPerUser';
+    var LAST_PCOUNT_MAP_KEY='onlyfemales.lastPcountPerConversation';
     function loadLastPcountMap(){ try{ var raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }catch(e){ return {}; } }
     function saveLastPcountMap(map){ try{ localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); }catch(e){} }
     var LAST_PCOUNT_MAP = loadLastPcountMap();
-    function getLastPcountFor(uid){ try{ return Number(LAST_PCOUNT_MAP && LAST_PCOUNT_MAP[uid])||0; }catch(e){ return 0; } }
+    function getLastPcountFor(uid){ try{ return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; }catch(e){ return 0; } }
     function setLastPcountFor(uid, pc){ try{ if(!uid) return; LAST_PCOUNT_MAP[uid]=Number(pc)||0; saveLastPcountMap(LAST_PCOUNT_MAP); }catch(e){} }
 
     // Visual chip on user list items when already messaged
@@ -510,6 +502,13 @@
             '    <textarea id="of-specific-msg" class="of-8" rows="3" placeholder="Type the message..."></textarea>'+
             '  </div>'+
             '  <hr class="of-divider">'+
+            '  <div class="of-section">'+
+            '    <div class="of-section-title">'+
+            '      <span>Sent Messages</span>'+
+            '    </div>'+
+            '    <div id="of-log-box-sent" class="of-log-box" aria-live="polite"></div>'+
+            '  </div>'+
+            '  <hr class="of-divider">'+
             '  <div class="of-section of-priv-section">'+
             '    <div class="of-section-title">'+
             '      <span>Private notifications</span>'+
@@ -517,18 +516,22 @@
             '    </div>'+
             '    <div id="of-priv-list" class="of-priv-list"></div>'+
             '  </div>'+
-            '  <div class="of-section of-log-section">'+
-            '    <div class="of-logs">'+
-            '      <div id="of-log-msg-section">'+
-            '        <div id="of-log-box-msg" class="of-log-box" aria-live="polite"></div>'+
-            '      </div>'+
-            '      <div id="of-log-pres-section">'+
-            '        <div id="of-log-box-pres" class="of-log-box" aria-live="polite"></div>'+
-            '      </div>'+
+            '  <hr class="of-divider">'+
+            '  <div class="of-section">'+
+            '    <div class="of-section-title">'+
+            '      <span>Received Messages</span>'+
             '    </div>'+
+            '    <div id="of-log-box-received" class="of-log-box" aria-live="polite"></div>'+
+            '  </div>'+
+            '  <hr class="of-divider">'+
+            '  <div class="of-section">'+
+            '    <div class="of-section-title">'+
+            '      <span>Logon/Logoff</span>'+
+            '    </div>'+
+            '    <div id="of-log-box-presence" class="of-log-box" aria-live="polite"></div>'+
+            '  </div>'+
+            '  <div class="of-section of-log-section">'+
             '    <div class="of-log-controls of-log-controls-bottom">'+
-            '      <label class="of-log-ctl"><input id="of-log-show-messages" type="checkbox" checked> Messages</label>'+
-            '      <label class="of-log-ctl"><input id="of-log-show-presence" type="checkbox" checked> Logon/Logoff</label>'+
             '      <label class="of-log-ctl"><input id="of-log-autoscroll" type="checkbox" checked> Autoscroll</label>'+
             '      <button id="of-log-clear" class="of-btn of-btn-xs" type="button">Clear</button>'+
             '    </div>'+
@@ -622,19 +625,17 @@
     /* Refs */
     var $sUser=qs('#of-specific-username'), $sMsg=qs('#of-specific-msg'), $sSend=qs('#of-specific-send'), $sStat=qs('#of-specific-status'), $sReset=qs('#of-specific-reset');
     var $bMsg=qs('#of-bc-msg'), $bSend=qs('#of-bc-send'), $bStat=qs('#of-bc-status'), $bReset=qs('#of-bc-reset');
-    var $logBoxMsg=qs('#of-log-box-msg'), $logBoxPres=qs('#of-log-box-pres'), $logMsgSection=qs('#of-log-msg-section'), $logPresSection=qs('#of-log-pres-section'), $logClear=qs('#of-log-clear'), $logAuto=qs('#of-log-autoscroll'), $logShowMsgs=qs('#of-log-show-messages'), $logShowPresence=qs('#of-log-show-presence');
+    var $logBoxSent=qs('#of-log-box-sent'), $logBoxReceived=qs('#of-log-box-received'), $logBoxPresence=qs('#of-log-box-presence'), $logClear=qs('#of-log-clear'), $logAuto=qs('#of-log-autoscroll');
     var $navBc=qs('#of-nav-bc');
     var $privList=qs('#of-priv-list'), $privRefresh=qs('#of-priv-refresh');
     if($navBc){ $navBc.addEventListener('click', function(){ openBroadcast(); }); }
-    if($privRefresh && !$privRefresh._wired){ $privRefresh._wired=true; $privRefresh.addEventListener('click', function(){ ofUpdatePrivList(true); }); }
+    if($privRefresh && !$privRefresh._wired){ $privRefresh._wired=true; $privRefresh.addEventListener('click', function(){ ofUpdatePrivateConversationsList(true); }); }
 
     // Persist Activity Log preferences
-    var PREF_AUTOSCROLL='onlyfemales.pref.autoscroll', PREF_SHOW_MSGS='onlyfemales.pref.showmsgs', PREF_SHOW_PRES='onlyfemales.pref.showpres';
+    var PREF_AUTOSCROLL='onlyfemales.pref.autoscroll';
     function loadPref(k, d){ try{ var v=localStorage.getItem(k); return v===null?d:String(v); }catch(e){ return d; } }
     function savePref(k, v){ try{ localStorage.setItem(k, String(v)); }catch(e){} }
     if($logAuto){ $logAuto.checked = loadPref(PREF_AUTOSCROLL,'1')==='1'; $logAuto.addEventListener('change', function(){ savePref(PREF_AUTOSCROLL, $logAuto.checked?'1':'0'); }); }
-    if($logShowMsgs){ $logShowMsgs.checked = loadPref(PREF_SHOW_MSGS,'1')==='1'; $logShowMsgs.addEventListener('change', function(){ savePref(PREF_SHOW_MSGS, $logShowMsgs.checked?'1':'0'); }); }
-    if($logShowPresence){ $logShowPresence.checked = loadPref(PREF_SHOW_PRES,'1')==='1'; $logShowPresence.addEventListener('change', function(){ savePref(PREF_SHOW_PRES, $logShowPresence.checked?'1':'0'); }); }
 
     /* ---------- Activity Log ---------- */
     var LOG_MAX=200;
@@ -686,17 +687,17 @@
         try{ localStorage.setItem(LOG_STORE_KEY, JSON.stringify(arr)); }catch(e){}
     }
     function restoreLog(){
-        if(!$logBoxMsg) return;
+        if(!$logBoxSent) return;
         var arr=[];
         try{ var raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
-        $logBoxMsg.innerHTML='';
+        $logBoxSent.innerHTML='';
         for(var i=0;i<arr.length;i++){
             var e=arr[i];
             if(e && (e.kind==='send-ok' || e.kind==='send-fail')){
-                renderLogEntry($logBoxMsg, e.ts||timeHHMM(), e.kind, e.details||'');
+                renderLogEntry($logBoxSent, e.ts||timeHHMM(), e.kind, e.details||'');
             }
         }
-        if($logAuto && $logAuto.checked && $logBoxMsg){ $logBoxMsg.scrollTop = 0; }
+        if($logAuto && $logAuto.checked && $logBoxSent){ $logBoxSent.scrollTop = 0; }
     }
     function trimLogBoxToMax(targetBox){
         try{
@@ -720,7 +721,11 @@
     }
     function logLine(kind, details){
         var ts=timeHHMM();
-        var target = (kind==='send-ok' || kind==='send-fail' || kind==='pv') ? $logBoxMsg : $logBoxPres;
+        var target = (kind==='send-ok' || kind==='send-fail') ? $logBoxSent 
+                   : (kind==='pv') ? $logBoxReceived 
+                   : (kind==='login' || kind==='logout') ? $logBoxPresence 
+                   : null;
+        if(!target) return;
         renderLogEntry(target, ts, kind, details);
         trimLogBoxToMax(target);
         if($logAuto && $logAuto.checked && target){ target.scrollTop = 0; }
@@ -744,21 +749,13 @@
     }
     if($logClear){
         $logClear.addEventListener('click', function(){
-            if($logBoxMsg) $logBoxMsg.innerHTML='';
-            if($logBoxPres) $logBoxPres.innerHTML='';
+            if($logBoxSent) $logBoxSent.innerHTML='';
+            if($logBoxReceived) $logBoxReceived.innerHTML='';
+            if($logBoxPresence) $logBoxPresence.innerHTML='';
             try{localStorage.removeItem(LOG_STORE_KEY);}catch(e){}
         });
     }
-    function applyLogVisibility(){
-        var showMsgs = $logShowMsgs ? $logShowMsgs.checked : true;
-        var showPres = $logShowPresence ? $logShowPresence.checked : true;
-        if($logMsgSection) $logMsgSection.classList.toggle('of-hidden', !showMsgs);
-        if($logPresSection) $logPresSection.classList.toggle('of-hidden', !showPres);
-    }
-    if($logShowMsgs){ $logShowMsgs.addEventListener('change', applyLogVisibility); }
-    if($logShowPresence){ $logShowPresence.addEventListener('change', applyLogVisibility); }
     // Apply restored preferences now
-    applyLogVisibility();
     restoreLog();
 
     // Fallback profile URL builder (only used if site function is not present)
@@ -821,8 +818,9 @@
             }
         });
     }
-    attachLogClickHandlers($logBoxMsg);
-    attachLogClickHandlers($logBoxPres);
+    attachLogClickHandlers($logBoxSent);
+    attachLogClickHandlers($logBoxReceived);
+    attachLogClickHandlers($logBoxPresence);
 
     /* Draft persistence (refactored) */
     if($sMsg){ $sMsg.addEventListener('input', function(){ OF.Drafts.save('specific', $sMsg.value); }); }
@@ -1115,9 +1113,6 @@
 
     /* === Intercept site poll to chat_log.php and reuse its private payload === */
     (function setupOFChatTap(){
-        var LAST_PRIV_KEY = 'onlyfemales.lastPrivSeen';
-        function ofGetLastPriv(){ try{ return Number(localStorage.getItem(LAST_PRIV_KEY)||0); }catch(e){ return 0; } }
-        function ofSetLastPriv(v){ try{ localStorage.setItem(LAST_PRIV_KEY, String(v)); }catch(e){} }
         function isChatLogUrl(u){
             try{
                 if(!u) return false;
@@ -1134,7 +1129,7 @@
         }
 
         // Capture and reuse site chat parameters for our own private chat_log calls
-        CHAT_CTX = CHAT_CTX || { caction:'', last:'', room:'', notify:'', curset:'' };
+        CHAT_CTX = CHAT_CTX || { caction:'', last:'', lastp: '', room:'', notify:'', curset:'', pcount: 0 };
         function ofUpdateChatCtxFromBody(bodyLike, urlMaybe){
             try{
                 // Only initialize once per page load
@@ -1155,14 +1150,16 @@
                 if(qs.indexOf('priv=1') !== -1) return;
 
                 var p = new URLSearchParams(qs);
-                var ca = p.get('caction'), la = p.get('last'), rm = p.get('room'), nf = p.get('notify'), cs = p.get('curset');
+                var ca = p.get('caction'), lp = p.get('lastp'),la = p.get('lastp'), rm = p.get('room'), nf = p.get('notify'), cs = p.get('curset'), pc = p.get('pcount');
 
                 // Set only values that are not yet set
                 if(ca){ CHAT_CTX.caction = String(ca) }
                 if(la)   { CHAT_CTX.last    = String(la) }
+                if(lp)   { CHAT_CTX.lastp    = String(lp) }
                 if(rm)   { CHAT_CTX.room    = String(rm) }
                 if(nf) { CHAT_CTX.notify  = String(nf)}
                 if(cs) { CHAT_CTX.curset  = String(cs) }
+                if(pc) { CHAT_CTX.pcount  = String(pc) }
 
                 // Log once only if we actually initialized something; then lock
 
@@ -1194,47 +1191,40 @@
                 ofProcessChatPayload._lastPN = now;
 
                 console.log(LOG, 'Private messages count:', pico, '— checking for new messages');
-                if(typeof ofUpdatePrivList !== 'function') return;
+                if(typeof ofUpdatePrivateConversationsList !== 'function') return;
 
-                ofUpdatePrivList(false).then(function(items){
+                ofUpdatePrivateConversationsList(false).then(function(privateConversations){
                     try{
-                        var list = Array.isArray(items) ? items : [];
-                        // Only fetch if unread > 0 AND different from last processed pcount
-                        var toFetch = list
-                            .filter(function(it){
-                                var lastProcessed = getLastPcountFor(it.id);
-                                var currentUnread = Number(it.unread) || 0;
-                                var shouldFetch = currentUnread > 0 && currentUnread !== lastProcessed;
-                                if(!shouldFetch && currentUnread > 0){
-                                    console.log(LOG, 'Skip user', it.id, '— pcount', currentUnread, 'already processed');
-                                }
-                                return shouldFetch;
-                            })
+                        privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
+
+                        // Only fetch if unread > 0
+                        var toFetch = privateConversations
+                            .filter(pc => pc.unread > 0)
                             .map(function(it){ return { id:String(it.id), unread:Number(it.unread)||0 }; });
 
                         if(!toFetch.length){
-                            console.log(LOG, 'No new messages to fetch');
+                            console.log(LOG, 'None of the conversations has new messages');
                             return;
                         }
 
-                        console.log(LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+                        console.log(LOG, 'Fetching', toFetch.length, 'conversations' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
 
                         (async function run(){
                             for(var i=0;i<toFetch.length;i++){
-                                var item = toFetch[i];
+                                var conversation = toFetch[i];
                                 try{
-                                    console.log(LOG, 'Fetch chat_log for user', item.id, '— unread:', item.unread);
-                                    var txt2 = await ofFetchChatLogFor(item.id, item.unread);
+                                    console.log(LOG, 'Fetch chat_log for conversation', conversation.id, '— unread messages:', conversation.unread);
+                                    var conversationChatLog = await ofFetchChatLogFor(conversation.id, getLastPcountFor(conversation.id));
                                     try{
-                                        ofProcessPrivateLogResponse(item.id, txt2);
+                                        ofProcessPrivateLogResponse(conversation.id, conversationChatLog);
                                     }catch(err){
                                         console.error(LOG, 'Process messages error:', err);
                                     }
-                                    // mark this pcount as processed
-                                    setLastPcountFor(item.id, item.unread);
-                                    console.log(LOG, 'Marked user', item.id, 'pcount', item.unread, 'as processed');
+                                    // set actual pcount as last checked pcount for this conversation
+                                    setLastPcountFor(conversation.id, CHAT_CTX.pcount);
+                                    console.log(LOG, 'Marked conversation', conversation.id, 'unread', conversation.unread, 'as processed and set last checked pcount to', CHAT_CTX.pcount);
                                 }catch(err){
-                                    console.error(LOG, 'Fetch error for user', item.id, '—', err);
+                                    console.error(LOG, 'Fetch error for conversation', conversation.id, '—', err);
                                 }
                             }
                         })();
@@ -1372,35 +1362,34 @@
         });
     }
 
-    function ofUpdatePrivList(manual){
-        return ofFetchPrivateNotify().then(function(items){
+    function ofUpdatePrivateConversationsList(manual){
+        return ofFetchPrivateNotify().then(function(privateConversations){
             try{
-                console.log(LOG, 'Private conversations:', items.length);
-                items = items || [];
+                console.log(LOG, 'Private conversations:', privateConversations.length);
+                privateConversations = privateConversations || [];
                 // Sort: unread desc, then name
-                items.sort(function(a,b){
+                privateConversations.sort(function(a,b){
                     var au = a.unread||0, bu = b.unread||0;
                     if(bu!==au) return bu-au;
                     var an=(a.name||'').toLowerCase(), bn=(b.name||'').toLowerCase();
                     return an<bn?-1:an>bn?1:0;
                 });
                 //                 // No rendering; we only use this list to drive chat_log fetches
-                return items;
-            }catch(e){ console.error(LOG, 'Update private list error:', e); return items || []; }
+                return privateConversations;
+            }catch(e){ console.error(LOG, 'Update private list error:', e); return privateConversations || []; }
         });
     }
 
-    function ofFetchChatLogFor(uid, pcount){
+    function ofFetchChatLogFor(uid, lastCheckedPcount){
         try{
             var token=getToken(); if(!token||!uid){ return Promise.resolve(''); }
-            var lastp = getLastPrivFor(uid);
             var bodyObj = {
                 token:token,
                 cp:'chat',
                 fload:'1',
                 preload:'1',
                 priv:String(uid),
-                lastp:String(lastp||0)
+                pcount: lastCheckedPcount
             };
             //console.log('body: ', bodyObj);
 
@@ -1412,13 +1401,12 @@
                     if(CHAT_CTX.room)    bodyObj.room    = String(CHAT_CTX.room);
                     if(CHAT_CTX.notify)  bodyObj.notify  = String(CHAT_CTX.notify);
                     if(CHAT_CTX.curset)  bodyObj.curset  = String(CHAT_CTX.curset);
+                    if(CHAT_CTX.lastp) bodyObj.lastp   = String(CHAT_CTX.lastp);
                 }
             }catch(e){
                 console.error(LOG, 'Chat context error:', e);
             }
-            if(isFinite(Number(pcount)) && Number(pcount) > 0){
-                bodyObj.pcount = String(Number(pcount));
-            }
+
             // console.log(LOG, 'ofFetchChatLogFor: send', {
             //     uid: String(uid), lastp: String(lastp||0),
             //     pcount: (isFinite(Number(pcount)) && Number(pcount) > 0) ? String(Number(pcount)) : '0',
@@ -1447,36 +1435,29 @@
         }catch(e){ console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us, and update lastp map
-    function ofProcessPrivateLogResponse(uid, txt){
+    function ofProcessPrivateLogResponse(uid, response){
         try{
-            var data;
+            var conversationChatLog;
             try{
-                data = JSON.parse(txt);
+                conversationChatLog = JSON.parse(response);
             }catch(e){
-                var prev = (txt||'').slice(0,200);
-                console.warn(LOG, 'Parse failed for user', uid, '— preview:', prev);
+                var prev = (conversationChatLog||'').slice(0,200);
+                console.warn(LOG, 'Parse failed for conversation', uid, '— preview:', prev);
                 return;
             }
-            var items = Array.isArray(data && data.pload) ? data.pload
-                : (Array.isArray(data && data.plogs) ? data.plogs : []);
+            var items = Array.isArray(conversationChatLog && conversationChatLog.pload) ? conversationChatLog.pload
+                : (Array.isArray(conversationChatLog && conversationChatLog.plogs) ? conversationChatLog.plogs : []);
             if(!items.length) return;
             items.sort(function(a,b){ return (a.log_id||0)-(b.log_id||0); });
-            var lastSeen = getLastPrivFor(uid), maxId = lastSeen, newCount = 0;
             for(var i=0;i<items.length;i++){
                 var t = items[i]; var id = Number(t && t.log_id || 0);
-                if(id && id <= lastSeen) continue;
                 var fromId = t && t.user_id, uname = (t && t.user_name) || (fromId!=null?String(fromId):'?');
                 var av  = (t && t.user_tumb) || '';
                 var content = (t && t.log_content) ? String(t.log_content).replace(/\s+/g,' ').trim() : '';
                 var details = nameAndDmHtml(uname, fromId, av) + ' — ' + escapeHTML(content);
                 logLine('pv', details);
-                newCount++;
-                if(id > maxId) maxId = id;
             }
-            console.log(LOG, 'User', uid, '—', newCount, 'new message' + (newCount !== 1 ? 's' : ''), '— lastSeen:', lastSeen, 'maxId:', maxId);
-            if(maxId > lastSeen){
-                setLastPrivFor(uid, maxId);
-            }
+            console.log(LOG, 'User', uid, '— new message');
         }catch(err){ console.error(LOG, 'Process private messages error:', err); }
     }
 
