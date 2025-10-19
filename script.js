@@ -206,7 +206,7 @@
             if(typeof body === 'object'){
                 try{ return new URLSearchParams(body).toString(); }catch(e){console.error(e)}
             }
-        }catch(e){ console.error(LOG, 'normalizeBodyToQuery error:', e); }
+        }catch(e){ console.error(LOG, 'Body normalization error:', e); }
         return '';
     }
 
@@ -699,9 +699,23 @@
         if($logAuto && $logAuto.checked && $logBoxMsg){ $logBoxMsg.scrollTop = 0; }
     }
     function trimLogBoxToMax(targetBox){
-        var kids=targetBox?targetBox.children:[];
-        if(kids && kids.length>LOG_MAX){
-            for(var i=kids.length-1;i>=LOG_MAX;i--){ if(kids[i]&&kids[i].parentNode) kids[i].parentNode.removeChild(kids[i]); }
+        try{
+            if(!targetBox || !targetBox.children) return;
+            // Create a static array copy to avoid live HTMLCollection issues
+            var kids = Array.prototype.slice.call(targetBox.children);
+            if(kids.length <= LOG_MAX) return;
+            // Remove oldest entries (from the end of the array)
+            for(var i = LOG_MAX; i < kids.length; i++){
+                try{
+                    if(kids[i] && kids[i].parentNode){
+                        kids[i].parentNode.removeChild(kids[i]);
+                    }
+                }catch(e){
+                    console.error(LOG, 'Remove log entry error:', e);
+                }
+            }
+        }catch(e){
+            console.error(LOG, 'Trim log error:', e);
         }
     }
     function logLine(kind, details){
@@ -1161,64 +1175,74 @@
                 // });
                 ofUpdateChatCtxFromBody._initialized = true;
 
-            }catch(e){ console.error(LOG, 'ofUpdateChatCtxFromBody error:', e); }
+            }catch(e){ console.error(LOG, 'Chat context initialization error:', e); }
         }
 
         // Process a chat_log.php payload: only check pico; private messages are fetched separately
         function ofProcessChatPayload(txt){
             try{
-                var data; try{ data = JSON.parse(txt); } catch(e){ console.error(LOG, 'ofProcessChatPayload: JSON.parse failed', e); return; }
+                var data; try{ data = JSON.parse(txt); } catch(e){ console.error(LOG, 'Chat payload: JSON parse failed', e); return; }
                 var pico = Number(data && data.pico);
                 if(!isFinite(pico) || pico < 1 || data.pload?.length > 0 || data.plogs?.length > 0) return;
 
                 var now = Date.now();
-                if(ofProcessChatPayload._lastPN && (now - ofProcessChatPayload._lastPN) <= 5000) return;
+                // Increased throttle to 10 seconds to reduce excessive polling
+                if(ofProcessChatPayload._lastPN && (now - ofProcessChatPayload._lastPN) <= 10000){
+                    console.log(LOG, 'Private messages: throttled — last check', Math.round((now - ofProcessChatPayload._lastPN)/1000), 'seconds ago');
+                    return;
+                }
                 ofProcessChatPayload._lastPN = now;
 
-                console.log(LOG, 'Private messages count (pico) =', pico, '-> fetch private_notify and new priv logs');
+                console.log(LOG, 'Private messages count:', pico, '— checking for new messages');
                 if(typeof ofUpdatePrivList !== 'function') return;
 
                 ofUpdatePrivList(false).then(function(items){
                     try{
                         var list = Array.isArray(items) ? items : [];
-                        // Only new batches: unread > 0 and not equal to last processed pcount
+                        // Only fetch if unread > 0 AND different from last processed pcount
                         var toFetch = list
                             .filter(function(it){
-                                return it.unread > 0;
+                                var lastProcessed = getLastPcountFor(it.id);
+                                var currentUnread = Number(it.unread) || 0;
+                                var shouldFetch = currentUnread > 0 && currentUnread !== lastProcessed;
+                                if(!shouldFetch && currentUnread > 0){
+                                    console.log(LOG, 'Skip user', it.id, '— pcount', currentUnread, 'already processed');
+                                }
+                                return shouldFetch;
                             })
                             .map(function(it){ return { id:String(it.id), unread:Number(it.unread)||0 }; });
-                        console.log(LOG, `Starting to get chats for ${toFetch.length} conversations with unread messages.`, toFetch);
-                        if(!toFetch.length){ return; }
+
+                        if(!toFetch.length){
+                            console.log(LOG, 'No new messages to fetch');
+                            return;
+                        }
+
+                        console.log(LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+
                         (async function run(){
                             for(var i=0;i<toFetch.length;i++){
                                 var item = toFetch[i];
                                 try{
-                                    console.log(LOG, 'pico-flow: awaiting chat_log for uid=', item.id, 'unread=', item.unread, 'ctx=', {
-                                        caction: (CHAT_CTX && CHAT_CTX.caction)||'',
-                                        last: (CHAT_CTX && CHAT_CTX.last)||'',
-                                        room: (CHAT_CTX && CHAT_CTX.room)||'',
-                                        notify: (CHAT_CTX && CHAT_CTX.notify)||'',
-                                        curset: (CHAT_CTX && CHAT_CTX.curset)||''
-                                    });
+                                    console.log(LOG, 'Fetch chat_log for user', item.id, '— unread:', item.unread);
                                     var txt2 = await ofFetchChatLogFor(item.id, item.unread);
-                                    //console.log(LOG, 'pico-flow: chat_log response len=', (txt2 && txt2.length)||0, 'uid=', item.id, txt2);
                                     try{
                                         ofProcessPrivateLogResponse(item.id, txt2);
                                     }catch(err){
-                                        console.log(LOG, 'pico-flow: process error', err);
+                                        console.error(LOG, 'Process messages error:', err);
                                     }
                                     // mark this pcount as processed
                                     setLastPcountFor(item.id, item.unread);
+                                    console.log(LOG, 'Marked user', item.id, 'pcount', item.unread, 'as processed');
                                 }catch(err){
-                                    console.error(LOG, 'pico-flow: fetch error for uid=', item.id, err);
+                                    console.error(LOG, 'Fetch error for user', item.id, '—', err);
                                 }
                             }
                         })();
                     }catch(err){
-                        console.log(LOG, 'pico-flow: list processing error', err);
+                        console.error(LOG, 'List processing error:', err);
                     }
                 });
-            }catch(e){ console.error(LOG, 'ofProcessChatPayload error:', e); }
+            }catch(e){ console.error(LOG, 'Chat payload processing error:', e); }
         }
 
         // fetch() interceptor
@@ -1249,16 +1273,16 @@
                                 if(qs){
                                     ofUpdateChatCtxFromBody(qs, url);
                                 } else if(req && typeof req === 'object' && typeof req.clone === 'function'){
-                                    try{ req.clone().text().then(function(t){ ofUpdateChatCtxFromBody(t, url); }); }catch(err){ console.error(LOG, 'fetch clone/text error:', err); }
+                                    try{ req.clone().text().then(function(t){ ofUpdateChatCtxFromBody(t, url); }); }catch(err){ console.error(LOG, 'Fetch clone error:', err); }
                                 }
                             }
                         }
-                    }catch(err){ console.error(LOG, 'fetch body capture error:', err); }
+                    }catch(err){ console.error(LOG, 'Fetch body capture error:', err); }
                     var p = _origFetch.apply(this, args);
                     try{
                         if(isChatLogUrl(url)){
                             p.then(function(res){
-                                try{ res && res.clone && res.clone().text().then(ofProcessChatPayload); }catch(err){ console.error(LOG, 'fetch response clone/text error:', err); }
+                                try{ res && res.clone && res.clone().text().then(ofProcessChatPayload); }catch(err){ console.error(LOG, 'Response clone error:', err); }
                                 return res;
                             });
                         }
@@ -1287,16 +1311,16 @@
                             var qs0 = normalizeBodyToQuery(arg0);
                             ofUpdateChatCtxFromBody(qs0 || '', targetUrl);
                         }
-                    }catch(err){ console.error(LOG, 'xhr body capture error:', err); }
+                    }catch(err){ console.error(LOG, 'XHR body capture error:', err); }
                     xhr.addEventListener('readystatechange', function(){
                         try{
                             if(xhr.readyState === 4 && xhr.status === 200 && isChatLogUrl(xhr.responseURL || xhr._of_url || '')){
                                 var txt = '';
                                 // Prefer responseText to avoid JSON responseType issues
-                                try{ txt = xhr.responseText; }catch(err){ console.error(LOG, 'xhr responseText error:', err); txt = ''; }
+                                try{ txt = xhr.responseText; }catch(err){ console.error(LOG, 'XHR responseText error:', err); txt = ''; }
                                 if(txt) ofProcessChatPayload(txt);
                             }
-                        }catch(err){ console.error(LOG, 'xhr readystatechange error:', err); }
+                        }catch(err){ console.error(LOG, 'XHR readystatechange error:', err); }
                     });
                 }catch(e){console.error(e)}
                 return _send.apply(this, arguments);
@@ -1326,9 +1350,9 @@
                 }
                 out.push({id:id, name:name, avatar:av, unread:unread});
             }
-            console.log('private messages parsed: ', out.length);
+            console.log(LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
             return out;
-        }catch(e){ console.error(LOG, 'ofParsePrivateNotify: error', e); return []; }
+        }catch(e){ console.error(LOG, 'Parse private notifications error:', e); return []; }
     }
     function ofFetchPrivateNotify(){
         var token=getToken();
@@ -1343,7 +1367,7 @@
             var list = ofParsePrivateNotify(html);
             return Array.isArray(list) ? list : [];
         }).catch(function(err){
-            console.error(LOG, 'ofFetchPrivateNotify fetch error:', err);
+            console.error(LOG, 'Fetch private notifications error:', err);
             return [];
         });
     }
@@ -1351,7 +1375,7 @@
     function ofUpdatePrivList(manual){
         return ofFetchPrivateNotify().then(function(items){
             try{
-                console.log('Private conversations:', items);
+                console.log(LOG, 'Private conversations:', items.length);
                 items = items || [];
                 // Sort: unread desc, then name
                 items.sort(function(a,b){
@@ -1362,7 +1386,7 @@
                 });
                 //                 // No rendering; we only use this list to drive chat_log fetches
                 return items;
-            }catch(e){ console.error(LOG, 'ofUpdatePrivList error:', e); return items || []; }
+            }catch(e){ console.error(LOG, 'Update private list error:', e); return items || []; }
         });
     }
 
@@ -1390,7 +1414,7 @@
                     if(CHAT_CTX.curset)  bodyObj.curset  = String(CHAT_CTX.curset);
                 }
             }catch(e){
-                console.error(LOG, 'ofFetchChatLogFor: ctx error', e);
+                console.error(LOG, 'Chat context error:', e);
             }
             if(isFinite(Number(pcount)) && Number(pcount) > 0){
                 bodyObj.pcount = String(Number(pcount));
@@ -1419,7 +1443,7 @@
                 },
                 body: body
             }).then(function(res){ return res.text(); })
-                .catch(function(err){ console.error(LOG, 'ofFetchChatLogFor: fetch error', err); return ''; });
+                .catch(function(err){ console.error(LOG, 'Fetch chat log error:', err); return ''; });
         }catch(e){ console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us, and update lastp map
@@ -1430,12 +1454,11 @@
                 data = JSON.parse(txt);
             }catch(e){
                 var prev = (txt||'').slice(0,200);
-                console.log(LOG, 'priv-parse: JSON failed for uid=', uid, 'preview=', prev);
+                console.warn(LOG, 'Parse failed for user', uid, '— preview:', prev);
                 return;
             }
             var items = Array.isArray(data && data.pload) ? data.pload
                 : (Array.isArray(data && data.plogs) ? data.plogs : []);
-            //console.log(LOG, 'priv-parse: uid=', uid, 'items=', (items && items.length) || 0);
             if(!items.length) return;
             items.sort(function(a,b){ return (a.log_id||0)-(b.log_id||0); });
             var lastSeen = getLastPrivFor(uid), maxId = lastSeen, newCount = 0;
@@ -1450,12 +1473,12 @@
                 newCount++;
                 if(id > maxId) maxId = id;
             }
-            console.log(LOG, 'priv-parse: uid=', uid, 'new=', newCount, 'lastSeen=', lastSeen, 'maxId=', maxId);
+            console.log(LOG, 'User', uid, '—', newCount, 'new message' + (newCount !== 1 ? 's' : ''), '— lastSeen:', lastSeen, 'maxId:', maxId);
             if(maxId > lastSeen){
                 setLastPrivFor(uid, maxId);
             }
-        }catch(err){ console.error(LOG, 'priv-parse: error', err); }
+        }catch(err){ console.error(LOG, 'Process private messages error:', err); }
     }
 
-    console.log(LOG,'Panel ready — initial presence logging enabled, activity log, login/logout tracking, throttled sending, chat poll tapped.');
+    console.log(LOG,'✓ Toolkit ready — activity logging, message tracking, and throttled sending enabled');
 })();

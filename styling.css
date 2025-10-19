@@ -108,7 +108,7 @@
     appearance: button; -webkit-appearance: button;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     padding: 10px 16px; border-radius: 10px;
-    border: 1px solid #334155; background: lianear-gradient(#1f2937, #111827);
+    border: 1px solid #334155; background: linear-gradient(#1f2937, #111827);
     color:#e5e7eb;
     font-weight: 600; cursor: pointer; text-decoration: none;
 }
@@ -138,7 +138,7 @@
     pointer-events:none; /* don't block profile/item clicks; checkbox re-enables its own */
 }
 .of-ck-wrap .of-ck{ width:14px; height:14px; cursor:pointer; pointer-events:auto; accent-color:#93c5fd; }
- /* Already messaged checkmark (non-interactive) */
+/* Already messaged checkmark (non-interactive) */
 .user_item .of-sent-chip{
     position:absolute; bottom:6px; left:8px; z-index:2;
     display:inline-flex; align-items:center; justify-content:center;
