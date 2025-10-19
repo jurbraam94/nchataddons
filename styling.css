@@ -1,0 +1,220 @@
+/* ===== Unified OnlyFemales panel ===== */
+.of-panel {
+    display: flex; flex-direction: column;
+    width: 520px; max-width: 96vw;
+    border: 2px solid #2b90ff; border-radius: 12px;
+    background: #0b1220; box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    margin: 0 auto; z-index: 2147483647;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: #e5e7eb;
+    height: 100vh; max-height: 100vh;
+}
+.of-header {
+    display: flex; align-items: center;
+    padding: 10px 12px;
+    background: #f7fbff; border-bottom: 1px solid #dbeafe;
+    font-weight: 700; font-size: 14px;
+}
+.of-body { padding: 12px; display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; }
+.of-section-title { display:flex; align-items:center; gap:8px; justify-content:space-between; font-weight: 700; font-size: 13px; color: #ffffff; }
+.of-row { display: flex; gap: 8px; align-items: center; }
+
+/* Top nav for tools */
+.of-nav { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-bottom:6px; }
+.of-nav-btn { padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e5e7eb; font-weight:600; cursor:pointer; }
+.of-nav-btn:hover { background:#111827; }
+
+/* Draggable popup */
+.of-pop { position:fixed; top:18vh; left:50%; transform:translateX(-50%); width:520px; max-width:96vw; background:#0b1220; border:2px solid #2b90ff; border-radius:12px; box-shadow:0 12px 40px rgba(8,30,70,.6); z-index:2147483647; }
+.of-pop-header { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:move; background:#0f172a; border-bottom:1px solid #334155; font-weight:700; color:#ffffff; border-top-left-radius:10px; border-top-right-radius:10px; }
+.of-pop-close { appearance:none; border:0; background:transparent; font-size:16px; line-height:1; padding:4px 6px; cursor:pointer; color:#93c5fd; }
+.of-pop-body { padding:10px; display:flex; flex-direction:column; gap:10px; }
+.of-pop-actions { margin-top:6px; display:flex; align-items:center; justify-content:flex-end; gap:10px; }
+/* Popup-specific widgets: ensure consistent colors and rounded inputs */
+.of-pop input[type="text"], .of-pop textarea {
+    font-size: 14px; line-height: 1.3;
+    border: 1px solid #334155; border-radius: 10px;
+    background: #0f172a; color: #e5e7eb;
+}
+.of-pop input[type="text"] { padding: 8px 10px; width: 100%; }
+.of-pop textarea { padding: 10px; width: 100%; resize: vertical; }
+.of-pop textarea.of-8 { min-height: calc(5 * 1.3em + 20px); }
+/* Accent button in popup: match standard .of-btn styling */
+.of-pop .of-btn {
+    border: 1px solid #334155;
+    background: linear-gradient(#1f2937, #111827);
+    color: #e5e7eb;
+}
+.of-pop .of-btn:hover { background: linear-gradient(#192231,#0e1420); }
+
+/* Ensure popup action buttons (send, broadcast, etc.) match .of-btn styling; keep reset as anchor */
+.of-pop button:not(.of-pop-close),
+.of-pop input[type="button"],
+.of-pop input[type="submit"],
+.of-pop .of-pop-actions a {
+    appearance: button; -webkit-appearance: button;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 16px; border-radius: 10px;
+    border: 1px solid #334155; background: linear-gradient(#1f2937, #111827);
+    color:#e5e7eb;
+    font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.of-pop button:not(.of-pop-close):hover,
+.of-pop input[type="button"]:hover,
+.of-pop input[type="submit"]:hover,
+.of-pop .of-pop-actions a:hover {
+    background: linear-gradient(#192231,#0e1420);
+    color:#e5e7eb;
+}
+.of-pop button[disabled],
+.of-pop input[type="button"][disabled],
+.of-pop input[type="submit"][disabled] {
+    opacity: .6; cursor: not-allowed;
+}
+
+/* Popup Reset tracking stays an anchor: bold + white, inline with Send */
+.of-pop .of-reset-link,
+.of-pop .of-reset {
+    background: transparent; border: none; padding: 0; margin-left: 0;
+    color: #ffffff; font-weight: 700; text-decoration: underline;
+    display: inline; cursor: pointer;
+}
+.of-pop .of-reset-link:hover,
+.of-pop .of-reset:hover {
+    color: #ffffff; text-decoration: underline;
+}
+
+/* Inputs/buttons */
+.of-panel input[type="text"], .of-panel textarea {
+    font-size: 14px; line-height: 1.3;
+    border: 1px solid #334155; border-radius: 10px;
+    background: #0f172a; color: #e5e7eb;
+}
+.of-panel input[type="text"] { padding: 8px 10px; flex: 1; }
+.of-panel textarea { padding: 10px; width: 100%; resize: vertical; }
+.of-panel textarea.of-8 { min-height: calc(3 * 1.3em + 20px); }
+/* Slim input helper for compact fields (e.g., username) */
+.of-panel .of-input-slim { font-size: 13px; padding: 6px 8px; }
+/* Ensure a little space between username input and Send button */
+#of-specific-username { margin-right: 8px; }
+/* Row spacing */
+.of-section .of-row + textarea { margin-top: 8px; }
+.of-row + .of-row { margin-top: 8px; }
+/* Float Send buttons to the right */
+#of-specific-send, #of-bc-send { margin-left: auto; }
+
+.of-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.of-btn {
+    appearance: button; -webkit-appearance: button;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 16px; border-radius: 10px;
+    border: 1px solid #334155; background: lianear-gradient(#1f2937, #111827);
+    color:#e5e7eb;
+    font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.of-btn:hover { background: linear-gradient(#192231,#0e1420); }
+.of-btn[disabled] { opacity: .6; cursor: not-allowed; }
+.of-btn-slim { padding: 6px 12px; font-weight: 600; }
+/* Extra small button for compact actions like Clear */
+.of-btn-xs { padding: 4px 8px; font-weight: 600; font-size: 12px; border-radius: 8px; }
+.of-status { font-size: 12px; color: #cbd5e1; }
+.of-reset { margin-left: auto; background: transparent; border: none; padding: 6px 8px; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
+/* Anchor look for Reset tracking in headers */
+.of-reset-link { margin-left: auto; background: transparent; border: none; padding: 0; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
+/* Anchor variant for reset tracking links in headers */
+.of-reset-link { margin-left: auto; background: transparent; border: none; padding: 0; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
+.of-reset-link:hover { color: #ffffff; }
+
+/* Divider */
+.of-divider { height: 1px; background: #e6eefc; margin: 4px 0 2px 0; border: 0; }
+
+/* ===== Checkboxes on user list (right side) ===== */
+.user_item { position: relative; padding-right: 36px; }
+.of-ck-wrap{
+    position:absolute; top:6px; right:8px; z-index:2;
+    display:inline-flex; align-items:center; gap:4px; padding:0;
+    background:transparent;
+    backdrop-filter:none;
+    pointer-events:none; /* don't block profile/item clicks; checkbox re-enables its own */
+}
+.of-ck-wrap .of-ck{ width:14px; height:14px; cursor:pointer; pointer-events:auto; accent-color:#93c5fd; }
+ /* Already messaged checkmark (non-interactive) */
+.user_item .of-sent-chip{
+    position:absolute; bottom:6px; left:8px; z-index:2;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; border-radius:4px; background:#22c55e; color:#073b16;
+    font-size:12px; font-weight:900; line-height:1;
+    pointer-events:none; /* never intercept clicks */
+}
+
+/* Hide non-females (JS toggles this class) */
+.user_item.of-hidden { display:none !important; }
+
+/* Sent highlight */
+.onlyfemales-sent { outline: 2px solid #8bc34a66 !important; border-radius: 8px !important; }
+
+/* ===== Activity Log ===== */
+.of-log-section { display:flex; flex-direction:column; gap:8px; }
+.of-logs { display:flex; flex-direction:column; gap:8px; }
+/* Push the whole logs section to the bottom of the panel */
+.of-section.of-log-section { margin-top:auto; }
+.of-hidden { display:none !important; }
+.of-log-title { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.of-log-controls {
+    display:flex; gap:10px; align-items:center; justify-content:flex-end;
+}
+/* Bottom placement variant to prevent layout jumps */
+.of-log-controls-bottom { margin-top:4px; display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap; }
+
+.of-log-controls input[type="checkbox"]{ accent-color:#93c5fd; }
+.of-log-ctl { font-size:12px; color:#e5e7eb; display:inline-flex; gap:6px; align-items:center; }
+
+.of-log-box {
+    border:1px solid #334155; border-radius:10px;
+    background:#0f172a;
+    color:#e5e7eb;
+    max-height:110px; min-height:60px; overflow:auto;
+    padding:8px;
+    display:flex; flex-direction:column-reverse; /* newest at top visually when we prepend */
+    gap:6px;
+    font-size:12px; line-height:1.35;
+    scrollbar-width: none; /* Firefox */
+}
+.of-log-box::-webkit-scrollbar { width:0; height:0; } /* WebKit */
+
+.of-log-entry { display:flex; align-items:center; gap:8px; }
+.of-log-ts {
+    font-variant-numeric: tabular-nums;
+    font-weight:600; color:#93c5fd; min-width:38px;
+}
+.of-log-dot { width:6px; height:6px; border-radius:50%; background:#64748b; }
+.of-log-text { color:#e5e7eb; flex:1; }
+.of-log-entry strong { font-weight:700; }
+/* Right-aligned <dm> action */
+.of-dm-right { margin-left:auto; color:inherit; text-decoration:none; cursor:pointer; font-weight:700; }
+.of-dm-right:hover { text-decoration:none; }
+
+/* Action links in logs */
+.of-user-link { font-weight: bold; text-decoration: none; color: inherit; cursor: pointer; }
+.of-user-link:hover { text-decoration: none; color: inherit; }
+.of-dm-link { text-decoration: none; border: 0; cursor: pointer; color: inherit; }
+.of-dm-link:hover { text-decoration: none; color: inherit; }
+.of-badge-sent { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#14532d; color:#bbf7d0; font-size:11px; font-weight:700; }
+
+/* Color coding */
+.of-log-send-ok .of-log-dot { background:#22c55e; }     /* green */
+.of-log-send-fail .of-log-dot { background:#ef4444; }   /* red */
+.of-log-login .of-log-dot { background:#3b82f6; }       /* blue */
+.of-log-logout .of-log-dot { background:#a855f7; }      /* purple */
+/* New: reset and broadcast markers */
+.of-log-reset .of-log-dot { background:#f59e0b; }       /* amber */
+.of-log-broadcast .of-log-dot { background:#3b82f6; }   /* blue */
+
+/* Badge for broadcast entries */
+.of-badge-bc { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#1e3a8a; color:#bfdbfe; font-size:11px; font-weight:700; }
+
+/* Visibility toggles */
+.of-log-box.of-hide-presence .of-log-login,
+.of-log-box.of-hide-presence .of-log-logout { display:none !important; }
+.of-log-box.of-hide-messages .of-log-send-ok,
+.of-log-box.of-hide-messages .of-log-send-fail { display:none !important; }
