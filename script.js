@@ -773,8 +773,8 @@
                 var dName = dm.getAttribute('data-name')||'';
                 var dAvatar = dm.getAttribute('data-avatar')||'';
                 var openDm = (typeof window.openPrivate==='function') ? window.openPrivate
-                           : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
-                           : null;
+                    : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
+                        : null;
                 if(openDm){
                     try{
                         var dUidNum = /^\d+$/.test(dUid) ? parseInt(dUid,10) : dUid;
@@ -791,8 +791,8 @@
                 e.preventDefault();
                 var uid = a.getAttribute('data-uid')||'';
                 var getProf = (typeof window.getProfile==='function') ? window.getProfile
-                             : (window.parent && typeof window.parent.getProfile==='function') ? window.parent.getProfile
-                             : null;
+                    : (window.parent && typeof window.parent.getProfile==='function') ? window.parent.getProfile
+                        : null;
                 if(getProf){
                     try{
                         var uidNum = /^\d+$/.test(uid) ? parseInt(uid,10) : uid;
@@ -1159,7 +1159,7 @@
                 //     notify:  CHAT_CTX.notify,
                 //     curset:  CHAT_CTX.curset
                 // });
-                    ofUpdateChatCtxFromBody._initialized = true;
+                ofUpdateChatCtxFromBody._initialized = true;
 
             }catch(e){ console.error(LOG, 'ofUpdateChatCtxFromBody error:', e); }
         }
@@ -1181,7 +1181,7 @@
                 ofUpdatePrivList(false).then(function(items){
                     try{
                         var list = Array.isArray(items) ? items : [];
-                      // Only new batches: unread > 0 and not equal to last processed pcount
+                        // Only new batches: unread > 0 and not equal to last processed pcount
                         var toFetch = list
                             .filter(function(it){
                                 return it.unread > 0;
@@ -1331,7 +1331,7 @@
         }catch(e){ console.error(LOG, 'ofParsePrivateNotify: error', e); return []; }
     }
     function ofFetchPrivateNotify(){
-        var token=getToken(); 
+        var token=getToken();
         if(!token){ return Promise.resolve([]); }
         var body=new URLSearchParams({ token:token, cp:'chat' }).toString();
         return fetch('/system/float/private_notify.php', {
@@ -1365,7 +1365,7 @@
             }catch(e){ console.error(LOG, 'ofUpdatePrivList error:', e); return items || []; }
         });
     }
-    
+
     function ofFetchChatLogFor(uid, pcount){
         try{
             var token=getToken(); if(!token||!uid){ return Promise.resolve(''); }
@@ -1419,22 +1419,22 @@
                 },
                 body: body
             }).then(function(res){ return res.text(); })
-              .catch(function(err){ console.error(LOG, 'ofFetchChatLogFor: fetch error', err); return ''; });
+                .catch(function(err){ console.error(LOG, 'ofFetchChatLogFor: fetch error', err); return ''; });
         }catch(e){ console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us, and update lastp map
     function ofProcessPrivateLogResponse(uid, txt){
         try{
-            var data; 
-            try{ 
-                data = JSON.parse(txt); 
-            }catch(e){ 
+            var data;
+            try{
+                data = JSON.parse(txt);
+            }catch(e){
                 var prev = (txt||'').slice(0,200);
                 console.log(LOG, 'priv-parse: JSON failed for uid=', uid, 'preview=', prev);
-                return; 
+                return;
             }
             var items = Array.isArray(data && data.pload) ? data.pload
-                       : (Array.isArray(data && data.plogs) ? data.plogs : []);
+                : (Array.isArray(data && data.plogs) ? data.plogs : []);
             //console.log(LOG, 'priv-parse: uid=', uid, 'items=', (items && items.length) || 0);
             if(!items.length) return;
             items.sort(function(a,b){ return (a.log_id||0)-(b.log_id||0); });
