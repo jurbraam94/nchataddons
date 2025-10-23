@@ -248,6 +248,16 @@
         }catch(e){}
     }
 
+    function getTimeStampInWebsiteFormat() {
+        // Set watermark to current time in DD/MM HH:MM format
+        var now = new Date();
+        var day = String(now.getDate()).padStart(2, '0');
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var hours = String(now.getHours()).padStart(2, '0');
+        var minutes = String(now.getMinutes()).padStart(2, '0');
+        return day + '/' + month + ' ' + hours + ':' + minutes;;
+    }
+
     // Initialize watermark once on page load with current date/time in "DD/MM HH:MM" format
     function initializeGlobalWatermark(){
         try{
@@ -259,23 +269,17 @@
                 return;
             }
 
-            // Set watermark to current time in DD/MM HH:MM format
-            var now = new Date();
-            var day = String(now.getDate()).padStart(2, '0');
-            var month = String(now.getMonth() + 1).padStart(2, '0');
-            var hours = String(now.getHours()).padStart(2, '0');
-            var minutes = String(now.getMinutes()).padStart(2, '0');
-            var watermark = day + '/' + month + ' ' + hours + ':' + minutes;
+            var timestamp = getTimeStampInWebsiteFormat();
 
-            console.log(LOG, 'Setting initial watermark to:', watermark);
-            setGlobalWatermark(watermark);
+            console.log(LOG, 'Setting initial watermark to:', timestamp);
+            setGlobalWatermark(timestamp);
 
             // Verify it was set
             var verify = getGlobalWatermark();
-            if(verify === watermark){
-                console.log(LOG, 'Watermark successfully initialized:', watermark);
+            if(verify === timestamp){
+                console.log(LOG, 'Watermark successfully initialized:', timestamp);
             } else {
-                console.warn(LOG, 'Watermark set but verification failed. Expected:', watermark, 'Got:', verify);
+                console.warn(LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
             }
         }catch(err){
             console.error(LOG, 'Initialize watermark error:', err);
@@ -422,7 +426,13 @@
             var name=norm(extractUsername(els[i])); if(!name) continue;
             if(name===q || name.indexOf(q)>-1) out.push({el:els[i],id:id,name:name});
         }
-        return out;
+        if(out[0]) {
+            return out[0];
+        }
+        else {
+            console.warn('User not found (female).');
+            return [];
+        }
     }
     function collectFemaleIds(){
         var c=getContainer(); if(!c) return [];
@@ -501,8 +511,6 @@
     function keyForHash(h){return STORAGE_PREFIX+NS+h;}
     function setLast(h){try{localStorage.setItem(LAST_HASH_KEY,h);}catch(e){}}
     function getLast(){try{return localStorage.getItem(LAST_HASH_KEY)||'';}catch(e){return ''}}
-    function loadSent(h){try{var raw=localStorage.getItem(keyForHash(h)); if(!raw) return {}; var a=JSON.parse(raw); if(a&&a.length){var o={},i; for(i=0;i<a.length;i++) o[a[i]]=1; return o;} return {}; }catch(e){return {};}}
-    function saveSent(h,obj){try{var a=[],k; for(k in obj) if(obj.hasOwnProperty(k)) a.push(k); localStorage.setItem(keyForHash(h),JSON.stringify(a));}catch(e){}}
     function markSent(el){
         try{
             if(!el) return;
@@ -563,7 +571,7 @@
     function markConversationAsReplied(uid){
         try{
             if(!uid) return;
-            REPLIED_CONVOS[uid] = 1;
+            REPLIED_CONVOS[uid] = getTimeStampInWebsiteFormat();
             saveRepliedConvos(REPLIED_CONVOS);
 
             // Move messages from unreplied to replied section
@@ -777,6 +785,7 @@
             '<div class="ca-body">'+
             '  <div class="ca-nav">'+
             '    <button id="ca-nav-bc" class="ca-nav-btn" type="button">Broadcast</button>'+
+            '    <button id="ca-log-clear" class="ca-btn ca-btn-xs" type="button">Clear</button>'+
             '  </div>'+
             '  <div class="ca-section">'+
             '    <div class="ca-section-title">'+
@@ -818,10 +827,6 @@
             '      <span>Logon/Logoff</span>'+
             '    </div>'+
             '    <div id="ca-log-box-presence" class="ca-log-box" aria-live="polite"></div>'+
-            '    <div class="ca-log-controls ca-log-controls-bottom">'+
-            '      <label class="ca-log-ctl"><input id="ca-log-autoscroll" type="checkbox" checked> Autoscroll</label>'+
-            '      <button id="ca-log-clear" class="ca-btn ca-btn-xs" type="button">Clear</button>'+
-            '    </div>'+
             '  </div>'+
             '</div>';
         appendAfterMain(h);
@@ -873,9 +878,8 @@
             $bSend.addEventListener('click', function(){
                 (function(){
                     var text=trim($bMsg?$bMsg.value:''); if(!text){ if($bStat) $bStat.textContent='Type the message first.'; return; }
-                    var h=hashMessage(text), last=getLast(); if(h!==last) setLast(h);
                     var list=buildBroadcastList();
-                    var sent=loadSent(h);
+                    var sent=loadSentAll();
                     var to=[], i; for(i=0;i<list.length;i++){ if(!sent[list[i].id]) to.push(list[i]); }
                     if(!to.length){ if($bStat) $bStat.textContent='No new recipients for this message (after exclusions/rank filter).'; return; }
                     $bSend.disabled=true;
@@ -889,9 +893,7 @@
                             var item=batch[idx++], uname=item.name||item.id, av=extractAvatar(item.el);
                             sendWithThrottle(item.id,text).then(function(r){
                                 if(r && r.ok){
-                                    ok++; sent[item.id]=1; if(item.el) markSent(item.el); saveSent(h,sent);
-                                    SENT_ALL[item.id]=1; saveSentAll(SENT_ALL);
-                                    logSendOK(uname, item.id, av, text);
+                                    ok++; sent[item.id]=1;
                                 } else { fail++; logSendFail(uname, item.id, av, r?r.status:0, text); }
                                 if($bStat) $bStat.textContent='Batch '+(bi+1)+'/'+T+' — '+idx+'/'+batch.length+' sent (OK:'+ok+' Fail:'+fail+')';
                                 return sleep(randBetween(2000,5000));
@@ -907,20 +909,15 @@
             });
         }
     }
-    var panel=document.getElementById('ca-panel')||buildPanel();
+
+    var panel=document.getElementById('ca-panel') || buildPanel();
 
     /* Refs */
     var $sUser=qs('#ca-specific-username'), $sMsg=qs('#ca-specific-msg'), $sSend=qs('#ca-specific-send'), $sStat=qs('#ca-specific-status'), $sReset=qs('#ca-specific-reset');
     var $bMsg=qs('#ca-bc-msg'), $bSend=qs('#ca-bc-send'), $bStat=qs('#ca-bc-status'), $bReset=qs('#ca-bc-reset');
-    var $logBoxSent=qs('#ca-log-box-sent'), $logBoxReceived=qs('#ca-log-box-received'), $logBoxPresence=qs('#ca-log-box-presence'), $logClear=qs('#ca-log-clear'), $logAuto=qs('#ca-log-autoscroll');
+    var $logBoxSent=qs('#ca-log-box-sent'), $logBoxReceived=qs('#ca-log-box-received'), $logBoxPresence=qs('#ca-log-box-presence'), $logClear=qs('#ca-log-clear');
     var $navBc=qs('#ca-nav-bc');
     if($navBc){ $navBc.addEventListener('click', function(){ openBroadcast(); }); }
-
-    // Persist Activity Log preferences
-    var PREF_AUTOSCROLL='321chataddons.pref.autoscroll';
-    function loadPref(k, d){ try{ var v=localStorage.getItem(k); return v===null?d:String(v); }catch(e){ return d; } }
-    function savePref(k, v){ try{ localStorage.setItem(k, String(v)); }catch(e){} }
-    if($logAuto){ $logAuto.checked = loadPref(PREF_AUTOSCROLL,'1')==='1'; $logAuto.addEventListener('change', function(){ savePref(PREF_AUTOSCROLL, $logAuto.checked?'1':'0'); }); }
 
     /* ---------- Activity Log ---------- */
     var LOG_MAX=200;
@@ -947,7 +944,17 @@
 
         // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
         if(kind === 'pv' && targetBox.id === 'ca-log-box-received'){
-            var hasReplied = !!(REPLIED_CONVOS && userId && REPLIED_CONVOS[userId]);
+            let hasReplied = false;
+
+            if (REPLIED_CONVOS[userId]) {
+                const repliedTime = parseLogDateToNumber(REPLIED_CONVOS[userId]); // numeric timestamp for replied datetime
+                const msgTime = parseLogDateToNumber(ts); // numeric timestamp for this message
+
+                // only mark as replied if repliedTime is *set* and strictly newer than message time
+                if (repliedTime && msgTime && repliedTime > msgTime) {
+                    hasReplied = true;
+                }
+            }
             var subTarget = hasReplied
                 ? document.getElementById('ca-log-received-replied')
                 : document.getElementById('ca-log-received-unreplied');
@@ -957,14 +964,13 @@
         // 4) Build the entry (using innerHTML for the details span to render HTML)
         var klass = 'ca-log-' + kind;
         var isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
-        var expandBtn = isSentMessage ? '<span class="ca-expand-indicator" title="Click to expand/collapse">▾</span>' : '';
 
         var wrapper = document.createElement('div');
         wrapper.className = 'ca-log-entry ' + klass;
 
         var tsEl = document.createElement('span');
         tsEl.className = 'ca-log-ts';
-        tsEl.textContent = ts;
+        tsEl.textContent = ts.split(' ')[1] || ts;
 
         var dot = document.createElement('span');
         dot.className = 'ca-log-dot';
@@ -1000,7 +1006,17 @@
             if(!uid) return;
 
             if(kind === 'pv'){
-                var hasReplied2 = REPLIED_CONVOS && REPLIED_CONVOS[uid];
+                let hasReplied2 = false;
+
+                if (REPLIED_CONVOS[userId]) {
+                    const repliedTime = parseLogDateToNumber(REPLIED_CONVOS[userId]); // numeric timestamp for replied datetime
+                    const msgTime = parseLogDateToNumber(ts); // numeric timestamp for this message
+
+                    // only mark as replied if repliedTime is *set* and strictly newer than message time
+                    if (repliedTime && msgTime && repliedTime > msgTime) {
+                        hasReplied2 = true;
+                    }
+                }
                 var afterDot = wrapper.querySelector('.ca-log-dot');
 
                 if(hasReplied2){
@@ -1087,13 +1103,13 @@
             var e=arr[i];
             if(!e || !e.kind) continue;
             if(e.kind==='send-ok' || e.kind==='send-fail'){
-                renderLogEntry($logBoxSent, e.ts||timeHHMM(), e.kind, e.details||'');
+                renderLogEntry($logBoxSent, e.ts, e.kind, e.details||'');
             } else if(e.kind==='pv'){
                 // OLD code that parsed userId can be removed.
                 // Just call renderLogEntry; it will decode + route + decorate itself.
-                renderLogEntry($logBoxReceived, e.ts||timeHHMM(), e.kind, e.details||'');
+                renderLogEntry($logBoxReceived, e.ts, e.kind, e.details||'');
             } else if(e.kind==='login' || e.kind==='logout'){
-                renderLogEntry($logBoxPresence, e.ts||timeHHMM(), e.kind, e.details||'');
+                renderLogEntry($logBoxPresence, e.ts, e.kind, e.details||'');
             }
         }
     }
@@ -1119,7 +1135,7 @@
         }
     }
     function logLine(kind, details, userId){
-        var ts=timeHHMM();
+        var ts= getTimeStampInWebsiteFormat();
         var target = (kind==='send-ok' || kind==='send-fail') ? $logBoxSent
             : (kind==='pv') ? $logBoxReceived
                 : (kind==='login' || kind==='logout') ? $logBoxPresence
@@ -1135,8 +1151,7 @@
         saveLogEntry(ts, kind, details);
     }
     function nameAndDmHtml(username, uid, avatar){
-        var nameA = '<a href="#" class="ca-user-link" title="Open profile" data-uid="'+escapeHTML(String(uid||''))+'" data-name="'+escapeHTML(String(username||''))+'" data-avatar="'+escapeHTML(String(avatar||''))+'"><strong>'+escapeHTML(username||'?')+'</strong></a>';
-        return nameA;
+        return '<a href="#" class="ca-user-link" title="Open profile" data-uid="'+escapeHTML(String(uid||''))+'" data-name="'+escapeHTML(String(username||''))+'" data-avatar="'+escapeHTML(String(avatar||''))+'"><strong>'+escapeHTML(username||'?')+'</strong></a>';
     }
     function logSendOK(username, uid, avatar, text){
         logLine('send-ok', nameAndDmHtml(username, uid, avatar)+' — “'+text+'”');
@@ -1328,8 +1343,8 @@
         return new Promise(function(resolve){
             if(!$sUser){ resolve([]); return; }
             var q = trim($sUser.value||''); if(!q){ resolve([]); return; }
-            var local = findFemaleByUsername(q);
-            if(local && local.length){ resolve(local); return; }
+            var user = findFemaleByUsername(q);
+            if(user){ resolve(user); return; }
             searchUsersRemote(q).then(function(remote){ resolve(remote); });
         });
     }
@@ -1378,24 +1393,16 @@
             var h=hashMessage(text), last=getLast(); if(h!==last) setLast(h);
             buildSpecificListAsync().then(function(list){
                 if(!list.length){ if($sStat) $sStat.textContent='User not found (female).'; return; }
-                var sentMap=loadSent(h);
+                var sentMap=loadSentAll();
                 var item=list[0];
                 if(sentMap[item.id]){ if($sStat) $sStat.textContent='Already sent to '+(item.name||item.id)+'. Change text to resend.'; return; }
                 $sSend.disabled=true;
                 sendWithThrottle(item.id,text).then(function(r){
                     var av = extractAvatar(item.el);
                     if(r && r.ok){
-                        sentMap[item.id]=1; saveSent(h,sentMap);
-                        SENT_ALL[item.id]=1; saveSentAll(SENT_ALL);
-                        if(item.el) markSent(item.el);
                         if($sStat) $sStat.textContent='Sent to '+(item.name||item.id)+'.';
-                        // Pass full text as HTML content for emoticon rendering
-                        logSendOK(item.name||item.id, item.id, av, text);
-                        // Mark conversation as replied
-                        markConversationAsReplied(item.id);
                     } else {
                         if($sStat) $sStat.textContent='Failed (HTTP '+(r?r.status:0)+').';
-                        logSendFail(item.name||item.id, item.id, av, r?r.status:0, text);
                     }
                 })['catch'](function(){
                     if($sStat) $sStat.textContent='Error sending.'; logSendFail(item.name||item.id, item.id, '', 'ERR', text);
@@ -1408,10 +1415,9 @@
     if($bSend){ $bSend.addEventListener('click',function(){
         (function(){
             var text=trim($bMsg?$bMsg.value:''); if(!text){ if($bStat) $bStat.textContent='Type the message first.'; return; }
-            var h=hashMessage(text), last=getLast(); if(h!==last) setLast(h);
             var list=buildBroadcastList();
-            var sent=loadSent(h);
-            var to=[], i; for(i=0;i<list.length;i++){ if(!sent[list[i].id]) to.push(list[i]); }
+            var sent=loadSentAll();
+            var to=[], i; for(i=0;i<list.length;i++){ if(!sent[list[id]]) to.push(list[i]); }
             if(!to.length){ if($bStat) $bStat.textContent='No new recipients for this message (after exclusions/rank filter).'; return; }
             $bSend.disabled=true;
             var ok=0,fail=0,B=10,T=Math.ceil(to.length/B);
@@ -1438,14 +1444,7 @@
                     var item=batch[idx++], uname=item.name||item.id, av=extractAvatar(item.el);
                     sendWithThrottle(item.id,text).then(function(r){
                         if(r && r.ok){
-                            ok++; sent[item.id]=1; if(item.el) markSent(item.el); saveSent(h,sent);
-                            SENT_ALL[item.id]=1; saveSentAll(SENT_ALL);
-                            // Pass full text as HTML content for emoticon rendering
-                            logSendOK(uname, item.id, av, text);
-                            // Mark conversation as replied
-                            markConversationAsReplied(item.id);
-                        } else {
-                            fail++; logSendFail(uname, item.id, av, r?r.status:0, text);
+                            ok++; sent[item.id]=1;
                         }
                         if($bStat) $bStat.textContent='Batch '+(bi+1)+'/'+T+' — '+idx+'/'+batch.length+' sent (OK:'+ok+' Fail:'+fail+')';
                         return sleep(randBetween(2000,5000));
@@ -1967,6 +1966,9 @@
                 var userInfo = getUserFromMap(targetId);
                 var targetName = userInfo.name;
                 var targetAvatar = userInfo.avatar;
+                SENT_ALL[targetId]=1; saveSentAll(SENT_ALL);
+                var user = findFemaleByUsername(targetName);
+                if(user.el) markSent(user.el);
 
                 console.log(LOG, 'Intercepted native message send to', targetName, '(ID:', targetId, ')');
 
