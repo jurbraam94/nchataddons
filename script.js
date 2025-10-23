@@ -14,6 +14,13 @@
     function safeMatches(n,sel){ try { return n && n.nodeType===1 && typeof n.matches==='function' && n.matches(sel); } catch(e){ return false; } }
     function safeQuery(n,sel){ try { return n && n.querySelector ? n.querySelector(sel) : null; } catch(e){ return null; } }
     function escapeHTML(s){ return String(s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);}); }
+    function decodeHTMLEntities(s){
+        try{
+            var txt = document.createElement('textarea');
+            txt.innerHTML = String(s);
+            return txt.value;
+        }catch(e){ return String(s); }
+    }
     function timeHHMM(){ var d=new Date(); var h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return h+':'+m; }
     function truncate(s,n){ s=String(s||'').replace(/\s+/g,' ').trim(); if(s.length<=n) return s; return s.slice(0,Math.max(0,n-1))+'…'; }
 
@@ -198,9 +205,9 @@
         // Throttle the MutationObserver to avoid excessive calls
         var lastAdjust = 0;
         new MutationObserver(function(muts){
-            try{ 
-                applyInline(); 
-                removeAds(document); 
+            try{
+                applyInline();
+                removeAds(document);
                 var now = Date.now();
                 if(now - lastAdjust > 1000){
                     adjustForFooter();
@@ -211,7 +218,7 @@
 
         // Debounce resize handler
         var resizeTimer;
-        window.addEventListener('resize', function(){ 
+        window.addEventListener('resize', function(){
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(function(){ adjustForFooter(); }, 250);
         });
@@ -526,6 +533,32 @@
     function saveRepliedConvos(map){ try{ localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch(e){} }
     var REPLIED_CONVOS = loadRepliedConvos();
 
+    // Global user map: ID -> {name, avatar}
+    var USER_MAP = {}; // In-memory map for quick lookups
+
+    function updateUserMap(uid, name, avatar){
+        try{
+            if(!uid) return;
+            if(!USER_MAP[uid]) USER_MAP[uid] = {};
+            if(name) USER_MAP[uid].name = String(name);
+            if(avatar) USER_MAP[uid].avatar = String(avatar);
+        }catch(e){}
+    }
+
+    function getUserFromMap(uid){
+        try{
+            if(!uid) return {name: '', avatar: ''};
+            var user = USER_MAP[uid];
+            if(!user) return {name: String(uid), avatar: ''}; // Fallback to ID as name
+            return {
+                name: user.name || String(uid),
+                avatar: user.avatar || ''
+            };
+        }catch(e){
+            return {name: String(uid), avatar: ''};
+        }
+    }
+
     // Mark all received messages from a specific user as replied
     function markConversationAsReplied(uid){
         try{
@@ -533,9 +566,12 @@
             REPLIED_CONVOS[uid] = 1;
             saveRepliedConvos(REPLIED_CONVOS);
 
-            // Replace reply icons with checkmarks for all existing received messages from this user
-            if($logBoxReceived){
-                var entries = qsa('.ca-log-pv', $logBoxReceived);
+            // Move messages from unreplied to replied section
+            var unrepliedBox = document.getElementById('ca-log-received-unreplied');
+            var repliedBox = document.getElementById('ca-log-received-replied');
+
+            if(unrepliedBox && repliedBox){
+                var entries = qsa('.ca-log-pv', unrepliedBox);
                 entries.forEach(function(entry){
                     var userLink = entry.querySelector('.ca-user-link');
                     if(!userLink) return;
@@ -559,6 +595,9 @@
                             // Replace reply icon with checkmark
                             replyIcon.parentNode.replaceChild(mark, replyIcon);
                         }
+
+                        // Move entry to replied section
+                        repliedBox.appendChild(entry);
                     }
                 });
             }
@@ -762,7 +801,16 @@
             '    <div class="ca-section-title">'+
             '      <span>Received Messages</span>'+
             '    </div>'+
-            '    <div id="ca-log-box-received" class="ca-log-box ca-log-box-expand" aria-live="polite" style="flex:1;min-height:0;overflow-y:auto;"></div>'+
+            '    <div id="ca-log-box-received" class="ca-log-box ca-log-box-expand" aria-live="polite" style="flex:1;min-height:0;">'+
+            '      <div class="ca-log-subsection-unreplied-wrapper">'+
+            '        <div class="ca-log-subsection-header">Not Replied</div>'+
+            '        <div id="ca-log-received-unreplied"></div>'+
+            '      </div>'+
+            '      <div class="ca-log-subsection-replied-wrapper">'+
+            '        <div class="ca-log-subsection-header">Replied</div>'+
+            '        <div id="ca-log-received-replied"></div>'+
+            '      </div>'+
+            '    </div>'+
             '  </div>'+
             '  <div class="ca-section ca-log-section">'+
             '    <hr class="ca-divider">'+
@@ -831,7 +879,7 @@
                     var to=[], i; for(i=0;i<list.length;i++){ if(!sent[list[i].id]) to.push(list[i]); }
                     if(!to.length){ if($bStat) $bStat.textContent='No new recipients for this message (after exclusions/rank filter).'; return; }
                     $bSend.disabled=true;
-                    var ok=0,fail=0,B=10,T=Math.ceil(to.length/B), preview=truncate(text, 80);
+                    var ok=0,fail=0,B=10,T=Math.ceil(to.length/B);
                     function runBatch(bi){
                         if(bi>=T){ if($bStat) $bStat.textContent='Done. Success: '+ok+', Failed: '+fail+'.'; $bSend.disabled=false; return; }
                         var start=bi*B, batch=to.slice(start,start+B), idx=0;
@@ -843,12 +891,12 @@
                                 if(r && r.ok){
                                     ok++; sent[item.id]=1; if(item.el) markSent(item.el); saveSent(h,sent);
                                     SENT_ALL[item.id]=1; saveSentAll(SENT_ALL);
-                                    logSendOK(uname, preview, item.id, av);
-                                } else { fail++; logSendFail(uname, preview, r?r.status:0, item.id, av); }
+                                    logSendOK(uname, item.id, av, text);
+                                } else { fail++; logSendFail(uname, item.id, av, r?r.status:0, text); }
                                 if($bStat) $bStat.textContent='Batch '+(bi+1)+'/'+T+' — '+idx+'/'+batch.length+' sent (OK:'+ok+' Fail:'+fail+')';
                                 return sleep(randBetween(2000,5000));
                             }).then(one)['catch'](function(){
-                                fail++; logSendFail(uname, preview, 'ERR', item.id, av);
+                                fail++; logSendFail(uname, item.id, av, 'ERR', text);
                                 return sleep(randBetween(2000,5000)).then(one);
                             });
                         }
@@ -877,61 +925,110 @@
     /* ---------- Activity Log ---------- */
     var LOG_MAX=200;
     var LOG_STORE_KEY='321chataddons.activityLog.v1';
-    function renderLogEntry(targetBox, ts, kind, details){
+    // Replace the whole function
+    function renderLogEntry(targetBox, ts, kind, details, userId){
         if(!targetBox) return;
-        var klass='ca-log-'+kind;
-        var html = '<div class="ca-log-entry '+klass+'">' +
-            '<span class="ca-log-ts">'+escapeHTML(ts)+'</span>' +
-            '<span class="ca-log-dot"></span>' +
-            '<span class="ca-log-text">'+details+'</span>' +
-            '</div>';
-        // Append to end so newest messages appear at bottom
-        targetBox.insertAdjacentHTML('beforeend', html);
-        // Append a right-aligned dm link using data from username (if present), then the sent badge (if any)
+
+        // 1) Decode any HTML entities so rich content (emoticons/img) renders
+        var detailsHTML = decodeHTMLEntities(String(details || ''));
+
+        // 2) If this is a received private message and we didn't get a userId,
+        //    extract it from the details markup (works for restore *and* live).
+        if(kind === 'pv'){
+            try{
+                if(!userId){
+                    var tmp = document.createElement('div');
+                    tmp.innerHTML = detailsHTML;
+                    var link = tmp.querySelector('.ca-user-link');
+                    if(link) userId = link.getAttribute('data-uid') || null;
+                }
+            }catch(e){ /* ignore */ }
+        }
+
+        // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
+        if(kind === 'pv' && targetBox.id === 'ca-log-box-received'){
+            var hasReplied = !!(REPLIED_CONVOS && userId && REPLIED_CONVOS[userId]);
+            var subTarget = hasReplied
+                ? document.getElementById('ca-log-received-replied')
+                : document.getElementById('ca-log-received-unreplied');
+            if(subTarget) targetBox = subTarget;
+        }
+
+        // 4) Build the entry (using innerHTML for the details span to render HTML)
+        var klass = 'ca-log-' + kind;
+        var isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
+        var expandBtn = isSentMessage ? '<span class="ca-expand-indicator" title="Click to expand/collapse">▾</span>' : '';
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'ca-log-entry ' + klass;
+
+        var tsEl = document.createElement('span');
+        tsEl.className = 'ca-log-ts';
+        tsEl.textContent = ts;
+
+        var dot = document.createElement('span');
+        dot.className = 'ca-log-dot';
+
+        var text = document.createElement('span');
+        text.className = 'ca-log-text';
+        text.innerHTML = detailsHTML; // ← render HTML for ALL kinds
+
+        wrapper.appendChild(tsEl);
+        wrapper.appendChild(dot);
+
+        if(isSentMessage){
+            var exp = document.createElement('span');
+            exp.className = 'ca-expand-indicator';
+            exp.title = 'Click to expand/collapse';
+            exp.textContent = '▾';
+            wrapper.appendChild(exp);
+        }
+
+        wrapper.appendChild(text);
+
+        // Append to end so newest appears at bottom (matches existing behavior)
+        targetBox.prepend(wrapper);
+
+
+        // 5) Post-decorate with reply/DM/badge — this already works for all kinds
         try{
-            var entry = targetBox.lastElementChild;
-            if(!entry) return;
-            var a = entry.querySelector('.ca-user-link');
+            var a = wrapper.querySelector('.ca-user-link');
             if(!a) return;
             var uid = a.getAttribute('data-uid')||'';
             var name = a.getAttribute('data-name')||'';
             var avatar = a.getAttribute('data-avatar')||'';
             if(!uid) return;
 
-            // Add reply icon for received messages (kind === 'pv')
             if(kind === 'pv'){
-                // Check if conversation has been replied to
-                var hasReplied = REPLIED_CONVOS && REPLIED_CONVOS[uid];
+                var hasReplied2 = REPLIED_CONVOS && REPLIED_CONVOS[uid];
+                var afterDot = wrapper.querySelector('.ca-log-dot');
 
-                if(hasReplied){
-                    // Show checkmark for replied conversations (still clickable to open chat)
+                if(hasReplied2){
                     var mark = document.createElement('a');
                     mark.className = 'ca-replied-mark';
                     mark.setAttribute('data-reply','1');
                     mark.setAttribute('data-uid', uid);
                     mark.setAttribute('data-name', name);
+
+                    mark.setAttribute('data-avatar', avatar);
                     mark.href = '#';
                     mark.textContent = '✓';
                     mark.title = 'Replied - Click to open chat';
-                    // Insert after the dot, before the text
-                    var dot = entry.querySelector('.ca-log-dot');
-                    if(dot && dot.nextSibling){
-                        entry.insertBefore(mark, dot.nextSibling);
+                    if(afterDot && afterDot.nextSibling){
+                        wrapper.insertBefore(mark, afterDot.nextSibling);
                     }
                 } else {
-                    // Show reply icon for un-replied conversations
                     var replyIcon = document.createElement('a');
                     replyIcon.className = 'ca-reply-icon';
                     replyIcon.setAttribute('data-reply','1');
                     replyIcon.setAttribute('data-uid', uid);
                     replyIcon.setAttribute('data-name', name);
+                    replyIcon.setAttribute('data-avatar', avatar);
                     replyIcon.href = '#';
                     replyIcon.textContent = '↩';
                     replyIcon.title = 'Reply to ' + name;
-                    // Insert reply icon after the dot, before the text
-                    var dot = entry.querySelector('.ca-log-dot');
-                    if(dot && dot.nextSibling){
-                        entry.insertBefore(replyIcon, dot.nextSibling);
+                    if(afterDot && afterDot.nextSibling){
+                        wrapper.insertBefore(replyIcon, afterDot.nextSibling);
                     }
                 }
             }
@@ -944,17 +1041,18 @@
             dm.setAttribute('data-avatar', avatar);
             dm.href = '#';
             dm.textContent = 'dm';
-            entry.appendChild(dm);
-            // place badge immediately to the right of dm, if already messaged
+            wrapper.appendChild(dm);
+
             if(typeof SENT_ALL==='object' && SENT_ALL && SENT_ALL[uid]){
                 var badge = document.createElement('span');
                 badge.className = 'ca-badge-sent';
                 badge.title = 'Already messaged';
                 badge.textContent = '✓';
-                entry.appendChild(badge);
+                wrapper.appendChild(badge);
             }
-        }catch(e){}
+        }catch(e){ /* ignore */ }
     }
+
     function saveLogEntry(ts, kind, details){
         var arr=[];
         try{ var raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
@@ -962,31 +1060,42 @@
         if(arr.length>LOG_MAX) arr=arr.slice(0,LOG_MAX);
         try{ localStorage.setItem(LOG_STORE_KEY, JSON.stringify(arr)); }catch(e){}
     }
+
+
     function restoreLog(){
         if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
         var arr=[];
         try{ var raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
         $logBoxSent.innerHTML='';
-        $logBoxReceived.innerHTML='';
-        $logBoxPresence.innerHTML='';
-        // Process oldest to newest (reverse order from storage which has newest first)
+
+
+        // Rebuild received box with subsections
+        $logBoxReceived.innerHTML =
+            '<div class="ca-log-subsection-unreplied-wrapper">'+
+            '  <div class="ca-log-subsection-header">Not Replied</div>'+
+            '  <div id="ca-log-received-unreplied"></div>'+
+            '</div>'+
+            '<div class="ca-log-subsection-replied-wrapper">'+
+            '  <div class="ca-log-subsection-header">Replied</div>'+
+            '  <div id="ca-log-received-replied"></div>'+
+            '</div>';
+
+       // $logBoxPresence.innerHTML='';
+
+        // In restoreLog(), inside the loop:
         for(var i=arr.length-1; i>=0; i--){
             var e=arr[i];
             if(!e || !e.kind) continue;
             if(e.kind==='send-ok' || e.kind==='send-fail'){
                 renderLogEntry($logBoxSent, e.ts||timeHHMM(), e.kind, e.details||'');
             } else if(e.kind==='pv'){
+                // OLD code that parsed userId can be removed.
+                // Just call renderLogEntry; it will decode + route + decorate itself.
                 renderLogEntry($logBoxReceived, e.ts||timeHHMM(), e.kind, e.details||'');
             } else if(e.kind==='login' || e.kind==='logout'){
                 renderLogEntry($logBoxPresence, e.ts||timeHHMM(), e.kind, e.details||'');
             }
         }
-        // Always auto-scroll to bottom after restore (use RAF for reliability)
-        requestAnimationFrame(function(){
-            if($logBoxSent) $logBoxSent.scrollTop = $logBoxSent.scrollHeight;
-            if($logBoxReceived) $logBoxReceived.scrollTop = $logBoxReceived.scrollHeight;
-            if($logBoxPresence) $logBoxPresence.scrollTop = $logBoxPresence.scrollHeight;
-        });
     }
     function trimLogBoxToMax(targetBox){
         try{
@@ -1009,14 +1118,14 @@
             console.error(LOG, 'Trim log error:', e);
         }
     }
-    function logLine(kind, details){
+    function logLine(kind, details, userId){
         var ts=timeHHMM();
         var target = (kind==='send-ok' || kind==='send-fail') ? $logBoxSent
-                   : (kind==='pv') ? $logBoxReceived
-                   : (kind==='login' || kind==='logout') ? $logBoxPresence
-                   : null;
+            : (kind==='pv') ? $logBoxReceived
+                : (kind==='login' || kind==='logout') ? $logBoxPresence
+                    : null;
         if(!target) return;
-        renderLogEntry(target, ts, kind, details);
+        renderLogEntry(target, ts, kind, details, userId);
         trimLogBoxToMax(target);
         // Always auto-scroll to bottom when new entry is added (use RAF for reliability)
         requestAnimationFrame(function(){
@@ -1029,11 +1138,11 @@
         var nameA = '<a href="#" class="ca-user-link" title="Open profile" data-uid="'+escapeHTML(String(uid||''))+'" data-name="'+escapeHTML(String(username||''))+'" data-avatar="'+escapeHTML(String(avatar||''))+'"><strong>'+escapeHTML(username||'?')+'</strong></a>';
         return nameA;
     }
-    function logSendOK(username, preview, uid, avatar){
-        logLine('send-ok', nameAndDmHtml(username, uid, avatar)+' — “'+escapeHTML(preview)+'”');
+    function logSendOK(username, uid, avatar, text){
+        logLine('send-ok', nameAndDmHtml(username, uid, avatar)+' — “'+text+'”');
     }
-    function logSendFail(username, preview, status, uid, avatar){
-        logLine('send-fail', nameAndDmHtml(username, uid, avatar)+' — failed ('+String(status||0)+') — “'+escapeHTML(preview)+'”');
+    function logSendFail(username, uid, avatar, status, text){
+        logLine('send-fail', nameAndDmHtml(username, uid, avatar)+' — failed ('+String(status||0)+') — “'+text+'”');
     }
     // Throttle presence logging to prevent duplicates
     var lastPresenceLog = {}; // uid -> timestamp
@@ -1103,16 +1212,25 @@
                         }
                     }
                 }catch(err){}
-
+                if (rAvatar && !rAvatar.startsWith('avatar/')) {
+                    rAvatar = 'avatar/' + rAvatar;
+                }
                 var openDm = (typeof window.openPrivate==='function') ? window.openPrivate
                     : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
                         : null;
                 if(openDm){
+                    morePriv = 0;
+                    closeList();
+                    hideModal();
+                    hideOver();
+                    privReload = 1;
+                    lastPriv = 0;
                     try{
                         var rUidNum = /^\d+$/.test(rUid) ? parseInt(rUid,10) : rUid;
-                        openDm(rUidNum, rName, rAvatar);
+                        openDm(rUidNum, rName, `${rAvatar}`);
                     }catch(err){
-                        openDm(rUid, rName, rAvatar);
+                        console.error(LOG, 'Error opening private chat:', err);
+                        openDm(rUid, rName, `${rAvatar}`);
                     }
                 }
                 return;
@@ -1124,15 +1242,25 @@
                 var dUid = dm.getAttribute('data-uid')||'';
                 var dName = dm.getAttribute('data-name')||'';
                 var dAvatar = dm.getAttribute('data-avatar')||'';
+                if (dAvatar && !dAvatar.startsWith('avatar/')) {
+                    dAvatar = 'avatar/' + dAvatar;
+                }
                 var openDm = (typeof window.openPrivate==='function') ? window.openPrivate
                     : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
                         : null;
                 if(openDm){
+                    morePriv = 0;
+                    closeList();
+                    hideModal();
+                    hideOver();
+                    privReload = 1;
+                    lastPriv = 0;
                     try{
                         var dUidNum = /^\d+$/.test(dUid) ? parseInt(dUid,10) : dUid;
-                        openDm(dUidNum, dName, dAvatar);
+                        openDm(dUidNum, dName, `${dAvatar}`);
                     }catch(err){
-                        openDm(dUid, dName, dAvatar);
+                        console.error(LOG, 'Error opening private chat:', err);
+                        openDm(dUidNum, dName, `${dAvatar}`);
                     }
                 }
                 return;
@@ -1162,6 +1290,33 @@
     attachLogClickHandlers($logBoxSent);
     attachLogClickHandlers($logBoxReceived);
     attachLogClickHandlers($logBoxPresence);
+
+    // Add expand/collapse handler for sent messages
+    if($logBoxSent){
+        $logBoxSent.addEventListener('click', function(e){
+            try{
+                // Check if clicked on expand indicator or message text in a sent message
+                var entry = e.target.closest('.ca-log-send-ok, .ca-log-send-fail');
+                if(!entry) return;
+
+                var isExpandBtn = e.target.classList.contains('ca-expand-indicator');
+                var isMessageText = e.target.classList.contains('ca-log-text');
+
+                if(isExpandBtn || isMessageText){
+                    e.stopPropagation();
+                    entry.classList.toggle('ca-expanded');
+
+                    // Update indicator arrow
+                    var indicator = entry.querySelector('.ca-expand-indicator');
+                    if(indicator){
+                        indicator.textContent = entry.classList.contains('ca-expanded') ? '▴' : '▾';
+                    }
+                }
+            }catch(err){
+                console.error(LOG, 'Expand/collapse error:', err);
+            }
+        });
+    }
 
     /* Draft persistence (refactored) */
     if($sMsg){ $sMsg.addEventListener('input', function(){ CA.Drafts.save('specific', $sMsg.value); }); }
@@ -1228,7 +1383,6 @@
                 if(sentMap[item.id]){ if($sStat) $sStat.textContent='Already sent to '+(item.name||item.id)+'. Change text to resend.'; return; }
                 $sSend.disabled=true;
                 sendWithThrottle(item.id,text).then(function(r){
-                    var preview = truncate(text, 80);
                     var av = extractAvatar(item.el);
                     if(r && r.ok){
                         sentMap[item.id]=1; saveSent(h,sentMap);
@@ -1236,15 +1390,15 @@
                         if(item.el) markSent(item.el);
                         if($sStat) $sStat.textContent='Sent to '+(item.name||item.id)+'.';
                         // Pass full text as HTML content for emoticon rendering
-                        logSendOK(item.name||item.id, preview, item.id, av, text);
+                        logSendOK(item.name||item.id, item.id, av, text);
                         // Mark conversation as replied
                         markConversationAsReplied(item.id);
                     } else {
                         if($sStat) $sStat.textContent='Failed (HTTP '+(r?r.status:0)+').';
-                        logSendFail(item.name||item.id, preview, r?r.status:0, item.id, av);
+                        logSendFail(item.name||item.id, item.id, av, r?r.status:0, text);
                     }
                 })['catch'](function(){
-                    if($sStat) $sStat.textContent='Error sending.'; logSendFail(item.name||item.id, truncate(text,80), 'ERR', item.id, '');
+                    if($sStat) $sStat.textContent='Error sending.'; logSendFail(item.name||item.id, item.id, '', 'ERR', text);
                 }).then(function(){ $sSend.disabled=false; });
             });
         })();
@@ -1260,7 +1414,7 @@
             var to=[], i; for(i=0;i<list.length;i++){ if(!sent[list[i].id]) to.push(list[i]); }
             if(!to.length){ if($bStat) $bStat.textContent='No new recipients for this message (after exclusions/rank filter).'; return; }
             $bSend.disabled=true;
-            var ok=0,fail=0,B=10,T=Math.ceil(to.length/B), preview=truncate(text, 80);
+            var ok=0,fail=0,B=10,T=Math.ceil(to.length/B);
 
             function runBatch(bi){
                 if(bi>=T){
@@ -1287,16 +1441,16 @@
                             ok++; sent[item.id]=1; if(item.el) markSent(item.el); saveSent(h,sent);
                             SENT_ALL[item.id]=1; saveSentAll(SENT_ALL);
                             // Pass full text as HTML content for emoticon rendering
-                            logSendOK(uname, preview, item.id, av, text);
+                            logSendOK(uname, item.id, av, text);
                             // Mark conversation as replied
                             markConversationAsReplied(item.id);
                         } else {
-                            fail++; logSendFail(uname, preview, r?r.status:0, item.id, av);
+                            fail++; logSendFail(uname, item.id, av, r?r.status:0, text);
                         }
                         if($bStat) $bStat.textContent='Batch '+(bi+1)+'/'+T+' — '+idx+'/'+batch.length+' sent (OK:'+ok+' Fail:'+fail+')';
                         return sleep(randBetween(2000,5000));
                     }).then(one)['catch'](function(){
-                        fail++; logSendFail(uname, preview, 'ERR', item.id, av);
+                        fail++; logSendFail(uname, item.id, av, 'ERR', text);
                         return sleep(randBetween(2000,5000)).then(one);
                     });
                 }
@@ -1333,7 +1487,12 @@
     var isMakingOwnChanges = false; // Flag to prevent observer loops
     function scanCurrentFemales(){
         currentFemales.clear();
-        collectFemaleIds().forEach(function(it){ currentFemales.set(it.id, it.name||''); });
+        collectFemaleIds().forEach(function(it){
+            currentFemales.set(it.id, it.name||'');
+            // Also populate user map
+            var av = extractAvatar(it.el);
+            updateUserMap(it.id, it.name, av);
+        });
     }
     var didInitialLog = false;
     function runInitialLogWhenReady(maxTries){
@@ -1356,6 +1515,7 @@
         setTimeout(function(){ runInitialLogWhenReady(maxTries-1); }, 100);
     }
 
+
     function handleAddedNode(n){
         var items=[];
         if(safeMatches(n,'.user_item[data-gender="'+FEMALE_CODE+'"]')) items=[n];
@@ -1365,13 +1525,19 @@
             var id=getUserId(el); if(!id) return;
             var wasPresent = currentFemales.has(id);
             var nm=extractUsername(el)||id;
+            var av=extractAvatar(el);
+
+            // Update user map with latest info
+            updateUserMap(id, nm, av);
 
             if(!wasPresent){
                 // New user appeared
                 currentFemales.set(id, nm);
-                // Only log login if initial scan is complete
+                // Only log login if initial scan is complete AND this is truly a new appearance
+                // (not just a delayed initial scan item)
                 if(didInitialLog){
-                    logLogin(nm, id, extractAvatar(el));
+                    console.log(LOG, 'New user appeared:', nm, '(ID:', id, ')');
+                    logLogin(nm, id, av);
                 }
             } else {
                 // User already tracked, just update name if changed (no logging)
@@ -1382,6 +1548,7 @@
             ensureSentChip(el, !!(SENT_ALL && SENT_ALL[id]));
         });
     }
+
     function handleRemovedNode(n){
         var items=[];
         if(safeMatches(n,'.user_item')) items=[n];
@@ -1616,7 +1783,7 @@
                 // No private messages or already have them in current payload
                 if(!isFinite(pico) || pico < 1 || data.pload?.length > 0 || data.plogs?.length > 0) return;
 
-                        // Additional throttle for actual private message fetching (if pico > 0)
+                // Additional throttle for actual private message fetching (if pico > 0)
                 if(caProcessChatPayload._lastPN && (now - caProcessChatPayload._lastPN) <= 10000){
                     console.log(LOG, 'Private messages: throttled — last check', Math.round((now - caProcessChatPayload._lastPN)/1000), 'seconds ago');
                     return;
@@ -1796,33 +1963,15 @@
 
                 if(!content || !targetId) return;
 
-                // Look up recipient username from user list by target ID
-                var targetName = targetId; // fallback to ID
-                var targetAvatar = '';
-                try{
-                    var c = getContainer();
-                    if(c){
-                        // Try multiple selectors to find the user
-                        var userEl = c.querySelector('[data-uid="'+targetId+'"]') 
-                                  || c.querySelector('[data-userid="'+targetId+'"]')
-                                  || c.querySelector('[data-user="'+targetId+'"]')
-                                  || c.querySelector('[data-id="'+targetId+'"]');
+                // Look up username and avatar from user map
+                var userInfo = getUserFromMap(targetId);
+                var targetName = userInfo.name;
+                var targetAvatar = userInfo.avatar;
 
-                        if(userEl){
-                            var foundName = extractUsername(userEl);
-                            if(foundName) targetName = foundName;
-                            targetAvatar = extractAvatar(userEl);
-                        }
-                    }
-                }catch(e){
-                    console.error(LOG, 'Username lookup error:', e);
-                }
-
-                var preview = truncate(content, 80);
-                console.log(LOG, 'Intercepted native message send to', targetName, '(ID:', targetId, ') —', preview);
+                console.log(LOG, 'Intercepted native message send to', targetName, '(ID:', targetId, ')');
 
                 // Log to sent messages box - pass full content for HTML rendering
-                logSendOK(targetName, preview, targetId, targetAvatar, content);
+                logSendOK(targetName, targetId, targetAvatar, content);
 
                 // Mark conversation as replied
                 markConversationAsReplied(targetId);
@@ -1874,7 +2023,7 @@
             var _xhrSend = XMLHttpRequest.prototype.send;
 
             XMLHttpRequest.prototype.open = function(method, url){
-                try{ 
+                try{
                     this._ca_pm_url = String(url||'');
                     this._ca_pm_isTarget = isPrivateProcessUrl(url);
                 }catch(e){}
@@ -2035,14 +2184,14 @@
                 console.log(LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
                 return res.text();
             })
-            .then(function(txt){
-                console.log(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
-                return txt;
-            })
-            .catch(function(err){
-                console.error(LOG, 'Fetch chat log error:', err);
-                return '';
-            });
+                .then(function(txt){
+                    console.log(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
+                    return txt;
+                })
+                .catch(function(err){
+                    console.error(LOG, 'Fetch chat log error:', err);
+                    return '';
+                });
         }catch(e){ console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us
@@ -2126,10 +2275,13 @@
 
                 var uname = (t.user_name) || (fromId!=null?String(fromId):'?');
                 var av  = (t.user_tumb) || '';
-                var content = (t.log_content) ? String(t.log_content).replace(/\s+/g,' ').trim() : '';
+                var rawContent = (t.log_content) ? String(t.log_content) : '';
+                // Decode HTML entities (like &lt;3 to <3), then escape for safe display
+                var decodedContent = decodeHTMLEntities(rawContent);
+                var content = escapeHTML(decodedContent).replace(/\s+/g,' ').trim();
                 // Parse content as HTML to support emoticons (img tags), but keep username link escaped
                 var details = nameAndDmHtml(uname, fromId, av) + ' — ' + content;
-                logLine('pv', details);
+                logLine('pv', details, fromId);
 
                 // Mark this log_id as displayed
                 if(logId) addDisplayedLogId(uid, logId);
@@ -2167,6 +2319,108 @@
     }catch(err){
         console.error(LOG, 'Failed to initialize watermark:', err);
     }
+
+    /* ---------- Monitor private chat box for user info ---------- */
+    (function observePrivateChatBox(){
+        try{
+            function extractPrivateBoxUserInfo(){
+                try{
+                    var privateBox = document.getElementById('private_box');
+                    if(!privateBox) return;
+
+                    var userId = null;
+                    var userName = null;
+                    var userAvatar = null;
+
+                    // 1. Extract user ID from #private_av's data attribute (this is the primary source)
+                    var privateAv = document.getElementById('private_av');
+                    if(privateAv){
+                        userId = privateAv.getAttribute('data');
+                        if(userId) userId = userId.trim();
+                    }
+
+                    // 2. Extract username from #private_name element
+                    var privateNameEl = document.getElementById('private_name');
+                    if(privateNameEl){
+                        userName = privateNameEl.textContent.trim();
+                    }
+
+                    // 3. Extract avatar from #private_av's src attribute
+                    if(privateAv){
+                        userAvatar = privateAv.getAttribute('src') || '';
+                        if(userAvatar) userAvatar = userAvatar.trim();
+                    }
+
+                    // Fallback: Try to extract from data attributes on private_box itself
+                    if(!userId){
+                        userId = privateBox.getAttribute('data-uid') || privateBox.getAttribute('data-user') || privateBox.getAttribute('data-id');
+                    }
+
+                    // Fallback: Check for hidden inputs
+                    if(!userId){
+                        var uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
+                        if(uidInput) userId = uidInput.value;
+                    }
+
+                    // Fallback: Check global variables
+                    if(!userId && typeof window.privateUser !== 'undefined'){
+                        try{
+                            userId = window.privateUser.id || window.privateUser.uid;
+                            userName = userName || window.privateUser.name || window.privateUser.username;
+                            userAvatar = userAvatar || window.privateUser.avatar || window.privateUser.thumb;
+                        }catch(e){}
+                    }
+
+                    if(userId && userName){
+                        console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
+                        updateUserMap(userId, userName, userAvatar);
+                    }
+                }catch(e){
+                    console.error(LOG, 'Extract private box user info error:', e);
+                }
+            }
+
+            // Initial check
+            setTimeout(extractPrivateBoxUserInfo, 500);
+
+            // Observe private_box for changes
+            var privateBox = document.getElementById('private_box');
+            if(privateBox){
+                var privObserver = new MutationObserver(function(mutations){
+                    try{
+                        // Check if any relevant changes occurred
+                        var shouldExtract = false;
+                        mutations.forEach(function(mut){
+                            if(mut.type === 'childList' && mut.addedNodes.length > 0){
+                                shouldExtract = true;
+                            }
+                            if(mut.type === 'attributes' && (mut.attributeName === 'data-uid' || mut.attributeName === 'data-name' || mut.attributeName === 'data')){
+                                shouldExtract = true;
+                            }
+                        });
+
+                        if(shouldExtract){
+                            extractPrivateBoxUserInfo();
+                        }
+                    }catch(e){
+                        console.error(LOG, 'Private box observer error:', e);
+                    }
+                });
+
+                privObserver.observe(privateBox, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['data-uid', 'data-user', 'data-name', 'data-id', 'data']
+                });
+            } else {
+                // If private_box doesn't exist yet, wait and try again
+                setTimeout(observePrivateChatBox, 1000);
+            }
+        }catch(e){
+            console.error(LOG, 'Private chat box observer setup error:', e);
+        }
+    })();
 
     console.log(LOG,'✓ 321ChatAddons ready — activity logging, message tracking, and throttled sending enabled');
 })();
