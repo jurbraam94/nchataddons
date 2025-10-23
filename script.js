@@ -1,4 +1,17 @@
 (function(){
+    try{
+        if (typeof window !== 'undefined'){
+            window.CA = window.CA || {};
+            window.CA.CAPTURED_USERS = (window.CA.CAPTURED_USERS instanceof Set) ? window.CA.CAPTURED_USERS : new Set();
+            var CAPTURED_USERS = window.CA.CAPTURED_USERS;
+            window.CAPTURED_USERS = CAPTURED_USERS; // optional global fallback
+        } else {
+            // Non-browser fallback
+            var CAPTURED_USERS = (typeof CAPTURED_USERS !== 'undefined' && CAPTURED_USERS instanceof Set) ? CAPTURED_USERS : new Set();
+        }
+    }catch(e){ /* ignore */ }
+})();
+(function(){
     /* =========================
      * 321ChatAddons Toolkit (with Activity Log) — initial page-load logging added
      * ========================= */
@@ -109,6 +122,58 @@
             CA.Safe.setJSON(key, obj);
         }
     };
+    // ---------- Debug toggle & logger ----------
+    (function(){
+        try{
+            const KEY = '321chataddons.debug';
+            const Store = (typeof CA !== 'undefined' && CA && CA.Store) ? CA.Store : {
+                get: (k, fb) => { try{ const v = localStorage.getItem(k); return v==null?fb:v; }catch(e){ return fb; } },
+                set: (k, v)   => { try{ localStorage.setItem(k, String(v)); }catch(e){} }
+            };
+            CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
+            CA.Debug = CA.Debug || {
+                enabled: String(Store.get(KEY,'0')) === '1',
+                set(on){
+                    this.enabled = !!on;
+                    try{ Store.set(KEY, this.enabled ? '1' : '0'); }catch(e){}
+                }
+            };
+            CA.debug = function(){
+                if (CA.Debug && CA.Debug.enabled) {
+                    try{ console.log.apply(console, arguments); }catch(e){}
+                }
+            };
+            // UI hook
+            CA.ensureDebugToggle = function(){
+                try{
+                    var panel = document.getElementById('ca-panel');
+                    if(!panel || panel.querySelector('#ca-debug-toggle')) return;
+                    var row = document.createElement('div');
+                    row.className = 'ca-debug-row';
+                    row.style.cssText = 'display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:4px 6px;border-bottom:1px solid rgba(0,0,0,.06);';
+                    var label = document.createElement('label');
+                    label.style.cssText = 'display:flex;align-items:center;gap:6px;font:12px/1.2 sans-serif;cursor:pointer;';
+                    var cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.id = 'ca-debug-toggle';
+                    cb.checked = !!(CA.Debug && CA.Debug.enabled);
+                    var span = document.createElement('span');
+                    span.textContent = 'Debug logs';
+                    label.appendChild(cb);
+                    label.appendChild(span);
+                    row.appendChild(label);
+                    // insert at top of panel
+                    panel.insertBefore(row, panel.firstChild);
+                    cb.addEventListener('change', function(){
+                        if(CA && CA.Debug){ CA.Debug.set(!!this.checked); }
+                    });
+                }catch(e){}
+            };
+            // try to mount toggle soon after DOM ready
+            setTimeout(function(){ try{ CA.ensureDebugToggle(); }catch(e){} }, 300);
+        }catch(e){}
+    })();
+
     /* ---------- Audio autoplay gate (avoid NotAllowedError before user gesture) ---------- */
     (function setup321ChatAddonsAudioGate(){
         try {
@@ -623,7 +688,8 @@
     const REPLIED_CONVOS = loadRepliedConvos();
 
     // Global user map: ID -> {name, avatar}
-    const USER_MAP = {}; // In-memory map for quick lookups
+    const USER_MAP = {};
+// In-memory map for quick lookups
 
     const updateUserMap = function (uid, name, avatar){
         try {
@@ -1139,7 +1205,7 @@
                     replyIcon.setAttribute('data-avatar', avatar);
                     replyIcon.href = '#';
                     replyIcon.textContent = '↩';
-                    replyIcon.title = 'Reply to ' + name;
+                    replyIcon.title =`Reply to ${name}`;
                     if(afterDot && afterDot.nextSibling){
                         wrapper.insertBefore(replyIcon, afterDot.nextSibling);
                     }
@@ -1266,7 +1332,7 @@
 
     const logLogin = function (username, uid, avatar){
         let now = Date.now();
-        let key = 'login_' + uid;
+        let key =`login_${uid}`;
         if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
             return; // Skip - logged too recently
         }
@@ -1275,7 +1341,7 @@
     }
     const logLogout = function (username, uid, avatar){
         let now = Date.now();
-        const key = 'logout_' + uid;
+        const key =`logout_${uid}`;
         if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
             return; // Skip - logged too recently
         }
@@ -1298,7 +1364,7 @@
     const buildProfileUrlForId = function (uid){
         try {
             if(!uid) return '';
-            const sel = 'a[href*="profile"][href*="'+uid+'"], a[href*="user"][href*="'+uid+'"]';
+            const sel = 'a[href*="profile"][href*="'+uid+'"], a[href*="user"][href*="'+`${uid}"]`;
             const found = document.querySelector(sel);
             if(found && found.href) return found.href;
             const fallbacks = [
@@ -1976,10 +2042,10 @@
                                 const qs = normalizeBodyToQuery(init && init.body);
 
                                 if(qs){
-                                    console.log(qs);
+                                    CA.debug(qs);
                                     caUpdateChatCtxFromBody(qs, url);
                                 } else if(req && typeof req === 'object' && typeof req.clone === 'function'){
-                                    console.log(qs);
+                                    CA.debug(qs);
                                     try { req.clone().text().then(function(t){ caUpdateChatCtxFromBody(t, url); }); } catch (err) {console.error(err);
                                         console.error(LOG, 'Fetch clone error:', err); }
                                 }
@@ -2310,7 +2376,7 @@
             const body=new URLSearchParams(bodyObj).toString();
             try {
                 const bodyLog = body.replace(/token=[^&]*/,'token=[redacted]');
-                console.log(LOG, 'caFetchChatLogFor: Full request body:', bodyLog);
+                CA.debug(LOG, 'caFetchChatLogFor: Full request body:', bodyLog);
             } catch (err) {console.error(err);
                 console.error(LOG, 'caFetchChatLogFor: body log error', err); }
 
@@ -2324,11 +2390,11 @@
                 },
                 body: body
             }).then(function(res){
-                console.log(LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
+                CA.debug(LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
                 return res.text();
             })
                 .then(function(txt){
-                    console.log(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
+                    CA.debug(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
                     return txt;
                 })
                 .catch(function(err){
@@ -2516,7 +2582,8 @@
                         }
                     }
 
-                    if(userId && userName){
+                    if (userId && userName && !CAPTURED_USERS.has(String(userId))) {
+                        CAPTURED_USERS.add(String(userId));
                         console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
                         updateUserMap(userId, userName, userAvatar);
                     }
