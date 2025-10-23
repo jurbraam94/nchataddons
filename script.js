@@ -5,24 +5,23 @@
     var FEMALE_CODE='2', LOG='[321ChatAddons]';
 
     /* ---------- Helpers ---------- */
-    function qs(s,r){return (r||document).querySelector(s);}
-    function qsa(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
-    function trim(s){return (s||'').replace(/^\s+|\s+$/g,'');}
-    function norm(s){return trim(s).toLowerCase();}
-    function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
-    function randBetween(minMs,maxMs){return Math.floor(minMs+Math.random()*(maxMs-minMs));}
-    function safeMatches(n,sel){ try { return n && n.nodeType===1 && typeof n.matches==='function' && n.matches(sel); } catch(e){ return false; } }
-    function safeQuery(n,sel){ try { return n && n.querySelector ? n.querySelector(sel) : null; } catch(e){ return null; } }
-    function escapeHTML(s){ return String(s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);}); }
-    function decodeHTMLEntities(s){
+    const qs = (s, r) => (r || document).querySelector(s);
+    const qsa = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+    const trim = function (s){return (s||'').replace(/^\s+|\s+$/g,'');}
+    const norm = function (s){return trim(s).toLowerCase();}
+    const sleep = function (ms){return new Promise(function(r){setTimeout(r,ms);});}
+    const randBetween = function (minMs,maxMs){return Math.floor(minMs+Math.random()*(maxMs-minMs));}
+    const safeMatches = function (n,sel){ try { return n && n.nodeType===1 && typeof n.matches==='function' && n.matches(sel); } catch(e){ return false; } }
+    const safeQuery = function (n,sel){ try { return n && n.querySelector ? n.querySelector(sel) : null; } catch(e){ return null; } }
+    const escapeHTML = function (s){ return String(s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);}); }
+    const decodeHTMLEntities = function (s){
         try{
             var txt = document.createElement('textarea');
             txt.innerHTML = String(s);
             return txt.value;
         }catch(e){ return String(s); }
     }
-    function timeHHMM(){ var d=new Date(); var h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return h+':'+m; }
-    function truncate(s,n){ s=String(s||'').replace(/\s+/g,' ').trim(); if(s.length<=n) return s; return s.slice(0,Math.max(0,n-1))+'…'; }
+    const timeHHMM = function (){ var d=new Date(); var h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return h+':'+m; }
 
     // ---------- Namespace and Modules ----------
     // Small, incremental refactor: add a namespace and a Drafts module for better structure
@@ -107,13 +106,13 @@
     })();
 
     /* ---------- 321ChatAddons: bottom log helpers ---------- */
-    function caGetLogBox(){
+    const caGetLogBox = function (){
         try{
             var panel = document.getElementById('ca-panel') || document;
             return panel.querySelector('.ca-log-box');
         }catch(e){ return null; }
     }
-    function caAppendLog(type, text){
+    const caAppendLog = function (type, text){
         try{
             var box = caGetLogBox();
             if(!box) return;
@@ -148,13 +147,13 @@
     });
 
     /* ---------- Keep original page sizing ---------- */
-    function applyInline(){
+    const applyInline = function (){
         try{
             var a=qsa('.pboxed'); for(var i=0;i<a.length;i++){a[i].style.setProperty('height','800px','important');}
             var b=qsa('.pboxed .pcontent'); for(var j=0;j<b.length;j++){b[j].style.setProperty('height','610px','important');}
         }catch(e){}
     }
-    function removeAds(root){
+    const removeAds = function (root){
         try{
             var scope = root && root.querySelectorAll ? root : document;
             var links = scope.querySelectorAll('a[href*="bit.ly"]');
@@ -166,7 +165,7 @@
             });
         }catch(e){}
     }
-    function adjustForFooter(){
+    const adjustForFooter = function (){
         try{
             var panel = document.getElementById('ca-panel');
             if(!panel) return;
@@ -225,10 +224,10 @@
     }
 
     /* ---------- Containers / lists ---------- */
-    function getContainer(){ return qs('#container_user')||qs('#chat_right_data'); }
+    const getContainer = function (){ return qs('#container_user')||qs('#chat_right_data'); }
 
     var isPruning=false, rafId=null;
-    function schedule(fn){ if(rafId) cancelAnimationFrame(rafId); rafId=requestAnimationFrame(function(){rafId=null; fn();}); }
+    const schedule = function (fn){ if(rafId) cancelAnimationFrame(rafId); rafId=requestAnimationFrame(function(){rafId=null; fn();}); }
 
     // Shared chat context captured from site chat_log requests (used for our private chat_log calls)
     var CHAT_CTX = { caction:'', last:'', lastp: '', room:'', notify:'', curset:'', pcount:0 };
@@ -236,19 +235,19 @@
     // Global watermark - store in same format as log_date: "DD/MM HH:MM"
     var GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
 
-    function getGlobalWatermark(){
+    const getGlobalWatermark = function (){
         try{
             return localStorage.getItem(GLOBAL_WATERMARK_KEY) || '';
         }catch(e){ return ''; }
     }
 
-    function setGlobalWatermark(dateStr){
+    const setGlobalWatermark = function (dateStr){
         try{
             if(dateStr) localStorage.setItem(GLOBAL_WATERMARK_KEY, String(dateStr));
         }catch(e){}
     }
 
-    function getTimeStampInWebsiteFormat() {
+    const getTimeStampInWebsiteFormat = function () {
         // Set watermark to current time in DD/MM HH:MM format
         var now = new Date();
         var day = String(now.getDate()).padStart(2, '0');
@@ -259,7 +258,7 @@
     }
 
     // Initialize watermark once on page load with current date/time in "DD/MM HH:MM" format
-    function initializeGlobalWatermark(){
+    const initializeGlobalWatermark = function (){
         try{
             var currentWatermark = getGlobalWatermark();
             console.log(LOG, 'Checking watermark... current value:', currentWatermark || '(not set)');
@@ -287,7 +286,7 @@
     }
 
     // Parse log_date format "DD/MM HH:MM" to comparable number (MMDDHHMM)
-    function parseLogDateToNumber(logDateStr){
+    const parseLogDateToNumber = function (logDateStr){
         try{
             if(!logDateStr || typeof logDateStr !== 'string') return 0;
 
@@ -312,7 +311,7 @@
     }
 
     // Check if a message is newer than watermark
-    function isMessageNewer(logDateStr, debugLog){
+    const isMessageNewer = function (logDateStr, debugLog){
         try{
             var watermark = getGlobalWatermark();
             if(!watermark) return true; // No watermark set, show all
@@ -343,7 +342,7 @@
     }
 
     // Normalize various request body types to a query-string
-    function normalizeBodyToQuery(body){
+    const normalizeBodyToQuery = function (body){
         try{
             if(!body) return '';
             if(typeof body === 'string') return body;
@@ -361,7 +360,7 @@
     }
 
     /* ---------- Female pruning (hide, not remove) ---------- */
-    function pruneNonFemale(){
+    const pruneNonFemale = function (){
         var c=getContainer(); if(!c) return;
         isPruning = true;
         try{
@@ -373,7 +372,7 @@
     }
 
     /* ---------- ID/Name extraction ---------- */
-    function getUserId(el){
+    const getUserId = function (el){
         if(!el) return null;
         try{
             var ds=el.dataset||{};
@@ -396,7 +395,7 @@
             return id?String(id):null;
         }catch(e){ return null; }
     }
-    function extractUsername(el){
+    const extractUsername = function (el){
         if(!el) return '';
         try{
             var v=el.getAttribute('data-name'); if(v) return v.trim();
@@ -409,7 +408,7 @@
             return out[0];
         }catch(e){ return ''; }
     }
-    function extractAvatar(el){
+    const extractAvatar = function (el){
         try{
             if(!el) return '';
             var img = safeQuery(el,'img[src*="avatar"]') || safeQuery(el,'.avatar img') || safeQuery(el,'img');
@@ -417,7 +416,7 @@
             return src ? src.trim() : '';
         }catch(e){ return ''; }
     }
-    function findFemaleByUsername(query){
+    const findFemaleByUsername = function (query){
         var q=norm(query); if(!q) return [];
         var c=getContainer(); if(!c) return [];
         var els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c), out=[];
@@ -434,7 +433,7 @@
             return [];
         }
     }
-    function collectFemaleIds(){
+    const collectFemaleIds = function (){
         var c=getContainer(); if(!c) return [];
         var els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c), out=[];
         for(var i=0;i<els.length;i++){
@@ -444,7 +443,7 @@
     }
 
     /* ---------- Token + POST ---------- */
-    function getToken(){
+    const getToken = function (){
         try{ if(typeof utk!=='undefined' && utk) return utk; }catch(e){}
         var inp=qs('input[name="token"]'); if(inp&&inp.value) return inp.value;
         var sc=qsa('script'); for(var i=0;i<sc.length;i++){
@@ -452,7 +451,7 @@
         }
         return null;
     }
-    function withTimeout(startFetchFn, ms){
+    const withTimeout = function (startFetchFn, ms){
         if(ms==null) ms = 15000;
         var ac = new AbortController();
         var t = setTimeout(function(){ ac.abort(); }, ms);
@@ -460,7 +459,7 @@
             .catch(function(err){ return { ok:false, status:0, body:String(err&&err.message||'error') }; })
             .finally(function(){ clearTimeout(t); });
     }
-    function sendPrivateMessage(target, content){
+    const sendPrivateMessage = function (target, content){
         var token=getToken(); if(!token||!target||!content){ return Promise.resolve({ok:false,status:0,body:'bad args'}); }
         var body=new URLSearchParams({token:token,cp:'chat',target:String(target),content:String(content),quote:'0'}).toString();
         return withTimeout(function(signal){
@@ -478,7 +477,7 @@
     }
 
     /* ---------- Remote search ---------- */
-    function searchUsersRemote(query){
+    const searchUsersRemote = function (query){
         return new Promise(function(resolve){
             var token=getToken(); if(!token || !query){ resolve([]); return; }
             var body=new URLSearchParams({token:token, cp:'chat', query:String(query), search_type:'1', search_order:'0'}).toString();
@@ -491,7 +490,7 @@
                 .catch(function(){ resolve([]); });
         });
     }
-    function parseSearchHTML(html){
+    const parseSearchHTML = function (html){
         var tmp=document.createElement('div'); tmp.innerHTML=html;
         var nodes=tmp.querySelectorAll('.user_item[data-id]'); var out=[];
         for(var i=0;i<nodes.length;i++){
@@ -506,12 +505,12 @@
 
     /* ---------- Message tracking (per-message “new only”) ---------- */
     var STORAGE_PREFIX='321chataddons.pm.', LAST_HASH_KEY=STORAGE_PREFIX+'lastMessageHash';
-    function hashMessage(s){var h=5381; s=String(s); for(var i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);} return (h>>>0).toString(36);}
+    const hashMessage = function (s){var h=5381; s=String(s); for(var i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);} return (h>>>0).toString(36);}
     var NS = location.host + (window.curPage||'') + ':';
-    function keyForHash(h){return STORAGE_PREFIX+NS+h;}
-    function setLast(h){try{localStorage.setItem(LAST_HASH_KEY,h);}catch(e){}}
-    function getLast(){try{return localStorage.getItem(LAST_HASH_KEY)||'';}catch(e){return ''}}
-    function markSent(el){
+    const keyForHash = function (h){return STORAGE_PREFIX+NS+h;}
+    const setLast = function (h){try{localStorage.setItem(LAST_HASH_KEY,h);}catch(e){}}
+    const getLast = function (){try{return localStorage.getItem(LAST_HASH_KEY)||'';}catch(e){return ''}}
+    const markSent = function (el){
         try{
             if(!el) return;
             el.classList.add('chataddons-sent');
@@ -525,26 +524,26 @@
 
     /* ---------- Exclusion checkboxes (persisted) ---------- */
     var EXC_KEY='321chataddons.excluded';
-    function loadExcluded(){ try{ var raw=localStorage.getItem(EXC_KEY); if(!raw) return {}; var a=JSON.parse(raw)||[]; var map={},i; for(i=0;i<a.length;i++) map[a[i]]=1; return map; } catch(e){ return {}; } }
-    function saveExcluded(map){ try{ var arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); localStorage.setItem(EXC_KEY,JSON.stringify(arr)); }catch(e){} }
+    const loadExcluded = function (){ try{ var raw=localStorage.getItem(EXC_KEY); if(!raw) return {}; var a=JSON.parse(raw)||[]; var map={},i; for(i=0;i<a.length;i++) map[a[i]]=1; return map; } catch(e){ return {}; } }
+    const saveExcluded = function (map){ try{ var arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); localStorage.setItem(EXC_KEY,JSON.stringify(arr)); }catch(e){} }
     var EXCLUDED=loadExcluded();
 
     // Global "already messaged" list (applies to any message)
     var SENT_ALL_KEY='321chataddons.sent.all';
-    function loadSentAll(){ try{ var raw=localStorage.getItem(SENT_ALL_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
-    function saveSentAll(map){ try{ localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch(e){} }
+    const loadSentAll = function (){ try{ var raw=localStorage.getItem(SENT_ALL_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
+    const saveSentAll = function (map){ try{ localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch(e){} }
     var SENT_ALL = loadSentAll();
 
     // Track conversations that have been replied to
     var REPLIED_CONVOS_KEY='321chataddons.repliedConversations';
-    function loadRepliedConvos(){ try{ var raw=localStorage.getItem(REPLIED_CONVOS_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
-    function saveRepliedConvos(map){ try{ localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch(e){} }
+    const loadRepliedConvos = function (){ try{ var raw=localStorage.getItem(REPLIED_CONVOS_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
+    const saveRepliedConvos = function (map){ try{ localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch(e){} }
     var REPLIED_CONVOS = loadRepliedConvos();
 
     // Global user map: ID -> {name, avatar}
     var USER_MAP = {}; // In-memory map for quick lookups
 
-    function updateUserMap(uid, name, avatar){
+    const updateUserMap = function (uid, name, avatar){
         try{
             if(!uid) return;
             if(!USER_MAP[uid]) USER_MAP[uid] = {};
@@ -553,7 +552,7 @@
         }catch(e){}
     }
 
-    function getUserFromMap(uid){
+    const getUserFromMap = function (uid){
         try{
             if(!uid) return {name: '', avatar: ''};
             var user = USER_MAP[uid];
@@ -568,7 +567,7 @@
     }
 
     // Mark all received messages from a specific user as replied
-    function markConversationAsReplied(uid){
+    const markConversationAsReplied = function (uid){
         try{
             if(!uid) return;
             REPLIED_CONVOS[uid] = getTimeStampInWebsiteFormat();
@@ -616,24 +615,24 @@
 
     // Persisted per-user last processed pcount to avoid refetching same batch
     var LAST_PCOUNT_MAP_KEY='321chataddons.lastPcountPerConversation';
-    function loadLastPcountMap(){ try{ var raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }catch(e){ return {}; } }
-    function saveLastPcountMap(map){ try{ localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); }catch(e){} }
+    const loadLastPcountMap = function (){ try{ var raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }catch(e){ return {}; } }
+    const saveLastPcountMap = function (map){ try{ localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); }catch(e){} }
     var LAST_PCOUNT_MAP = loadLastPcountMap();
-    function getLastPcountFor(uid){ try{ return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; }catch(e){ return 0; } }
-    function setLastPcountFor(uid, pc){ try{ if(!uid) return; LAST_PCOUNT_MAP[uid]=Number(pc)||0; saveLastPcountMap(LAST_PCOUNT_MAP); }catch(e){} }
+    const getLastPcountFor = function (uid){ try{ return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; }catch(e){ return 0; } }
+    const setLastPcountFor = function (uid, pc){ try{ if(!uid) return; LAST_PCOUNT_MAP[uid]=Number(pc)||0; saveLastPcountMap(LAST_PCOUNT_MAP); }catch(e){} }
 
     // Track displayed message log_id per conversation to prevent duplicates
     var DISPLAYED_LOGIDS_KEY='321chataddons.displayedLogIds';
     var MAX_LOGIDS_PER_CONVERSATION = 100; // Keep last 100 IDs per conversation
 
-    function loadDisplayedLogIds(){
+    const loadDisplayedLogIds = function (){
         try{
             var raw=localStorage.getItem(DISPLAYED_LOGIDS_KEY);
             return raw ? (JSON.parse(raw)||{}) : {};
         }catch(e){ return {}; }
     }
 
-    function saveDisplayedLogIds(map){
+    const saveDisplayedLogIds = function (map){
         try{
             localStorage.setItem(DISPLAYED_LOGIDS_KEY, JSON.stringify(map||{}));
         }catch(e){}
@@ -641,14 +640,14 @@
 
     var DISPLAYED_LOGIDS = loadDisplayedLogIds();
 
-    function getDisplayedLogIdsFor(uid){
+    const getDisplayedLogIdsFor = function (uid){
         try{
             if(!uid || !DISPLAYED_LOGIDS[uid]) return [];
             return DISPLAYED_LOGIDS[uid] || [];
         }catch(e){ return []; }
     }
 
-    function addDisplayedLogId(uid, logId){
+    const addDisplayedLogId = function (uid, logId){
         try{
             if(!uid || !logId) return;
             if(!DISPLAYED_LOGIDS[uid]) DISPLAYED_LOGIDS[uid] = [];
@@ -669,7 +668,7 @@
         }
     }
 
-    function hasDisplayedLogId(uid, logId){
+    const hasDisplayedLogId = function (uid, logId){
         try{
             if(!uid || !logId) return false;
             var displayed = getDisplayedLogIdsFor(uid);
@@ -678,7 +677,7 @@
     }
 
     // Visual chip on user list items when already messaged
-    function ensureSentChip(el, on){
+    const ensureSentChip = function (el, on){
         try{
             if(!el) return;
             var chip = el.querySelector('.ca-sent-chip');
@@ -702,7 +701,7 @@
             }
         }catch(e){}
     }
-    function updateSentBadges(){
+    const updateSentBadges = function (){
         try{
             var c=getContainer(); if(!c) return;
             qsa('.user_item', c).forEach(function(el){
@@ -712,7 +711,7 @@
         }catch(e){}
     }
     // Resort user list so non-messaged appear first
-    function resortUserList(){
+    const resortUserList = function (){
         try{
             var c=getContainer(); if(!c) return;
             var items = qsa('.user_item', c);
@@ -729,7 +728,7 @@
         }catch(e){}
     }
 
-    function isAllowedRank(el){
+    const isAllowedRank = function (el){
         try{
             var rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
             var roomRankIcon = el ? safeQuery(el,'.list_rank') : null;
@@ -737,7 +736,7 @@
             return (rankAttr==='1' || rankAttr==='50') && (roomRank!=='4');
         }catch(e){ return false; }
     }
-    function ensureCheckboxOn(el){
+    const ensureCheckboxOn = function (el){
         try{
             if(!el || el.getAttribute('data-gender')!==FEMALE_CODE) return;
             if(qs('.ca-ck-wrap', el)) return;
@@ -758,7 +757,7 @@
             setTimeout(function(){ isMakingOwnChanges = false; }, 10);
         }catch(e){}
     }
-    function attachCheckboxes(){
+    const attachCheckboxes = function (){
         try{
             var c=getContainer(); if(!c) return;
             var els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c);
@@ -773,11 +772,11 @@
     }
 
     /* ---------- Panel UI ---------- */
-    function appendAfterMain(el){
+    const appendAfterMain = function (el){
         var main=document.querySelector('#chat_right')||document.querySelector('#container_user')||document.body;
         if(main && main.parentElement) main.parentElement.appendChild(el); else document.body.appendChild(el);
     }
-    function buildPanel(){
+    const buildPanel = function (){
         var h=document.createElement('section');
         h.id='ca-panel';
         h.className='ca-panel';
@@ -833,7 +832,7 @@
         return h;
     }
     // Popup for Broadcast
-    function createBroadcastPopup(){
+    const createBroadcastPopup = function (){
         var pop=document.getElementById('ca-bc-pop');
         if(pop) return pop;
         pop=document.createElement('div');
@@ -865,11 +864,11 @@
         if(hdr){ hdr.addEventListener('mousedown', function(e){ sx=e.clientX; sy=e.clientY; var r=pop.getBoundingClientRect(); ox=r.left; oy=r.top; document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu); }); }
         return pop;
     }
-    function openBroadcast(){
+    const openBroadcast = function (){
         var pop=createBroadcastPopup();
         if(pop){ pop.style.display='block'; if(!openBroadcast._wired){ wireBroadcastControls(); openBroadcast._wired=true; } }
     }
-    function wireBroadcastControls(){
+    const wireBroadcastControls = function (){
         // rebind refs and handlers for broadcast controls inside popup
         $bMsg = qs('#ca-bc-msg'); $bSend = qs('#ca-bc-send'); $bReset = qs('#ca-bc-reset'); $bStat = qs('#ca-bc-status');
         if($bReset && !$bReset._wired){ $bReset._wired=true; $bReset.addEventListener('click', function(e){ e.preventDefault(); resetForText($bMsg?$bMsg.value:'',$bStat); }); }
@@ -923,7 +922,7 @@
     var LOG_MAX=200;
     var LOG_STORE_KEY='321chataddons.activityLog.v1';
     // Replace the whole function
-    function renderLogEntry(targetBox, ts, kind, details, userId){
+    const renderLogEntry = function (targetBox, ts, kind, details, userId){
         if(!targetBox) return;
 
         // 1) Decode any HTML entities so rich content (emoticons/img) renders
@@ -1069,7 +1068,7 @@
         }catch(e){ /* ignore */ }
     }
 
-    function saveLogEntry(ts, kind, details){
+    const saveLogEntry = function (ts, kind, details){
         var arr=[];
         try{ var raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
         arr.unshift({ts:ts, kind:kind, details:details});
@@ -1078,7 +1077,7 @@
     }
 
 
-    function restoreLog(){
+    const restoreLog = function (){
         if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
         var arr=[];
         try{ var raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
@@ -1096,7 +1095,7 @@
             '  <div id="ca-log-received-replied"></div>'+
             '</div>';
 
-       // $logBoxPresence.innerHTML='';
+        // $logBoxPresence.innerHTML='';
 
         // In restoreLog(), inside the loop:
         for(var i=arr.length-1; i>=0; i--){
@@ -1113,7 +1112,7 @@
             }
         }
     }
-    function trimLogBoxToMax(targetBox){
+    const trimLogBoxToMax = function (targetBox){
         try{
             if(!targetBox || !targetBox.children) return;
             // Create a static array copy to avoid live HTMLCollection issues
@@ -1134,7 +1133,7 @@
             console.error(LOG, 'Trim log error:', e);
         }
     }
-    function logLine(kind, details, userId){
+    const logLine = function (kind, details, userId){
         var ts= getTimeStampInWebsiteFormat();
         var target = (kind==='send-ok' || kind==='send-fail') ? $logBoxSent
             : (kind==='pv') ? $logBoxReceived
@@ -1150,20 +1149,20 @@
         // Save all log types to localStorage for persistence across page reloads
         saveLogEntry(ts, kind, details);
     }
-    function nameAndDmHtml(username, uid, avatar){
+    const nameAndDmHtml = function (username, uid, avatar){
         return '<a href="#" class="ca-user-link" title="Open profile" data-uid="'+escapeHTML(String(uid||''))+'" data-name="'+escapeHTML(String(username||''))+'" data-avatar="'+escapeHTML(String(avatar||''))+'"><strong>'+escapeHTML(username||'?')+'</strong></a>';
     }
-    function logSendOK(username, uid, avatar, text){
+    const logSendOK = function (username, uid, avatar, text){
         logLine('send-ok', nameAndDmHtml(username, uid, avatar)+' — “'+text+'”');
     }
-    function logSendFail(username, uid, avatar, status, text){
+    const logSendFail = function (username, uid, avatar, status, text){
         logLine('send-fail', nameAndDmHtml(username, uid, avatar)+' — failed ('+String(status||0)+') — “'+text+'”');
     }
     // Throttle presence logging to prevent duplicates
     var lastPresenceLog = {}; // uid -> timestamp
     var PRESENCE_LOG_THROTTLE = 5000; // 5 seconds
 
-    function logLogin(username, uid, avatar){
+    const logLogin = function (username, uid, avatar){
         var now = Date.now();
         var key = 'login_' + uid;
         if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
@@ -1172,7 +1171,7 @@
         lastPresenceLog[key] = now;
         logLine('login', nameAndDmHtml(username, uid, avatar)+' logged on');
     }
-    function logLogout(username, uid, avatar){
+    const logLogout = function (username, uid, avatar){
         var now = Date.now();
         var key = 'logout_' + uid;
         if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
@@ -1193,7 +1192,7 @@
     restoreLog();
 
     // Fallback profile URL builder (only used if site function is not present)
-    function buildProfileUrlForId(uid){
+    const buildProfileUrlForId = function (uid){
         try{
             if(!uid) return '';
             var sel = 'a[href*="profile"][href*="'+uid+'"], a[href*="user"][href*="'+uid+'"]';
@@ -1207,7 +1206,7 @@
             return fallbacks[0];
         }catch(e){ return ''; }
     }
-    function attachLogClickHandlers(box){
+    const attachLogClickHandlers = function (box){
         if(!box) return;
         box.addEventListener('click', function(e){
             // Reply icon - open chat like DM link
@@ -1339,7 +1338,7 @@
     CA.Drafts.restoreInputs($sMsg, $bMsg);
 
     /* Build recipients */
-    function buildSpecificListAsync(){
+    const buildSpecificListAsync = function (){
         return new Promise(function(resolve){
             if(!$sUser){ resolve([]); return; }
             var q = trim($sUser.value||''); if(!q){ resolve([]); return; }
@@ -1348,7 +1347,7 @@
             searchUsersRemote(q).then(function(remote){ resolve(remote); });
         });
     }
-    function buildBroadcastList(){
+    const buildBroadcastList = function (){
         var list = collectFemaleIds(), out=[], i, id, el, include;
         for(i=0;i<list.length;i++){
             el=list[i].el; id=list[i].id;
@@ -1362,7 +1361,7 @@
     }
 
     /* Reset tracking (per message) */
-    function resetForText(text, statEl){
+    const resetForText = function (text, statEl){
         var t=trim(text); if(!t) return false;
         var h=hashMessage(t); localStorage.removeItem(keyForHash(h)); setLast(h);
         if(statEl) statEl.textContent='Cleared sent-tracking for this message.';
@@ -1373,7 +1372,7 @@
 
     /* Global throttle */
     var lastSendAt = 0;
-    function sendWithThrottle(id, text, minGapMs){
+    const sendWithThrottle = function (id, text, minGapMs){
         if(minGapMs===void 0) minGapMs = 3500;
         var now=Date.now(); var wait = Math.max(0, minGapMs - (now - lastSendAt));
         return sleep(wait).then(function(){
@@ -1460,7 +1459,7 @@
     }); }
 
     /* Click a user: fill specific username */
-    function wireUserClickSelection(){
+    const wireUserClickSelection = function (){
         try{
             var c=getContainer(); if(!c)return;
             if(c.getAttribute('data-ca-wired')==='1')return;
@@ -1484,7 +1483,7 @@
     /* ---------- Login/Logout logging ---------- */
     var currentFemales = new Map(); // id -> name
     var isMakingOwnChanges = false; // Flag to prevent observer loops
-    function scanCurrentFemales(){
+    const scanCurrentFemales = function (){
         currentFemales.clear();
         collectFemaleIds().forEach(function(it){
             currentFemales.set(it.id, it.name||'');
@@ -1494,7 +1493,7 @@
         });
     }
     var didInitialLog = false;
-    function runInitialLogWhenReady(maxTries){
+    const runInitialLogWhenReady = function (maxTries){
         if(maxTries==null) maxTries = 20; // ~2s max
         var c=getContainer();
         var ready = !!c && qsa('.user_item[data-gender="'+FEMALE_CODE+'"]', c).length>0;
@@ -1515,7 +1514,7 @@
     }
 
 
-    function handleAddedNode(n){
+    const handleAddedNode = function (n){
         var items=[];
         if(safeMatches(n,'.user_item[data-gender="'+FEMALE_CODE+'"]')) items=[n];
         else items=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]', n);
@@ -1548,7 +1547,7 @@
         });
     }
 
-    function handleRemovedNode(n){
+    const handleRemovedNode = function (n){
         var items=[];
         if(safeMatches(n,'.user_item')) items=[n];
         else items=qsa('.user_item', n);
@@ -1565,7 +1564,7 @@
     }
 
     /* ---------- Observer: prune + checkboxes + selection + login/out ---------- */
-    function startObserver(){
+    const startObserver = function (){
         var c=getContainer();
         if(!c){
             var iv=setInterval(function(){
@@ -2064,7 +2063,7 @@
     })();
 
     // --- Private notifications: fetch -> parse -> render, and actions ---
-    function caParsePrivateNotify(html){
+    const caParsePrivateNotify = function (html){
         try{
             //console.log(html);
             var tmp=document.createElement('div'); tmp.innerHTML=html;
@@ -2089,7 +2088,7 @@
             return out;
         }catch(e){ console.error(LOG, 'Parse private notifications error:', e); return []; }
     }
-    function caFetchPrivateNotify(){
+    const caFetchPrivateNotify = function (){
         var token=getToken();
         if(!token){ return Promise.resolve([]); }
         var body=new URLSearchParams({ token:token, cp:'chat' }).toString();
@@ -2107,7 +2106,7 @@
         });
     }
 
-    function caUpdatePrivateConversationsList(manual){
+    const caUpdatePrivateConversationsList = function (manual){
         return caFetchPrivateNotify().then(function(privateConversations){
             try{
                 console.log(LOG, 'Private conversations:', privateConversations.length);
@@ -2125,7 +2124,7 @@
         });
     }
 
-    function caFetchChatLogFor(uid, lastCheckedPcount){
+    const caFetchChatLogFor = function (uid, lastCheckedPcount){
         try{
             var token=getToken(); if(!token||!uid){ return Promise.resolve(''); }
 
@@ -2197,7 +2196,7 @@
         }catch(e){ console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us
-    function caProcessPrivateLogResponse(uid, response){
+    const caProcessPrivateLogResponse = function (uid, response){
         try{
             // Handle empty or invalid responses
             if(!response || typeof response !== 'string' || response.trim() === ''){
