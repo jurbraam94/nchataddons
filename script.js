@@ -11,15 +11,18 @@
     const norm = function (s){return trim(s).toLowerCase();}
     const sleep = function (ms){return new Promise(function(r){setTimeout(r,ms);});}
     const randBetween = function (minMs,maxMs){return Math.floor(minMs+Math.random()*(maxMs-minMs));}
-    const safeMatches = function (n,sel){ try { return n && n.nodeType===1 && typeof n.matches==='function' && n.matches(sel); } catch(e){ return false; } }
-    const safeQuery = function (n,sel){ try { return n && n.querySelector ? n.querySelector(sel) : null; } catch(e){ return null; } }
+    const safeMatches = function (n,sel){ try { return n && n.nodeType===1 && typeof n.matches==='function' && n.matches(sel); } catch (e) {console.error(e);
+        return false; } }
+    const safeQuery = function (n,sel){ try { return n && n.querySelector ? n.querySelector(sel) : null; } catch (e) {console.error(e);
+        return null; } }
     const escapeHTML = function (s){ return String(s).replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);}); }
     const decodeHTMLEntities = function (s){
-        try{
+        try {
             let txt = document.createElement('textarea');
             txt.innerHTML = String(s);
             return txt.value;
-        }catch(e){ return String(s); }
+        } catch (e) {console.error(e);
+            return String(s); }
     }
     const timeHHMM = function (){ const d=new Date(); let h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return h+':'+m; }
 
@@ -34,30 +37,81 @@
     };
     CA.Drafts = {
         save: function(which, value){
-            try{
+            try {
                 let k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific : CA.Const.STORAGE_KEYS.draftBroadcast;
                 sessionStorage.setItem(k, String(value || ''));
-            }catch(e){}
+            } catch (e) {console.error(e);
+            }
         },
         load: function(which){
-            try{
+            try {
                 const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific : CA.Const.STORAGE_KEYS.draftBroadcast;
                 return sessionStorage.getItem(k) || '';
-            }catch(e){ return ''; }
+            } catch (e) {console.error(e);
+                return ''; }
         },
         restoreInputs: function(sMsgEl, bMsgEl){
-            try{
+            try {
                 const d1 = CA.Drafts.load('specific');
                 const d2 = CA.Drafts.load('broadcast');
                 if(sMsgEl && d1) sMsgEl.value = d1;
                 if(bMsgEl && d2) bMsgEl.value = d2;
-            }catch(e){}
+            } catch (e) {console.error(e);
+            }
         }
     };
 
+
+    // ---------- Centralized safe localStorage helpers ----------
+    CA.Safe = {
+        getItem(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch (e) {console.error(e);
+                return null;
+            }
+        },
+        setItem(key, val) {
+            try {
+                localStorage.setItem(key, String(val));
+            } catch (e) {console.error(e);
+            }
+        },
+        getJSON(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return (fallback === undefined ? {} : fallback);
+                const v = JSON.parse(raw);
+                return (v == null ? (fallback === undefined ? {} : fallback) : v);
+            } catch (e) {console.error(e);
+                return (fallback === undefined ? {} : fallback);
+            }
+        },
+        setJSON(key, obj) {
+            try {
+                localStorage.setItem(key, JSON.stringify(obj || {}));
+            } catch (e) {console.error(e);
+            }
+        }
+    };
+    CA.Store = {
+        get(key, fallback = '') {
+            const v = CA.Safe.getItem(key);
+            return v == null ? fallback : v;
+        },
+        set(key, val) {
+            CA.Safe.setItem(key, val);
+        },
+        getJSON(key, fallback) {
+            return CA.Safe.getJSON(key, fallback);
+        },
+        setJSON(key, obj) {
+            CA.Safe.setJSON(key, obj);
+        }
+    };
     /* ---------- Audio autoplay gate (avoid NotAllowedError before user gesture) ---------- */
     (function setup321ChatAddonsAudioGate(){
-        try{
+        try {
             let userInteracted = false;
             const pending = new Set();
             const origPlay = HTMLAudioElement && HTMLAudioElement.prototype && HTMLAudioElement.prototype.play
@@ -70,7 +124,8 @@
                 userInteracted = true;
                 // Try to flush any queued audio
                 pending.forEach(function(a){
-                    try{ origPlay.call(a).catch(function(){/* ignore */}); }catch(e){console.error(e)}
+                    try { origPlay.call(a).catch(function(){/* ignore */}); } catch (e) {console.error(e);
+                        console.error(e)}
                 });
                 pending.clear();
                 window.removeEventListener('click', onInteract, true);
@@ -82,7 +137,7 @@
             window.addEventListener('touchstart', onInteract, true);
 
             HTMLAudioElement.prototype.play = function(){
-                try{
+                try {
                     if(!userInteracted){
                         // Queue and resolve immediately to prevent uncaught NotAllowedError
                         pending.add(this);
@@ -98,22 +153,24 @@
                         }.bind(this));
                     }
                     return p;
-                }catch(e){
-                    try{ return origPlay.call(this); } catch(e) { console.error(e);return Promise.resolve(); }
+                } catch (e) {console.error(e);
+                    try { return origPlay.call(this); } catch (e) { console.error(e);return Promise.resolve(); }
                 }
             };
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
     })();
 
     /* ---------- 321ChatAddons: bottom log helpers ---------- */
     const caGetLogBox = function (){
-        try{
+        try {
             let panel = document.getElementById('ca-panel') || document;
             return panel.querySelector('.ca-log-box');
-        }catch(e){ return null; }
+        } catch (e) {console.error(e);
+            return null; }
     }
     const caAppendLog = function (type, text){
-        try{
+        try {
             const box = caGetLogBox();
             if(!box) return;
             let entry = document.createElement('div');
@@ -130,11 +187,12 @@
             entry.appendChild(ts); entry.appendChild(dot); entry.appendChild(msg);
             // Prepend so newest appears at top with column-reverse
             box.insertBefore(entry, box.firstChild || null);
-        }catch(e){ /* ignore */ }
+        } catch (e) {console.error(e);
+            /* ignore */ }
     }
     // Wire up click handlers for reset tracking anchors and broadcast send button
     document.addEventListener('click', function(e){
-        try{
+        try {
             const resetA = e.target && (e.target.closest && e.target.closest('.ca-pop .ca-reset-link, .ca-reset-link, .ca-reset'));
             if(resetA){
                 caAppendLog('reset','Tracking has been reset');
@@ -143,18 +201,20 @@
             if(bcBtn){
                 caAppendLog('broadcast','Message sent');
             }
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
     });
 
     /* ---------- Keep original page sizing ---------- */
     const applyInline = function (){
-        try{
+        try {
             let a=qsa('.pboxed'); for(let i=0;i<a.length;i++){a[i].style.setProperty('height','800px','important');}
             const b=qsa('.pboxed .pcontent'); for(let j=0;j<b.length;j++){b[j].style.setProperty('height','610px','important');}
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
     const removeAds = function (root){
-        try{
+        try {
             const scope = root && root.querySelectorAll ? root : document;
             const links = scope.querySelectorAll('a[href*="bit.ly"]');
             if(!links || !links.length) return;
@@ -163,10 +223,11 @@
                     a.parentNode.removeChild(a); // remove only the anchor
                 }
             });
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
     const adjustForFooter = function (){
-        try{
+        try {
             let panel = document.getElementById('ca-panel');
             if(!panel) return;
             // Match panel height to the site's right column (#chat_right), if available
@@ -192,7 +253,7 @@
             // Ensure no extra padding is applied to the logs section
             const logsSec = panel.querySelector('.ca-log-section');
             if(logsSec){ logsSec.style.paddingBottom = ''; }
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'adjustForFooter error:', e);
         }
     }
@@ -204,7 +265,7 @@
         // Throttle the MutationObserver to avoid excessive calls
         let lastAdjust = 0;
         new MutationObserver(function(muts){
-            try{
+            try {
                 applyInline();
                 removeAds(document);
                 let now = Date.now();
@@ -212,7 +273,8 @@
                     adjustForFooter();
                     lastAdjust = now;
                 }
-            }catch(e){}
+            } catch (e) {console.error(e);
+            }
         }).observe(document.body,{childList:true,subtree:true});
 
         // Debounce resize handler
@@ -236,15 +298,17 @@
     const GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
 
     const getGlobalWatermark = function (){
-        try{
+        try {
             return localStorage.getItem(GLOBAL_WATERMARK_KEY) || '';
-        }catch(e){ return ''; }
+        } catch (e) {console.error(e);
+            return ''; }
     }
 
     const setGlobalWatermark = function (dateStr){
-        try{
+        try {
             if(dateStr) localStorage.setItem(GLOBAL_WATERMARK_KEY, String(dateStr));
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     const getTimeStampInWebsiteFormat = function () {
@@ -259,7 +323,7 @@
 
     // Initialize watermark once on page load with current date/time in "DD/MM HH:MM" format
     const initializeGlobalWatermark = function (){
-        try{
+        try {
             const currentWatermark = getGlobalWatermark();
             console.log(LOG, 'Checking watermark... current value:', currentWatermark || '(not set)');
 
@@ -280,14 +344,14 @@
             } else {
                 console.warn(LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
             }
-        }catch(err){
+        } catch (err) {console.error(err);
             console.error(LOG, 'Initialize watermark error:', err);
         }
     }
 
     // Parse log_date format "DD/MM HH:MM" to comparable number (MMDDHHMM)
     const parseLogDateToNumber = function (logDateStr){
-        try{
+        try {
             if(!logDateStr || typeof logDateStr !== 'string') return 0;
 
             // Format: "23/10 11:25" (DD/MM HH:MM)
@@ -304,7 +368,7 @@
             // Convert to comparable number: MMDDHHMM
             // This allows simple numeric comparison within same year
             return (month * 1000000) + (day * 10000) + (hours * 100) + minutes;
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Parse log_date error:', e, '— input:', logDateStr);
             return 0;
         }
@@ -312,7 +376,7 @@
 
     // Check if a message is newer than watermark
     const isMessageNewer = function (logDateStr, debugLog){
-        try{
+        try {
             let watermark = getGlobalWatermark();
             if(!watermark) return true; // No watermark set, show all
 
@@ -335,7 +399,7 @@
             }
 
             return isNewer;
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Date comparison error:', e);
             return false;
         }
@@ -343,7 +407,7 @@
 
     // Normalize various request body types to a query-string
     const normalizeBodyToQuery = function (body){
-        try{
+        try {
             if(!body) return '';
             if(typeof body === 'string') return body;
             if(typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
@@ -353,9 +417,11 @@
                 return usp.toString();
             }
             if(typeof body === 'object'){
-                try{ return new URLSearchParams(body).toString(); }catch(e){console.error(e)}
+                try { return new URLSearchParams(body).toString(); } catch (e) {console.error(e);
+                    console.error(e)}
             }
-        }catch(e){ console.error(LOG, 'Body normalization error:', e); }
+        } catch (e) {console.error(e);
+            console.error(LOG, 'Body normalization error:', e); }
         return '';
     }
 
@@ -363,7 +429,7 @@
     const pruneNonFemale = function (){
         let c=getContainer(); if(!c) return;
         isPruning = true;
-        try{
+        try {
             qsa('.user_item[data-gender]', c).forEach(function(n){
                 const female = n.getAttribute('data-gender')===FEMALE_CODE;
                 n.classList.toggle('ca-hidden', !female);
@@ -374,7 +440,7 @@
     /* ---------- ID/Name extraction ---------- */
     const getUserId = function (el){
         if(!el) return null;
-        try{
+        try {
             const ds=el.dataset||{};
             let id=ds.uid||ds.userid||ds.user||ds.id;
             if(!id){
@@ -393,11 +459,12 @@
                 }
             }
             return id?String(id):null;
-        }catch(e){ return null; }
+        } catch (e) {console.error(e);
+            return null; }
     }
     const extractUsername = function (el){
         if(!el) return '';
-        try{
+        try {
             const v=el.getAttribute('data-name'); if(v) return v.trim();
             let n=qs('.user_name,.username,.name',el); if(n&&n.textContent) return n.textContent.trim();
             let t=el.getAttribute('title'); if(t) return t.trim();
@@ -406,15 +473,17 @@
             if(!out.length) return '';
             out.sort(function(a,b){return a.length-b.length;});
             return out[0];
-        }catch(e){ return ''; }
+        } catch (e) {console.error(e);
+            return ''; }
     }
     const extractAvatar = function (el){
-        try{
+        try {
             if(!el) return '';
             const img = safeQuery(el,'img[src*="avatar"]') || safeQuery(el,'.avatar img') || safeQuery(el,'img');
             const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
             return src ? src.trim() : '';
-        }catch(e){ return ''; }
+        } catch (e) {console.error(e);
+            return ''; }
     }
     const findFemaleByUsername = async function (query){
         let q=norm(query); if(!q) return [];
@@ -446,7 +515,8 @@
 
     /* ---------- Token + POST ---------- */
     const getToken = function (){
-        try{ if(typeof utk!=='undefined' && utk) return utk; }catch(e){}
+        try { if(typeof utk!=='undefined' && utk) return utk; } catch (e) {console.error(e);
+        }
         let inp=qs('input[name="token"]'); if(inp&&inp.value) return inp.value;
         const sc=qsa('script'); for(let i=0;i<sc.length;i++){
             let t=sc[i].textContent||''; const m=t.match(/\butk\s*=\s*['"]([a-f0-9]{16,64})['"]/i); if(m) return m[1];
@@ -471,7 +541,8 @@
                 body: body
             }).then(function(res){
                 return res.text().then(function(txt){
-                    let parsed; try{ parsed=JSON.parse(txt); }catch(e){}
+                    let parsed; try { parsed=JSON.parse(txt); } catch (e) {console.error(e);
+                    }
                     return {ok:res.ok,status:res.status,body:parsed||txt};
                 });
             });
@@ -510,10 +581,12 @@
     const hashMessage = function (s){let h=5381; s=String(s); for(let i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);} return (h>>>0).toString(36);}
     const NS = location.host + (window.curPage||'') + ':';
     const keyForHash = function (h){return STORAGE_PREFIX+NS+h;}
-    const setLast = function (h){try{localStorage.setItem(LAST_HASH_KEY,h);}catch(e){}}
-    const getLast = function (){try{return localStorage.getItem(LAST_HASH_KEY)||'';}catch(e){return ''}}
+    const setLast = function (h){try {localStorage.setItem(LAST_HASH_KEY,h);} catch (e) {console.error(e);
+    }}
+    const getLast = function (){try {return localStorage.getItem(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
+        return ''}}
     const markSent = function (el){
-        try{
+        try {
             if(!el) return;
             el.classList.add('chataddons-sent');
             el.style.setProperty('outline','2px solid #8bc34a66','important');
@@ -521,41 +594,49 @@
             let id = getUserId(el);
             if(id){ ensureSentChip(el, !!SENT_ALL[id]); }
             resortUserList();
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     /* ---------- Exclusion checkboxes (persisted) ---------- */
     const EXC_KEY='321chataddons.excluded';
-    const loadExcluded = function (){ try{ let raw=localStorage.getItem(EXC_KEY); if(!raw) return {}; let a=JSON.parse(raw)||[]; let map={},i; for(i=0; i<a.length; i++) map[a[i]]=1; return map; } catch(e){ return {}; } }
-    const saveExcluded = function (map){ try{ let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); localStorage.setItem(EXC_KEY,JSON.stringify(arr)); }catch(e){} }
+    const loadExcluded = function (){ try { let raw=localStorage.getItem(EXC_KEY); if(!raw) return {}; let a=JSON.parse(raw)||[]; let map={},i; for(i=0; i<a.length; i++) map[a[i]]=1; return map; } catch (e) {console.error(e);
+        return {}; } }
+    const saveExcluded = function (map){ try { let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); localStorage.setItem(EXC_KEY,JSON.stringify(arr)); } catch (e) {console.error(e);
+    } }
     const EXCLUDED=loadExcluded();
 
     // Global "already messaged" list (applies to any message)
     const SENT_ALL_KEY='321chataddons.sent.all';
-    const loadSentAll = function (){ try{ let raw=localStorage.getItem(SENT_ALL_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
-    const saveSentAll = function (map){ try{ localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch(e){} }
+    const loadSentAll = function (){ try { let raw=localStorage.getItem(SENT_ALL_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch (e) {console.error(e);
+        return {}; } }
+    const saveSentAll = function (map){ try { localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch (e) {console.error(e);
+    } }
     let SENT_ALL = loadSentAll();
 
     // Track conversations that have been replied to
     const REPLIED_CONVOS_KEY='321chataddons.repliedConversations';
-    const loadRepliedConvos = function (){ try{ let raw=localStorage.getItem(REPLIED_CONVOS_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch(e){ return {}; } }
-    const saveRepliedConvos = function (map){ try{ localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch(e){} }
+    const loadRepliedConvos = function (){ try { let raw=localStorage.getItem(REPLIED_CONVOS_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch (e) {console.error(e);
+        return {}; } }
+    const saveRepliedConvos = function (map){ try { localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch (e) {console.error(e);
+    } }
     const REPLIED_CONVOS = loadRepliedConvos();
 
     // Global user map: ID -> {name, avatar}
     const USER_MAP = {}; // In-memory map for quick lookups
 
     const updateUserMap = function (uid, name, avatar){
-        try{
+        try {
             if(!uid) return;
             if(!USER_MAP[uid]) USER_MAP[uid] = {};
             if(name) USER_MAP[uid].name = String(name);
             if(avatar) USER_MAP[uid].avatar = String(avatar);
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     const getUserFromMap = function (uid){
-        try{
+        try {
             if(!uid) return {name: '', avatar: ''};
             let user = USER_MAP[uid];
             if(!user) return {name: String(uid), avatar: ''}; // Fallback to ID as name
@@ -563,14 +644,14 @@
                 name: user.name || String(uid),
                 avatar: user.avatar || ''
             };
-        }catch(e){
+        } catch (e) {console.error(e);
             return {name: String(uid), avatar: ''};
         }
     }
 
     // Mark all received messages from a specific user as replied
     const markConversationAsReplied = function (uid){
-        try{
+        try {
             if(!uid) return;
             REPLIED_CONVOS[uid] = getTimeStampInWebsiteFormat();
             saveRepliedConvos(REPLIED_CONVOS);
@@ -610,47 +691,54 @@
                     }
                 });
             }
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Mark conversation replied error:', e);
         }
     }
 
     // Persisted per-user last processed pcount to avoid refetching same batch
     const LAST_PCOUNT_MAP_KEY='321chataddons.lastPcountPerConversation';
-    const loadLastPcountMap = function (){ try{ let raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }catch(e){ return {}; } }
-    const saveLastPcountMap = function (map){ try{ localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); }catch(e){} }
+    const loadLastPcountMap = function (){ try { let raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; } catch (e) {console.error(e);
+        return {}; } }
+    const saveLastPcountMap = function (map){ try { localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); } catch (e) {console.error(e);
+    } }
     const LAST_PCOUNT_MAP = loadLastPcountMap();
-    const getLastPcountFor = function (uid){ try{ return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; }catch(e){ return 0; } }
-    const setLastPcountFor = function (uid, pc){ try{ if(!uid) return; LAST_PCOUNT_MAP[uid]=Number(pc)||0; saveLastPcountMap(LAST_PCOUNT_MAP); }catch(e){} }
+    const getLastPcountFor = function (uid){ try { return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; } catch (e) {console.error(e);
+        return 0; } }
+    const setLastPcountFor = function (uid, pc){ try { if(!uid) return; LAST_PCOUNT_MAP[uid]=Number(pc)||0; saveLastPcountMap(LAST_PCOUNT_MAP); } catch (e) {console.error(e);
+    } }
 
     // Track displayed message log_id per conversation to prevent duplicates
     const DISPLAYED_LOGIDS_KEY='321chataddons.displayedLogIds';
     const MAX_LOGIDS_PER_CONVERSATION = 100; // Keep last 100 IDs per conversation
 
     const loadDisplayedLogIds = function (){
-        try{
+        try {
             let raw=localStorage.getItem(DISPLAYED_LOGIDS_KEY);
             return raw ? (JSON.parse(raw)||{}) : {};
-        }catch(e){ return {}; }
+        } catch (e) {console.error(e);
+            return {}; }
     }
 
     const saveDisplayedLogIds = function (map){
-        try{
+        try {
             localStorage.setItem(DISPLAYED_LOGIDS_KEY, JSON.stringify(map||{}));
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     const DISPLAYED_LOGIDS = loadDisplayedLogIds();
 
     const getDisplayedLogIdsFor = function (uid){
-        try{
+        try {
             if(!uid || !DISPLAYED_LOGIDS[uid]) return [];
             return DISPLAYED_LOGIDS[uid] || [];
-        }catch(e){ return []; }
+        } catch (e) {console.error(e);
+            return []; }
     }
 
     const addDisplayedLogId = function (uid, logId){
-        try{
+        try {
             if(!uid || !logId) return;
             if(!DISPLAYED_LOGIDS[uid]) DISPLAYED_LOGIDS[uid] = [];
 
@@ -665,22 +753,23 @@
             }
 
             saveDisplayedLogIds(DISPLAYED_LOGIDS);
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Add displayed log_id error:', e);
         }
     }
 
     const hasDisplayedLogId = function (uid, logId){
-        try{
+        try {
             if(!uid || !logId) return false;
             const displayed = getDisplayedLogIdsFor(uid);
             return displayed.indexOf(logId) !== -1;
-        }catch(e){ return false; }
+        } catch (e) {console.error(e);
+            return false; }
     }
 
     // Visual chip on user list items when already messaged
     const ensureSentChip = function (el, on){
-        try{
+        try {
             if(!el) return;
             let chip = el.querySelector('.ca-sent-chip');
             if(on){
@@ -701,20 +790,22 @@
                     setTimeout(function(){ isMakingOwnChanges = false; }, 10);
                 }
             }
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
     const updateSentBadges = function (){
-        try{
+        try {
             let c=getContainer(); if(!c) return;
             qsa('.user_item', c).forEach(function(el){
                 let id=getUserId(el);
                 ensureSentChip(el, !!(id && SENT_ALL[id]));
             });
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
     // Resort user list so non-messaged appear first
     const resortUserList = function (){
-        try{
+        try {
             let c=getContainer(); if(!c) return;
             let items = qsa('.user_item', c);
             if(!items.length) return;
@@ -727,19 +818,21 @@
             unsent.forEach(function(n){ frag.appendChild(n); });
             sent.forEach(function(n){ frag.appendChild(n); });
             c.appendChild(frag);
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     const isAllowedRank = function (el){
-        try{
+        try {
             let rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
             const roomRankIcon = el ? safeQuery(el,'.list_rank') : null;
             const roomRank = roomRankIcon ? (roomRankIcon.getAttribute('data-r') || '') : '';
             return (rankAttr==='1' || rankAttr==='50') && (roomRank!=='4');
-        }catch(e){ return false; }
+        } catch (e) {console.error(e);
+            return false; }
     }
     const ensureCheckboxOn = function (el){
-        try{
+        try {
             if(!el || el.getAttribute('data-gender')!==FEMALE_CODE) return;
             if(qs('.ca-ck-wrap', el)) return;
             if(!isAllowedRank(el)) return;
@@ -757,10 +850,11 @@
             wrap.appendChild(cb);
             el.appendChild(wrap);
             setTimeout(function(){ isMakingOwnChanges = false; }, 10);
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
     const attachCheckboxes = function (){
-        try{
+        try {
             let c=getContainer(); if(!c) return;
             const els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c);
             for(let i=0;i<els.length;i++){
@@ -770,7 +864,8 @@
                 ensureSentChip(el, !!(id && SENT_ALL[id]));
             }
             resortUserList();
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     /* ---------- Panel UI ---------- */
@@ -933,14 +1028,15 @@
         // 2) If this is a received private message and we didn't get a userId,
         //    extract it from the details markup (works for restore *and* live).
         if(kind === 'pv'){
-            try{
+            try {
                 if(!userId){
                     let tmp = document.createElement('div');
                     tmp.innerHTML = detailsHTML;
                     const link = tmp.querySelector('.ca-user-link');
                     if(link) userId = link.getAttribute('data-uid') || null;
                 }
-            }catch(e){ /* ignore */ }
+            } catch (e) {console.error(e);
+                /* ignore */ }
         }
 
         // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
@@ -998,7 +1094,7 @@
 
 
         // 5) Post-decorate with reply/DM/badge — this already works for all kinds
-        try{
+        try {
             let a = wrapper.querySelector('.ca-user-link');
             if(!a) return;
             let uid = a.getAttribute('data-uid')||'';
@@ -1067,22 +1163,26 @@
                 badge.textContent = '✓';
                 wrapper.appendChild(badge);
             }
-        }catch(e){ /* ignore */ }
+        } catch (e) {console.error(e);
+            /* ignore */ }
     }
 
     const saveLogEntry = function (ts, kind, details){
         let arr=[];
-        try{ let raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
+        try { let raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; } catch (e) {console.error(e);
+        }
         arr.unshift({ts:ts, kind:kind, details:details});
         if(arr.length>LOG_MAX) arr=arr.slice(0,LOG_MAX);
-        try{ localStorage.setItem(LOG_STORE_KEY, JSON.stringify(arr)); }catch(e){}
+        try { localStorage.setItem(LOG_STORE_KEY, JSON.stringify(arr)); } catch (e) {console.error(e);
+        }
     }
 
 
     const restoreLog = function (){
         if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
         let arr=[];
-        try{ const raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; }catch(e){}
+        try { const raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; } catch (e) {console.error(e);
+        }
         $logBoxSent.innerHTML='';
 
 
@@ -1115,7 +1215,7 @@
         }
     }
     const trimLogBoxToMax = function (targetBox){
-        try{
+        try {
             if(!targetBox || !targetBox.children) return;
             // Create a static array copy to avoid live HTMLCollection issues
             const kids = Array.prototype.slice.call(targetBox.children);
@@ -1123,15 +1223,15 @@
             // Remove oldest entries from the beginning (oldest messages are at the start)
             const toRemove = kids.length - LOG_MAX;
             for(let i = 0; i < toRemove; i++){
-                try{
+                try {
                     if(kids[i] && kids[i].parentNode){
                         kids[i].parentNode.removeChild(kids[i]);
                     }
-                }catch(e){
+                } catch (e) {console.error(e);
                     console.error(LOG, 'Remove log entry error:', e);
                 }
             }
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Trim log error:', e);
         }
     }
@@ -1187,7 +1287,8 @@
             if($logBoxSent) $logBoxSent.innerHTML='';
             if($logBoxReceived) $logBoxReceived.innerHTML='';
             if($logBoxPresence) $logBoxPresence.innerHTML='';
-            try{localStorage.removeItem(LOG_STORE_KEY);}catch(e){}
+            try {localStorage.removeItem(LOG_STORE_KEY);} catch (e) {console.error(e);
+            }
         });
     }
     // Apply restored preferences now
@@ -1195,7 +1296,7 @@
 
     // Fallback profile URL builder (only used if site function is not present)
     const buildProfileUrlForId = function (uid){
-        try{
+        try {
             if(!uid) return '';
             const sel = 'a[href*="profile"][href*="'+uid+'"], a[href*="user"][href*="'+uid+'"]';
             const found = document.querySelector(sel);
@@ -1206,7 +1307,8 @@
                 '/system/profile.php?uid='+uid
             ];
             return fallbacks[0];
-        }catch(e){ return ''; }
+        } catch (e) {console.error(e);
+            return ''; }
     }
     const attachLogClickHandlers = function (box){
         if(!box) return;
@@ -1219,7 +1321,7 @@
                 const rName = reply.getAttribute('data-name')||'';
                 // Get avatar from the user link if available
                 let rAvatar = '';
-                try{
+                try {
                     let entry = reply.closest('.ca-log-entry');
                     if(entry){
                         const userLink = entry.querySelector('.ca-user-link');
@@ -1227,7 +1329,8 @@
                             rAvatar = userLink.getAttribute('data-avatar')||'';
                         }
                     }
-                }catch(err){}
+                } catch (err) {console.error(err);
+                }
                 if (rAvatar && !rAvatar.startsWith('avatar/')) {
                     rAvatar = 'avatar/' + rAvatar;
                 }
@@ -1241,10 +1344,10 @@
                     hideOver();
                     privReload = 1;
                     lastPriv = 0;
-                    try{
+                    try {
                         const rUidNum = /^\d+$/.test(rUid) ? parseInt(rUid,10) : rUid;
                         openDm(rUidNum, rName, `${rAvatar}`);
-                    }catch(err){
+                    } catch (err) {console.error(err);
                         console.error(LOG, 'Error opening private chat:', err);
                         openDm(rUid, rName, `${rAvatar}`);
                     }
@@ -1271,10 +1374,10 @@
                     hideOver();
                     privReload = 1;
                     lastPriv = 0;
-                    try{
+                    try {
                         const dUidNum = /^\d+$/.test(dUid) ? parseInt(dUid,10) : dUid;
                         openDm(dUidNum, dName, `${dAvatar}`);
-                    }catch(err){
+                    } catch (err) {console.error(err);
                         console.error(LOG, 'Error opening private chat:', err);
                         openDm(dUidNum, dName, `${dAvatar}`);
                     }
@@ -1290,10 +1393,10 @@
                     : (window.parent && typeof window.parent.getProfile==='function') ? window.parent.getProfile
                         : null;
                 if(getProf){
-                    try{
+                    try {
                         const uidNum = /^\d+$/.test(uid) ? parseInt(uid,10) : uid;
                         getProf(uidNum);
-                    }catch(err){
+                    } catch (err) {console.error(err);
                         getProf(uid);
                     }
                 } else {
@@ -1310,7 +1413,7 @@
     // Add expand/collapse handler for sent messages
     if($logBoxSent){
         $logBoxSent.addEventListener('click', function(e){
-            try{
+            try {
                 // Check if clicked on expand indicator or message text in a sent message
                 const entry = e.target.closest('.ca-log-send-ok, .ca-log-send-fail');
                 if(!entry) return;
@@ -1328,7 +1431,7 @@
                         indicator.textContent = entry.classList.contains('ca-expanded') ? '▴' : '▾';
                     }
                 }
-            }catch(err){
+            } catch (err) {console.error(err);
                 console.error(LOG, 'Expand/collapse error:', err);
             }
         });
@@ -1467,11 +1570,11 @@
 
     /* Click a user: fill specific username */
     const wireUserClickSelection = function (){
-        try{
+        try {
             let c=getContainer(); if(!c)return;
             if(c.getAttribute('data-ca-wired')==='1')return;
             c.addEventListener('click',function(e){
-                try{
+                try {
                     // Ignore clicks on interactive controls and our own badges/checkboxes
                     const ignore = e.target.closest('a, button, input, label, .ca-ck-wrap, .ca-ck, .ca-sent-chip');
                     if(ignore) return;
@@ -1481,10 +1584,12 @@
                     let nm=extractUsername(n); if(!nm) return;
                     const inp=qs('#ca-specific-username');
                     if(inp){ inp.value=nm; const ev=document.createEvent('Event'); ev.initEvent('input', true, true); inp.dispatchEvent(ev); }
-                }catch(e){console.error(e)}
+                } catch (e) {console.error(e);
+                    console.error(e)}
             }, false); // bubble to avoid fighting site handlers
             c.setAttribute('data-ca-wired','1');
-        }catch(e){}
+        } catch (e) {console.error(e);
+        }
     }
 
     /* ---------- Login/Logout logging ---------- */
@@ -1586,7 +1691,7 @@
         }
 
         const mo=new MutationObserver(function(recs){
-            try{
+            try {
                 // Skip if we're making our own changes
                 if(isMakingOwnChanges || isPruning) return;
 
@@ -1646,7 +1751,7 @@
 
                 // Schedule UI updates
                 schedule(function(){
-                    try{
+                    try {
                         isMakingOwnChanges = true;
                         pruneNonFemale();
                         attachCheckboxes();
@@ -1654,11 +1759,11 @@
                         updateSentBadges();
                         resortUserList();
                         setTimeout(function(){ isMakingOwnChanges = false; }, 50);
-                    }catch(e){
+                    } catch (e) {console.error(e);
                         isMakingOwnChanges = false;
                     }
                 });
-            }catch(e){
+            } catch (e) {console.error(e);
                 console.error(LOG, 'Observer error:', e);
             }
         });
@@ -1683,16 +1788,16 @@
     /* === Intercept site poll to chat_log.php and reuse its private payload === */
     (function setupCAChatTap(){
         function isChatLogUrl(u){
-            try{
+            try {
                 if(!u) return false;
                 let s = String(u);
-                try{
+                try {
                     // Normalize to an absolute URL and compare path
                     s = new URL(s, location.origin).pathname;
-                }catch(e){console.error(e)}
+                } catch (e) {console.error(e);
+                    console.error(e)}
                 return s.indexOf('system/action/chat_log.php') !== -1;
-            }catch(e){
-                console.error(e);
+            } catch (e) {console.error(e);
                 return false;
             }
         }
@@ -1700,16 +1805,17 @@
         // Capture and reuse site chat parameters for our own private chat_log calls
         CHAT_CTX = CHAT_CTX || { caction:'', last:'', lastp: '', room:'', notify:'', curset:'', pcount: 0 };
         function caUpdateChatCtxFromBody(bodyLike, urlMaybe){
-            try{
+            try {
                 // Only initialize once per page load
                 if (caUpdateChatCtxFromBody._initialized) return;
 
                 let qs = normalizeBodyToQuery(bodyLike);
                 if(!qs && typeof urlMaybe === 'string'){
-                    try{
+                    try {
                         const u = new URL(urlMaybe, location.origin);
                         qs = u.search ? u.search.replace(/^\?/, '') : '';
-                    }catch(e){console.error(e)}
+                    } catch (e) {console.error(e);
+                        console.error(e)}
                 }
                 if(!qs){
                     console.warn(LOG, 'No parameters found from chat_log.php call.');
@@ -1734,12 +1840,13 @@
                 CHAT_CTX.pcount  = String(pc)
                 CHAT_CTX.last    = String(la)
 
-            }catch(e){ console.error(LOG, 'Chat context initialization error:', e); }
+            } catch (e) {console.error(e);
+                console.error(LOG, 'Chat context initialization error:', e); }
         }
 
         // Process a chat_log.php payload: only check pico; private messages are fetched separately
         function caProcessChatPayload(txt){
-            try{
+            try {
                 // Validate response before attempting to parse
                 if(!txt || typeof txt !== 'string' || txt.trim() === ''){
                     console.warn(LOG, 'Empty or invalid chat payload response');
@@ -1750,19 +1857,19 @@
 
                 // Lightweight parse just to check pico - only parse the fields we need
                 let data;
-                try{
+                try {
                     data = JSON.parse(txt);
-                } catch(e){
+                } catch (e) {console.error(e);
                     console.error(LOG, 'Chat payload: JSON parse failed', e, '— response preview:', String(txt).slice(0, 200));
                     return;
                 }
 
                 // Update CHAT_CTX.last from public chat response
-                try{
+                try {
                     if(data && data.last){
                         CHAT_CTX.last = String(data.last);
                     }
-                }catch(e){
+                } catch (e) {console.error(e);
                     console.error(LOG, 'Update CHAT_CTX.last error:', e);
                 }
 
@@ -1799,7 +1906,7 @@
                 if(typeof caUpdatePrivateConversationsList !== 'function') return;
 
                 caUpdatePrivateConversationsList(false).then((privateConversations)=>{
-                    try{
+                    try {
                         privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
 
                         // Only fetch if unread > 0
@@ -1817,31 +1924,32 @@
                         (async function run(){
                             for(let i=0;i<toFetch.length;i++){
                                 const conversation = toFetch[i];
-                                try{
+                                try {
                                     console.log(LOG, 'Fetch chat_log for conversation', conversation.id, '— unread messages:', conversation.unread);
 
                                     let conversationChatLog = await caFetchChatLogFor(conversation.id, getLastPcountFor(conversation.id));
-                                    try{
+                                    try {
                                         caProcessPrivateLogResponse(conversation.id, conversationChatLog);
                                         setLastPcountFor(conversation.id, CHAT_CTX.pcount);
 
-                                    }catch(err){
+                                    } catch (err) {console.error(err);
                                         console.error(LOG, 'Process messages error:', err);
                                     }
-                                }catch(err){
+                                } catch (err) {console.error(err);
                                     console.error(LOG, 'Fetch error for conversation', conversation.id, '—', err);
                                 }
                             }
                         })();
-                    }catch(err){
+                    } catch (err) {console.error(err);
                         console.error(LOG, 'List processing error:', err);
                     }
                 });
-            }catch(e){ console.error(LOG, 'Chat payload processing error:', e); }
+            } catch (e) {console.error(e);
+                console.error(LOG, 'Chat payload processing error:', e); }
         }
 
         // fetch() interceptor
-        try{
+        try {
             let _origFetch = window.fetch;
             if(typeof _origFetch === 'function'){
                 window.fetch = function(){
@@ -1851,18 +1959,19 @@
                     let url = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req||'');
                     // Try to capture request body for context if this is a chat_log POST
                     //console.log('trying to intercept fetch', req, init, url);
-                    try{
+                    try {
                         if(isChatLogUrl(url)){
                             // Skip our own private fetches (marked with X-CA-OWN: 1)
                             let own = false;
-                            try{
+                            try {
                                 let h = (init && init.headers) || (req && req.headers);
                                 if(h){
                                     if(typeof h.get === 'function'){ own = String(h.get('X-CA-OWN')||'') === '1'; }
                                     else if(Array.isArray(h)){ own = h.some(function(x){ return String((x[0]||'').toLowerCase())==='x-ca-own' && String(x[1]||'')==='1'; }); }
                                     else if(typeof h === 'object'){ own = String(h['X-CA-OWN']||h['x-ca-own']||'') === '1'; }
                                 }
-                            }catch(e){console.error(e)}
+                            } catch (e) {console.error(e);
+                                console.error(e)}
                             if(!own){
                                 const qs = normalizeBodyToQuery(init && init.body);
 
@@ -1871,84 +1980,96 @@
                                     caUpdateChatCtxFromBody(qs, url);
                                 } else if(req && typeof req === 'object' && typeof req.clone === 'function'){
                                     console.log(qs);
-                                    try{ req.clone().text().then(function(t){ caUpdateChatCtxFromBody(t, url); }); }catch(err){ console.error(LOG, 'Fetch clone error:', err); }
+                                    try { req.clone().text().then(function(t){ caUpdateChatCtxFromBody(t, url); }); } catch (err) {console.error(err);
+                                        console.error(LOG, 'Fetch clone error:', err); }
                                 }
                             }
                         }
-                    }catch(err){ console.error(LOG, 'Fetch body capture error:', err); }
+                    } catch (err) {console.error(err);
+                        console.error(LOG, 'Fetch body capture error:', err); }
                     let p = _origFetch.apply(this, args);
-                    try{
+                    try {
                         if(isChatLogUrl(url)){
                             p.then(function(res){
-                                try{ res && res.clone && res.clone().text().then(caProcessChatPayload); }catch(err){ console.error(LOG, 'Response clone error:', err); }
+                                try { res && res.clone && res.clone().text().then(caProcessChatPayload); } catch (err) {console.error(err);
+                                    console.error(LOG, 'Response clone error:', err); }
                                 return res;
                             });
                         }
-                    }catch(e){console.error(e)}
+                    } catch (e) {console.error(e);
+                        console.error(e)}
                     return p;
                 };
             }
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
 
         // XMLHttpRequest interceptor (covers jQuery $.ajax)
-        try{
+        try {
             const _open = XMLHttpRequest.prototype.open;
             const _send = XMLHttpRequest.prototype.send;
             XMLHttpRequest.prototype.open = function(method, url){
-                try{ this._ca_url = String(url||''); }catch(e){ this._ca_url = ''; }
+                try { this._ca_url = String(url||''); } catch (e) {console.error(e);
+                    this._ca_url = ''; }
                 return _open.apply(this, arguments);
             };
             XMLHttpRequest.prototype.send = function(){
-                try{
+                try {
                     let xhr = this;
                     // Capture body used for chat_log POST to build context
-                    try{
+                    try {
                         const targetUrl = xhr._ca_url || '';
                         if(isChatLogUrl(targetUrl) && arguments && arguments.length){
                             const arg0 = arguments[0];
                             const qs0 = normalizeBodyToQuery(arg0);
                             caUpdateChatCtxFromBody(qs0 || '', targetUrl);
                         }
-                    }catch(err){ console.error(LOG, 'XHR body capture error:', err); }
+                    } catch (err) {console.error(err);
+                        console.error(LOG, 'XHR body capture error:', err); }
                     xhr.addEventListener('readystatechange', function(){
-                        try{
+                        try {
                             if(xhr.readyState === 4 && xhr.status === 200 && isChatLogUrl(xhr.responseURL || xhr._ca_url || '')){
                                 let txt = '';
                                 // Prefer responseText to avoid JSON responseType issues
-                                try{ txt = xhr.responseText; }catch(err){ console.error(LOG, 'XHR responseText error:', err); txt = ''; }
+                                try { txt = xhr.responseText; } catch (err) {console.error(err);
+                                    console.error(LOG, 'XHR responseText error:', err); txt = ''; }
                                 if(txt) caProcessChatPayload(txt);
                             }
-                        }catch(err){ console.error(LOG, 'XHR readystatechange error:', err); }
+                        } catch (err) {console.error(err);
+                            console.error(LOG, 'XHR readystatechange error:', err); }
                     });
-                }catch(e){console.error(e)}
+                } catch (e) {console.error(e);
+                    console.error(e)}
                 return _send.apply(this, arguments);
             };
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
     })();
 
     /* === Intercept site's native private message sending === */
     (function setupPrivateProcessInterceptor(){
         function isPrivateProcessUrl(u){
-            try{
+            try {
                 if(!u) return false;
                 let s = String(u);
-                try{
+                try {
                     s = new URL(s, location.origin).pathname;
-                }catch(e){}
+                } catch (e) {console.error(e);
+                }
                 return s.indexOf('system/action/private_process.php') !== -1;
-            }catch(e){
+            } catch (e) {console.error(e);
                 return false;
             }
         }
 
         function processPrivateSendResponse(responseText, requestBody){
-            try{
+            try {
                 if(!responseText || typeof responseText !== 'string') return;
 
                 let data;
-                try{
+                try {
                     data = JSON.parse(responseText);
-                }catch(e){
+                } catch (e) {console.error(e);
                     console.error(LOG, 'Private process parse error:', e);
                     return;
                 }
@@ -1961,10 +2082,11 @@
                 let targetId = '';
 
                 // Extract target ID from request body
-                try{
+                try {
                     const params = new URLSearchParams(requestBody);
                     targetId = params.get('target') || '';
-                }catch(e){}
+                } catch (e) {console.error(e);
+                }
 
                 if(!content || !targetId) return;
 
@@ -1983,13 +2105,13 @@
 
                 // Mark conversation as replied
                 markConversationAsReplied(targetId);
-            }catch(err){
+            } catch (err) {console.error(err);
                 console.error(LOG, 'Process private send error:', err);
             }
         }
 
         // Intercept fetch
-        try{
+        try {
             let _origFetch = window.fetch;
             if(typeof _origFetch === 'function'){
                 window.fetch = function(){
@@ -1999,79 +2121,89 @@
                     const url = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req||'');
 
                     let capturedBody = '';
-                    try{
+                    try {
                         if(isPrivateProcessUrl(url)){
                             capturedBody = normalizeBodyToQuery(init && init.body);
                         }
-                    }catch(err){}
+                    } catch (err) {console.error(err);
+                    }
 
                     const p = _origFetch.apply(this, args);
 
-                    try{
+                    try {
                         if(isPrivateProcessUrl(url) && capturedBody){
                             p.then(function(res){
-                                try{
+                                try {
                                     res.clone().text().then(function(txt){
                                         processPrivateSendResponse(txt, capturedBody);
                                     });
-                                }catch(err){ console.error(LOG, 'Clone response error:', err); }
+                                } catch (err) {console.error(err);
+                                    console.error(LOG, 'Clone response error:', err); }
                                 return res;
                             });
                         }
-                    }catch(e){console.error(e)}
+                    } catch (e) {console.error(e);
+                        console.error(e)}
 
                     return p;
                 };
             }
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
 
         // Intercept XHR
-        try{
+        try {
             const _xhrOpen = XMLHttpRequest.prototype.open;
             const _xhrSend = XMLHttpRequest.prototype.send;
 
             XMLHttpRequest.prototype.open = function(method, url){
-                try{
+                try {
                     this._ca_pm_url = String(url||'');
                     this._ca_pm_isTarget = isPrivateProcessUrl(url);
-                }catch(e){}
+                } catch (e) {console.error(e);
+                }
                 return _xhrOpen.apply(this, arguments);
             };
 
             XMLHttpRequest.prototype.send = function(){
-                try{
+                try {
                     const xhr = this;
                     let capturedBody = '';
 
-                    try{
+                    try {
                         if(xhr._ca_pm_isTarget && arguments && arguments.length){
                             capturedBody = normalizeBodyToQuery(arguments[0]);
                         }
-                    }catch(err){}
+                    } catch (err) {console.error(err);
+                    }
 
                     if(xhr._ca_pm_isTarget && capturedBody){
                         xhr.addEventListener('readystatechange', function(){
-                            try{
+                            try {
                                 if(xhr.readyState === 4 && xhr.status === 200){
                                     let txt = '';
-                                    try{ txt = xhr.responseText; }catch(err){ txt = ''; }
+                                    try { txt = xhr.responseText; } catch (err) {console.error(err);
+                                        txt = ''; }
                                     if(txt){
                                         processPrivateSendResponse(txt, capturedBody);
                                     }
                                 }
-                            }catch(err){ console.error(LOG, 'XHR readystate error:', err); }
+                            } catch (err) {console.error(err);
+                                console.error(LOG, 'XHR readystate error:', err); }
                         });
                     }
-                }catch(e){console.error(e)}
+                } catch (e) {console.error(e);
+                    console.error(e)}
 
                 return _xhrSend.apply(this, arguments);
             };
-        }catch(e){console.error(e)}
+        } catch (e) {console.error(e);
+            console.error(e)}
     })();
 
     // --- Private notifications: fetch -> parse -> render, and actions ---
     const caParsePrivateNotify = (html)=>{
-        try{
+        try {
             //console.log(html);
             const tmp=document.createElement('div'); tmp.innerHTML=html;
             const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
@@ -2093,7 +2225,8 @@
             }
             console.log(LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
             return out;
-        }catch(e){ console.error(LOG, 'Parse private notifications error:', e); return []; }
+        } catch (e) {console.error(e);
+            console.error(LOG, 'Parse private notifications error:', e); return []; }
     }
     const caFetchPrivateNotify = ()=>{
         let token=getToken();
@@ -2115,7 +2248,7 @@
 
     const caUpdatePrivateConversationsList = function (manual){
         return caFetchPrivateNotify().then(function(privateConversations){
-            try{
+            try {
                 console.log(LOG, 'Private conversations:', privateConversations.length);
                 privateConversations = privateConversations || [];
                 // Sort: unread desc, then name
@@ -2127,12 +2260,13 @@
                 });
                 //                 // No rendering; we only use this list to drive chat_log fetches
                 return privateConversations;
-            }catch(e){ console.error(LOG, 'Update private list error:', e); return privateConversations || []; }
+            } catch (e) {console.error(e);
+                console.error(LOG, 'Update private list error:', e); return privateConversations || []; }
         });
     }
 
     const caFetchChatLogFor = (uid, lastCheckedPcount)=>{
-        try{
+        try {
             let token=getToken(); if(!token||!uid){ return Promise.resolve(''); }
 
             const bodyObj = {
@@ -2145,7 +2279,7 @@
             };
 
             // Carry over site chat context so server returns the right slice
-            try{
+            try {
                 if(typeof CHAT_CTX==='object' && CHAT_CTX){
                     if(CHAT_CTX.caction) bodyObj.caction = String(CHAT_CTX.caction);
                     if(CHAT_CTX.last)    bodyObj.last    = String(CHAT_CTX.last);
@@ -2155,7 +2289,7 @@
                     if(CHAT_CTX.lastp)  bodyObj.lastp  = String(CHAT_CTX.lastp);
                     if(CHAT_CTX.pcount)  bodyObj.pcount  = String(CHAT_CTX.pcount);
                 }
-            }catch(e){
+            } catch (e) {console.error(e);
                 console.error(LOG, 'Chat context error:', e);
             }
 
@@ -2174,10 +2308,11 @@
             });
 
             const body=new URLSearchParams(bodyObj).toString();
-            try{
+            try {
                 const bodyLog = body.replace(/token=[^&]*/,'token=[redacted]');
                 console.log(LOG, 'caFetchChatLogFor: Full request body:', bodyLog);
-            }catch(err){ console.error(LOG, 'caFetchChatLogFor: body log error', err); }
+            } catch (err) {console.error(err);
+                console.error(LOG, 'caFetchChatLogFor: body log error', err); }
 
             return fetch('/system/action/chat_log.php?timestamp=234284923',{
                 method:'POST', credentials:'include',
@@ -2200,11 +2335,11 @@
                     console.error(LOG, 'Fetch chat log error:', err);
                     return '';
                 });
-        }catch(e){ console.error(e); return Promise.resolve(''); }
+        } catch (e) {console.error(e); return Promise.resolve(''); }
     }
     // Process a private chat_log.php response fetched by us
     const caProcessPrivateLogResponse = function (uid, response){
-        try{
+        try {
             // Handle empty or invalid responses
             if(!response || typeof response !== 'string' || response.trim() === ''){
                 console.warn(LOG, 'Empty response for conversation', uid);
@@ -2212,20 +2347,20 @@
             }
 
             let conversationChatLog;
-            try{
+            try {
                 conversationChatLog = JSON.parse(response);
-            }catch(e){
+            } catch (e) {console.error(e);
                 const prev = String(response||'').slice(0,200);
                 console.warn(LOG, 'Parse failed for conversation', uid, '— preview:', prev);
                 return;
             }
 
             // Update CHAT_CTX.last from private chat response
-            try{
+            try {
                 if(conversationChatLog && conversationChatLog.last){
                     CHAT_CTX.last = String(conversationChatLog.last);
                 }
-            }catch(e){
+            } catch (e) {console.error(e);
                 console.error(LOG, 'Update CHAT_CTX.last from private response error:', e);
             }
 
@@ -2235,9 +2370,10 @@
 
             // Get current user's ID to filter out own messages
             let myUserId = null;
-            try{
+            try {
                 myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-            }catch(e){}
+            } catch (e) {console.error(e);
+            }
 
             // Sort by log_id to process in chronological order
             items.sort(function(a,b){ return (a.log_id||0)-(b.log_id||0); });
@@ -2316,23 +2452,23 @@
             } else {
                 console.log(LOG, 'User', uid, '— no new messages (all older than watermark or from me)');
             }
-        }catch(err){
+        } catch (err) {console.error(err);
             console.error(LOG, 'Process private messages error:', err);
         }
     }
 
     // Initialize watermark on page load
-    try{
+    try {
         initializeGlobalWatermark();
-    }catch(err){
+    } catch (err) {console.error(err);
         console.error(LOG, 'Failed to initialize watermark:', err);
     }
 
     /* ---------- Monitor private chat box for user info ---------- */
     (function observePrivateChatBox(){
-        try{
+        try {
             function extractPrivateBoxUserInfo(){
-                try{
+                try {
                     let privateBox = document.getElementById('private_box');
                     if(!privateBox) return;
 
@@ -2372,18 +2508,19 @@
 
                     // Fallback: Check global variables
                     if(!userId && typeof window.privateUser !== 'undefined'){
-                        try{
+                        try {
                             userId = window.privateUser.id || window.privateUser.uid;
                             userName = userName || window.privateUser.name || window.privateUser.username;
                             userAvatar = userAvatar || window.privateUser.avatar || window.privateUser.thumb;
-                        }catch(e){}
+                        } catch (e) {console.error(e);
+                        }
                     }
 
                     if(userId && userName){
                         console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
                         updateUserMap(userId, userName, userAvatar);
                     }
-                }catch(e){
+                } catch (e) {console.error(e);
                     console.error(LOG, 'Extract private box user info error:', e);
                 }
             }
@@ -2395,7 +2532,7 @@
             const privateBox = document.getElementById('private_box');
             if(privateBox){
                 const privObserver = new MutationObserver(function(mutations){
-                    try{
+                    try {
                         // Check if any relevant changes occurred
                         let shouldExtract = false;
                         mutations.forEach(function(mut){
@@ -2410,7 +2547,7 @@
                         if(shouldExtract){
                             extractPrivateBoxUserInfo();
                         }
-                    }catch(e){
+                    } catch (e) {console.error(e);
                         console.error(LOG, 'Private box observer error:', e);
                     }
                 });
@@ -2425,7 +2562,7 @@
                 // If private_box doesn't exist yet, wait and try again
                 setTimeout(observePrivateChatBox, 1000);
             }
-        }catch(e){
+        } catch (e) {console.error(e);
             console.error(LOG, 'Private chat box observer setup error:', e);
         }
     })();
