@@ -118,37 +118,44 @@
         };
     }
 
-    // ---------- Namespace and Modules ----------
-    // Small, incremental refactor: add a namespace and a Drafts module for better structure
-    let CA = window.CA || (window.CA = {});
+    window.CA = window.CA || {};
+
     CA.Const = {
         STORAGE_KEYS: {
             draftSpecific: '321chataddons.pm.draft_specific',
             draftBroadcast: '321chataddons.pm.draft_broadcast'
         }
     };
+
     CA.Drafts = {
-        save(which, value){
-            const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific
-                : CA.Const.STORAGE_KEYS.draftBroadcast;
-            CA.Store.set(k, value == null ? '' : String(value));
+        save(key, value) {
+            const k = typeof key === 'string' ? key : String(key || '');
+            if (!k) return false;
+            return CA.Store.set(k, value == null ? '' : String(value));
         },
-        load(which){
-            const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific
-                : CA.Const.STORAGE_KEYS.draftBroadcast;
-            return String(CA.Store.get(k, ''));
-        },
-        restoreInputs(sMsgEl, bMsgEl){
-            const d1 = CA.Drafts.load('specific');
-            const d2 = CA.Drafts.load('broadcast');
-            if (sMsgEl && d1) sMsgEl.value = d1;
-            if (bMsgEl && d2) bMsgEl.value = d2;
+
+        bindInput(el, key) {
+            if (!el) return;
+            // restore directly
+            el.value = String(CA.Store.get(key) ?? '');
+            // save on input
+            el.addEventListener('input', () => this.save(key, el.value));
         }
     };
 
     // ---------- Centralized safe localStorage helpers ----------
     CA.Store = {
         /** Raw get; auto-parses JSON if detected */
+        has(key) {
+            try {
+                const val = localStorage.getItem(key);
+                return val !== null;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        },
+
         get(key){
             try {
                 const raw = localStorage.getItem(key);
@@ -183,142 +190,125 @@
         }
     };
 
-// ---------- Persistent captured users (id -> {name, avatar}) ----------
+    CA.CapturedUsers = {
+        KEY: '321chataddons.capturedUsers',
+
+        has(id) {
+            if (!id) return false;
+            try {
+                const data = CA.Store.get(this.KEY) || {};
+                return Object.prototype.hasOwnProperty.call(data, String(id));
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        },
+
+        get(id) {
+            if (!id) return null;
+            try {
+                const data = CA.Store.get(this.KEY) || {};
+                const v = data[String(id)];
+                if (v && typeof v === 'object')
+                    return { name: String(v.name || ''), avatar: String(v.avatar || '') };
+                return v ? { name: String(v), avatar: '' } : null;
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
+        },
+
+        set(id, name, avatar) {
+            if (!id) return false;
+            try {
+                const data = CA.Store.get(this.KEY) || {};
+                const key = String(id);
+                const prev = data[key] && typeof data[key] === 'object' ? data[key] : {};
+                data[key] = {
+                    name: String(name || prev.name || ''),
+                    avatar: String(avatar || prev.avatar || '')
+                };
+                return CA.Store.set(this.KEY, data);
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        },
+
+        remove(id) {
+            if (!id) return false;
+            try {
+                const data = CA.Store.get(this.KEY) || {};
+                delete data[String(id)];
+                return CA.Store.set(this.KEY, data);
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+    };
+// ---------- Debug toggle & logger (refactored to use CA.Store directly) ----------
     (function () {
         try {
             window.CA = window.CA || {};
-            const KEY = '321chataddons.capturedUsers';
+            const DEBUG_KEY = '321chataddons.debug';
 
-            function load() {
-                try {
-                    if (CA && CA.Store && typeof CA.Store.get === 'function') {
-                        return CA.Store.get(KEY, {});
-                    }
-                    try {
-                        return CA.Store.get
-                    } catch (e) {
-                        return {};
-                    }
-                } catch (e) {
-                    console.error(e);
-                    return {};
-                }
-            }
+            // Persisted flag
+            const persisted = String(CA.Store.get(DEBUG_KEY) ?? '0') === '1';
 
-            function save(map) {
-                try {
-                    if (CA && CA.Store && typeof CA.Store.set === 'function') {
-                        return CA.Store.set(KEY, map || {});
-                    }
-                    try {
-                        CA.Store.set(KEY, map || {});
-                    } catch (e) {}
-                } catch (e) {
-                    console.error(e);
-                }
-            }
-
-            CA.CapturedUsers = CA.CapturedUsers || {
-                has(id) {
-                    if (!id) return false;
-                    const m = load();
-                    return Object.prototype.hasOwnProperty.call(m, String(id));
-                },
-
-                set(id, name, avatar) {
-                    if (!id) return;
-                    const m = load();
-                    const k = String(id);
-                    const prev = m[k];
-                    const prevObj =
-                        prev && typeof prev === 'object'
-                            ? prev
-                            : { name: typeof prev === 'string' ? prev : '', avatar: '' };
-
-                    m[k] = {
-                        name: String(name || prevObj.name || ''),
-                        avatar: String(avatar || prevObj.avatar || '')
-                    };
-                    save(m);
-                },
-
-                get(id) {
-                    if (!id) return { name: '', avatar: '' };
-                    const v = load()[String(id)];
-                    if (v && typeof v === 'object') {
-                        return { name: String(v.name || ''), avatar: String(v.avatar || '') };
-                    }
-                    return { name: String(v || ''), avatar: '' };
-                },
-
-                getName(id) {
-                    return this.get(id).name;
-                },
-
-                getAvatar(id) {
-                    return this.get(id).avatar;
-                },
-
-                getAll() {
-                    return load();
-                },
-
-                clear() {
-                    save({});
-                }
-            };
-        } catch (e) {
-            console.error(e);
-        }
-    })();
-
-// ---------- Debug toggle & logger ----------
-    (function(){
-        try{
-            const KEY = '321chataddons.debug';
-            const Store = (typeof CA !== 'undefined' && CA && CA.Store) ? CA.Store : {
-                get: (k, fb) => { try{ const v =CA.Store.get(k); return v==null?fb:v; } catch (e) { return fb; } },
-                set: (k, v)   => { try{ CA.Store.get(k, String(v)); } catch (e) {} }
-            };
-            CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
-            CA.Debug = CA.Debug || {
-                enabled: String(Store.get(KEY,'0')) === '1',
-                set(on){
+            CA.Debug = {
+                enabled: persisted,
+                set(on) {
                     this.enabled = !!on;
-                    try{ Store.set(KEY, this.enabled ? '1' : '0'); } catch (e) {}
+                    try {
+                        CA.Store.set(DEBUG_KEY, this.enabled ? '1' : '0');
+                    } catch (e) {}
                 }
             };
-            CA.debug = function(){
+
+            // Conditional logger
+            CA.debug = function () {
                 if (CA.Debug && CA.Debug.enabled) {
-                    try{ console.log.apply(console, arguments); } catch (e) {}
+                    try { console.log.apply(console, arguments); } catch (e) {}
                 }
             };
-            CA.ensureDebugToggle = function(){
-                try{
-                    let panel = document.getElementById('ca-panel');
-                    if(!panel || panel.querySelector('#ca-debug-toggle')) return;
-                    let row = document.createElement('div');
+
+            // UI toggle in panel header
+            CA.ensureDebugToggle = function () {
+                try {
+                    const panel = document.getElementById('ca-panel');
+                    if (!panel || panel.querySelector('#ca-debug-toggle')) return;
+
+                    const row = document.createElement('div');
                     row.className = 'ca-debug-row';
                     row.style.cssText = 'display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:4px 6px;border-bottom:1px solid rgba(0,0,0,.06);';
-                    let label = document.createElement('label');
+
+                    const label = document.createElement('label');
                     label.style.cssText = 'display:flex;align-items:center;gap:6px;font:12px/1.2 sans-serif;cursor:pointer;';
-                    let cb = document.createElement('input');
+
+                    const cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.id = 'ca-debug-toggle';
                     cb.checked = !!(CA.Debug && CA.Debug.enabled);
-                    let span = document.createElement('span');
+
+                    const span = document.createElement('span');
                     span.textContent = 'Debug logs';
+
                     label.appendChild(cb);
                     label.appendChild(span);
                     row.appendChild(label);
                     panel.insertBefore(row, panel.firstChild);
-                    cb.addEventListener('change', function(){ if(CA && CA.Debug){ CA.Debug.set(!!this.checked); } });
+
+                    cb.addEventListener('change', function () {
+                        if (CA && CA.Debug) CA.Debug.set(!!this.checked);
+                    });
                 } catch (e) {}
             };
-            setTimeout(function(){ try{ CA.ensureDebugToggle(); } catch (e) {} }, 300);
+
+            // Mount toggle a bit after panel render
+            setTimeout(function () { try { CA.ensureDebugToggle(); } catch (e) {} }, 300);
         } catch (e) {}
     })();
-
 
     /* ---------- Audio autoplay gate (avoid NotAllowedError before user gesture) ---------- */
     (function setup321ChatAddonsAudioGate(){
@@ -838,18 +828,6 @@
 
     // Global user map: ID -> {name, avatar}
     const USER_MAP = {};
-
-// In-memory map for quick lookups
-
-    const updateUserMap = function (uid, name, avatar){
-        try {
-            if(!uid) return;
-            if(!USER_MAP[uid]) USER_MAP[uid] = {};
-            if(name) USER_MAP[uid].name = String(name);
-            if(avatar) USER_MAP[uid].avatar = String(avatar);
-        } catch (e) {console.error(e);
-        }
-    }
 
     const getUserFromMap = function (uid){
         try {
@@ -1649,10 +1627,9 @@
         });
     }
 
-    /* Draft persistence (refactored) */
-    if($sMsg){ $sMsg.addEventListener('input', function(){ CA.Drafts.save('specific', $sMsg.value); }); }
-    if($bMsg){ $bMsg.addEventListener('input', function(){ CA.Drafts.save('broadcast', $bMsg.value); }); }
-    CA.Drafts.restoreInputs($sMsg, $bMsg);
+    // --- Usage ---
+    CA.Drafts.bindInput($sMsg, CA.Const.STORAGE_KEYS.draftSpecific);
+    CA.Drafts.bindInput($bMsg, CA.Const.STORAGE_KEYS.draftBroadcast);
 
     /* Build recipients */
     const buildSpecificListAsync = function (){
@@ -1815,8 +1792,7 @@
         collectFemaleIds().forEach(function(it){
             currentFemales.set(it.id, it.name||'');
             // Also populate user map
-            let av = extractAvatar(it.el);
-            updateUserMap(it.id, it.name, av);
+            CA.CapturedUsers.set(it.id, it.name, extractAvatar(it.el));
         });
     }
     let didInitialLog = false;
@@ -1858,7 +1834,7 @@
             let av=extractAvatar(el);
 
             // Update user map with latest info
-            updateUserMap(id, nm, av);
+            CA.CapturedUsers.set(id, nm, av);
 
             if(!wasPresent){
                 // New user appeared
@@ -2724,15 +2700,8 @@
                         const uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
                         if(uidInput) userId = uidInput.value;
                     }
-                    if (userId && userName) {try{
-                        const __first = !(CA && CA.CapturedUsers && CA.CapturedUsers.has && CA.CapturedUsers.has(String(userId)));
-                        if (CA && CA.CapturedUsers && CA.CapturedUsers.set) { CA.CapturedUsers.set(String(userId), String(userName), String(userAvatar||'')); }
-                        if (__first) {
-                            console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
-
-                        }
-                    } catch (e) { console.error(e); }
-                        updateUserMap(userId, userName, userAvatar);
+                    if (userId && userName) {
+                        CA.CapturedUsers.set(userId, userName, userAvatar);
                     }
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Extract private box user info error:', e);
@@ -2806,8 +2775,8 @@
                                 if (img && img.getAttribute('src')) av = img.getAttribute('src');
                             } catch (e) {}
                         }
-                        if (id && name && CA && CA.CapturedUsers && CA.CapturedUsers.set){
-                            CA.CapturedUsers.set(String(id), String(name), String(av||''));
+                        if (id && name){
+                            CA.CapturedUsers.set(id, name, av);
                             added++;
                         }
                     } catch (e) { console.error(e); }
