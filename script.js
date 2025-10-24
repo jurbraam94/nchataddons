@@ -1,11 +1,13 @@
+
 (function(){
     try{
         window.CA = window.CA || {};
         if (typeof window.CA.debug !== 'function') {
-            window.CA.debug = function(){ /* debug shim: no-op until Debug module loads */ };
+            window.CA.debug = function(){ /* debug shim */ };
         }
-    }catch(e){ /* ignore */ }
+    } catch (e) {}
 })();
+
 (function(){
     /* =========================
      * 321ChatAddons Toolkit (with Activity Log) — initial page-load logging added
@@ -33,6 +35,146 @@
             return String(s); }
     }
     const timeHHMM = function (){ const d=new Date(); let h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return h+':'+m; }
+
+    /* ====== Types, defaults, and normalizers (added) ====== */
+    /** @typedef {{
+     *   last: string,
+     *   pico: number,
+     *   pload: PrivLogItem[],
+     *   plogs: PrivLogItem[]
+     * }} ChatLogResponse */
+
+    /** @typedef {{
+     *   log_id: string,
+     *   log_date: string,     // "DD/MM HH:MM"
+     *   user_id: string,
+     *   user_name: string,
+     *   user_tumb: string,
+     *   log_content: string
+     * }} PrivLogItem */
+
+    /** @typedef {{
+     *   code: number,
+     *   log: { log_content: string }
+     * }} PrivateSendResponse */
+
+    /** @typedef {{
+     *   last: string,
+     *   pload: PrivLogItem[],
+     *   plogs: PrivLogItem[]
+     * }} PrivateChatLogResponse */
+
+    /** Safe JSON.parse that returns {} on failure */
+    function parseJSONOrEmpty(str){
+        try { return JSON.parse(String(str)); } catch (e) { try { console.error(e); } catch (__) {} return {}; }
+    }
+
+    /** @param {any} x @returns {PrivLogItem} */
+    function toPrivLogItem(x){
+        const o = x && typeof x === 'object' ? x : {};
+        return {
+            log_id: String(o.log_id ?? ''),
+            log_date: String(o.log_date ?? ''),
+            user_id: String(o.user_id ?? ''),
+            user_name: String(o.user_name ?? ''),
+            user_tumb: String(o.user_tumb ?? ''),
+            log_content: String(o.log_content ?? '')
+        };
+    }
+
+    /** @param {any} x @returns {ChatLogResponse} */
+    function toChatLogResponse(x){
+        const o = x && typeof x === 'object' ? x : {};
+        const picoNum = Number.isFinite(o.pico) ? o.pico : (typeof o.pico === 'string' ? (Number(o.pico) || 0) : 0);
+        const pload = Array.isArray(o.pload) ? o.pload.map(toPrivLogItem) : [];
+        const plogs = Array.isArray(o.plogs) ? o.plogs.map(toPrivLogItem) : [];
+        return {
+            last: typeof o.last === 'string' ? o.last : '',
+            pico: picoNum,
+            pload,
+            plogs
+        };
+    }
+
+    /** @param {any} x @returns {PrivateSendResponse} */
+    function toPrivateSendResponse(x){
+        const o = x && typeof x === 'object' ? x : {};
+        const codeNum = Number.isFinite(o.code) ? o.code : (typeof o.code === 'string' ? (Number(o.code) || 0) : 0);
+        return {
+            code: codeNum,
+            log: { log_content: String(o?.log?.log_content ?? '') }
+        };
+    }
+
+    /** @param {any} x @returns {PrivateChatLogResponse} */
+    function toPrivateChatLogResponse(x){
+        const o = x && typeof x === 'object' ? x : {};
+        const pload = Array.isArray(o.pload) ? o.pload.map(toPrivLogItem) : [];
+        const plogs = Array.isArray(o.plogs) ? o.plogs.map(toPrivLogItem) : [];
+        return {
+            last: typeof o.last === 'string' ? o.last : '',
+            pload,
+            plogs
+        };
+    }
+    /* ====== End normalizers (added) ====== */
+
+
+
+
+
+    /* ===== Smart localStorage helpers (auto JSON detect) ===== */
+    /**
+     * Safely get a value from localStorage.
+     * - Automatically parses JSON if the value looks like JSON.
+     * @param {string} key
+     * @returns {any|null}
+     */
+    function safeGetRaw(key) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw == null) return null;
+
+            const trimmed = String(raw).trim();
+            // Auto-detect JSON and parse if possible
+            if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
+                try {
+                    return JSON.parse(trimmed);
+                } catch {
+                    return raw; // return as-is if parsing fails
+                }
+            }
+
+            return raw;
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    }
+
+    /**
+     * Safely set a value in localStorage.
+     * - Automatically stringifies objects/arrays, leaves primitives as strings.
+     * @param {string} key
+     * @param {any} value
+     */
+    function safeSetRaw(key, value){
+        try{
+            const toStore = (typeof value === 'string') ? value : JSON.stringify(value == null ? {} : value);
+            localStorage.setItem(key, toStore);
+            return true;
+        }catch(e){ console.error(e); return false; }
+    }
+
+    /**
+     * Safely remove a key from localStorage.
+     * @param {string} key
+     */
+    function safeRemoveItem(key){
+        try{ localStorage.removeItem(key); }catch(e){ try{console.error(e);}catch(__){} }
+    }
+
+
 
     // ---------- Namespace and Modules ----------
     // Small, incremental refactor: add a namespace and a Drafts module for better structure
@@ -73,33 +215,23 @@
     // ---------- Centralized safe localStorage helpers ----------
     CA.Safe = {
         getItem(key) {
-            try {
-                return localStorage.getItem(key);
-            } catch (e) {console.error(e);
-                return null;
-            }
+            return safeGetRaw(key);
         },
         setItem(key, val) {
-            try {
-                localStorage.setItem(key, String(val));
-            } catch (e) {console.error(e);
-            }
+            safeSetRaw(key, String(val));
         },
         getJSON(key, fallback) {
             try {
-                const raw = localStorage.getItem(key);
+                const raw = safeGetRaw(key);
                 if (!raw) return (fallback === undefined ? {} : fallback);
-                const v = JSON.parse(raw);
+                const v = raw;
                 return (v == null ? (fallback === undefined ? {} : fallback) : v);
             } catch (e) {console.error(e);
                 return (fallback === undefined ? {} : fallback);
             }
         },
         setJSON(key, obj) {
-            try {
-                localStorage.setItem(key, JSON.stringify(obj || {}));
-            } catch (e) {console.error(e);
-            }
+            safeSetRaw(key, obj || {});
         }
     };
     CA.Store = {
@@ -117,219 +249,142 @@
             CA.Safe.setJSON(key, obj);
         }
     };
-    // ---------- Persistent captured users (per-session/per-install) ----------
+// ---------- Persistent captured users (id -> {name, avatar}) ----------
+    (function () {
+        try {
+            window.CA = window.CA || {};
+            const KEY = '321chataddons.capturedUsers';
 
-    // ---------- Persistent captured users (id -> username) ----------
-    CA.CapturedUsers = CA.CapturedUsers ||
-        // ---------- Capture users from /system/panel/user_list.php ----------
-        (function(){
-            try{
-                CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
-
-                // Parser: extracts id->name from returned HTML
-                CA.captureUsersFromUserListHTML = CA.captureUsersFromUserListHTML || function(htmlText){
+            function load() {
+                try {
+                    if (CA && CA.Store && typeof CA.Store.getJSON === 'function') {
+                        return CA.Store.getJSON(KEY, {});
+                    }
                     try {
-                        if (!htmlText) return 0;
-                        var parser = new DOMParser();
-                        var doc = parser.parseFromString(String(htmlText), 'text/html');
-                        var items = doc.querySelectorAll('.online_user .user_item[data-id][data-name], .user_item[data-id][data-name]');
-                        var count = 0;
-                        items.forEach(function(el){
-                            try{
-                                var id = (el.getAttribute('data-id')||'').trim();
-                                var name = (el.getAttribute('data-name')||'').trim();
-                                if (id && name){
-                                    /* ensure persistence even if CA.CapturedUsers not ready yet */
-                                    if (CA && CA.CapturedUsers && typeof CA.CapturedUsers.set === 'function') {
-                                        CA.CapturedUsers.set(String(id), String(name));
-                                    } else {
-                                        try {
-                                            var __key = '321chataddons.capturedUsers';
-                                            var raw = null;
-                                            try { raw = localStorage.getItem(__key); } catch(e) { console.error(e); }
-                                            var map = {};
-                                            if (raw) { try { map = JSON.parse(raw) || {}; } catch(e) { console.error(e); }
-                                            }
-                                            map[String(id)] = String(name);
-                                            try { localStorage.setItem(__key, JSON.stringify(map)); } catch(e) { console.error(e); }
-                                        } catch (e) { console.error(e); }
-                                    }
-                                    count++;}
-                            }catch(e){ console.error(e); }
-                        });
-                        if (count > 0) {
-                            CA.debug('[321ChatAddons] captured', count, 'users from user_list.php');
-                        }
-                        return count;
-                    } catch (e) { console.error(e); return 0; }
-                };
-
-                // Intercept fetch
-                (function(){
-                    try{
-                        if (window.__CA_fetchHooked) return;
-                        window.__CA_fetchHooked = true;
-                        var _fetch = window.fetch;
-                        window.fetch = function(input, init){
-                            try{
-                                var url = (typeof input === 'string') ? input : (input && input.url) ? input.url : '';
-                                var method = (init && init.method) || (input && input.method) || 'GET';
-                                if (url && /\/system\/panel\/user_list\.php(?:$|\?)/.test(url) && String(method).toUpperCase() === 'POST'){
-                                    return _fetch.apply(this, arguments).then(function(res){
-                                        try{
-                                            var clone = res.clone();
-                                            return clone.text().then(function(txt){
-                                                try{ CA.captureUsersFromUserListHTML(txt); }catch(e){ console.error(e); }
-                                                return res;
-                                            }).catch(function(){ return res; });
-                                        }catch(e){ return res; }
-                                    });
-                                }
-                            }catch(e){ /* fallthrough */ }
-                            return _fetch.apply(this, arguments);
-                        };
-                    }catch(e){ console.error(e); }
-                })();
-
-                // Intercept XMLHttpRequest
-                (function(){
-                    try{
-                        if (window.__CA_xhrHooked) return;
-                        window.__CA_xhrHooked = true;
-                        var _open = XMLHttpRequest.prototype.open;
-                        var _send = XMLHttpRequest.prototype.send;
-                        XMLHttpRequest.prototype.open = function(method, url){
-                            try{
-                                this.__ca_method = method;
-                                this.__ca_url = url;
-                            }catch(e){}
-                            return _open.apply(this, arguments);
-                        };
-                        XMLHttpRequest.prototype.send = function(body){
-                            try{
-                                var url = String(this.__ca_url || '');
-                                var method = String(this.__ca_method || 'GET').toUpperCase();
-                                if (url && /\/system\/panel\/user_list\.php(?:$|\?)/.test(url) && method === 'POST'){
-                                    var xhr = this;
-                                    var done = function(){
-                                        try{
-                                            if (xhr && xhr.readyState === 4 && xhr.status === 200){
-                                                var ctype = (xhr.getResponseHeader && xhr.getResponseHeader('content-type')) || '';
-                                                // Expecting text/html
-                                                var txt = '';
-                                                try { txt = xhr.responseText; } catch(e){}
-                                                CA.captureUsersFromUserListHTML(txt);
-                                            }
-                                        }catch(e){ console.error(e); }
-                                    };
-                                    this.addEventListener('load', done);
-                                    this.addEventListener('readystatechange', done);
-                                }
-                            }catch(e){}
-                            return _send.apply(this, arguments);
-                        };
-                    }catch(e){ console.error(e); }
-                })();
-
-                // One-off: attempt to capture from current DOM if container already present
-                (function tryInitialDOMCapture(){
-                    try{
-                        var container = document.getElementById('container_user') || document.querySelector('#container_user, .online_user');
-                        if (container){
-                            var html = container.outerHTML || container.innerHTML || '';
-                            CA.captureUsersFromUserListHTML(html);
-                        }
-                    }catch(e){ console.error(e); }
-                })();
-
-            }catch(e){ console.error(e); }
-        })();
-    (function(){
-        const KEY = '321chataddons.capturedUsers';
-        function load(){
-            try{ return CA.Store.getJSON(KEY, {}); }catch(e){ console.error(e); return {}; }
-        }
-        function save(map){
-            try{ CA.Store.setJSON(KEY, map||{}); }catch(e){ console.error(e); }
-        }
-        return {
-            has(userId){
-                if(!userId) return false;
-                const m = load();
-                return Object.prototype.hasOwnProperty.call(m, String(userId));
-            },
-            set(userId, userName){
-                if(!userId) return;
-                const m = load();
-                m[String(userId)] = String(userName || '');
-                save(m);
-            },
-            getName(userId){
-                if(!userId) return '';
-                const m = load();
-                return m[String(userId)] || '';
-            },
-            getAll(){
-                return load();
-            },
-            clear(){
-                save({});
+                        return safeGetRaw(KEY) ?? {};
+                    } catch (e) {
+                        return {};
+                    }
+                } catch (e) {
+                    console.error(e);
+                    return {};
+                }
             }
-        };
+
+            function save(map) {
+                try {
+                    if (CA && CA.Store && typeof CA.Store.setJSON === 'function') {
+                        return CA.Store.setJSON(KEY, map || {});
+                    }
+                    try {
+                        safeSetRaw(KEY, map || {});
+                    } catch (e) {}
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            CA.CapturedUsers = CA.CapturedUsers || {
+                has(id) {
+                    if (!id) return false;
+                    const m = load();
+                    return Object.prototype.hasOwnProperty.call(m, String(id));
+                },
+
+                set(id, name, avatar) {
+                    if (!id) return;
+                    const m = load();
+                    const k = String(id);
+                    const prev = m[k];
+                    const prevObj =
+                        prev && typeof prev === 'object'
+                            ? prev
+                            : { name: typeof prev === 'string' ? prev : '', avatar: '' };
+
+                    m[k] = {
+                        name: String(name || prevObj.name || ''),
+                        avatar: String(avatar || prevObj.avatar || '')
+                    };
+                    save(m);
+                },
+
+                get(id) {
+                    if (!id) return { name: '', avatar: '' };
+                    const v = load()[String(id)];
+                    if (v && typeof v === 'object') {
+                        return { name: String(v.name || ''), avatar: String(v.avatar || '') };
+                    }
+                    return { name: String(v || ''), avatar: '' };
+                },
+
+                getName(id) {
+                    return this.get(id).name;
+                },
+
+                getAvatar(id) {
+                    return this.get(id).avatar;
+                },
+
+                getAll() {
+                    return load();
+                },
+
+                clear() {
+                    save({});
+                }
+            };
+        } catch (e) {
+            console.error(e);
+        }
     })();
 
-
-    // ---------- Debug toggle & logger ----------
+// ---------- Debug toggle & logger ----------
     (function(){
         try{
             const KEY = '321chataddons.debug';
             const Store = (typeof CA !== 'undefined' && CA && CA.Store) ? CA.Store : {
-                get: (k, fb) => { try{ const v = localStorage.getItem(k); return v==null?fb:v; }catch(e){ return fb; } },
-                set: (k, v)   => { try{ localStorage.setItem(k, String(v)); }catch(e){} }
+                get: (k, fb) => { try{ const v = safeGetRaw(k); return v==null?fb:v; } catch (e) { return fb; } },
+                set: (k, v)   => { try{ safeSetRaw(k, String(v)); } catch (e) {} }
             };
             CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
             CA.Debug = CA.Debug || {
                 enabled: String(Store.get(KEY,'0')) === '1',
                 set(on){
                     this.enabled = !!on;
-                    try{ Store.set(KEY, this.enabled ? '1' : '0'); }catch(e){}
+                    try{ Store.set(KEY, this.enabled ? '1' : '0'); } catch (e) {}
                 }
             };
             CA.debug = function(){
                 if (CA.Debug && CA.Debug.enabled) {
-                    try{ console.log.apply(console, arguments); }catch(e){}
+                    try{ console.log.apply(console, arguments); } catch (e) {}
                 }
             };
-            // UI hook
             CA.ensureDebugToggle = function(){
                 try{
-                    var panel = document.getElementById('ca-panel');
+                    let panel = document.getElementById('ca-panel');
                     if(!panel || panel.querySelector('#ca-debug-toggle')) return;
-                    var row = document.createElement('div');
+                    let row = document.createElement('div');
                     row.className = 'ca-debug-row';
                     row.style.cssText = 'display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:4px 6px;border-bottom:1px solid rgba(0,0,0,.06);';
-                    var label = document.createElement('label');
+                    let label = document.createElement('label');
                     label.style.cssText = 'display:flex;align-items:center;gap:6px;font:12px/1.2 sans-serif;cursor:pointer;';
-                    var cb = document.createElement('input');
+                    let cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.id = 'ca-debug-toggle';
                     cb.checked = !!(CA.Debug && CA.Debug.enabled);
-                    var span = document.createElement('span');
+                    let span = document.createElement('span');
                     span.textContent = 'Debug logs';
                     label.appendChild(cb);
                     label.appendChild(span);
                     row.appendChild(label);
-                    // insert at top of panel
                     panel.insertBefore(row, panel.firstChild);
-                    cb.addEventListener('change', function(){
-                        if(CA && CA.Debug){ CA.Debug.set(!!this.checked); }
-                    });
-                }catch(e){}
+                    cb.addEventListener('change', function(){ if(CA && CA.Debug){ CA.Debug.set(!!this.checked); } });
+                } catch (e) {}
             };
-            // try to mount toggle soon after DOM ready
-            setTimeout(function(){ try{ CA.ensureDebugToggle(); }catch(e){} }, 300);
-        }catch(e){}
+            setTimeout(function(){ try{ CA.ensureDebugToggle(); } catch (e) {} }, 300);
+        } catch (e) {}
     })();
+
 
     /* ---------- Audio autoplay gate (avoid NotAllowedError before user gesture) ---------- */
     (function setup321ChatAddonsAudioGate(){
@@ -486,7 +541,7 @@
 
         // Throttle the MutationObserver to avoid excessive calls
         let lastAdjust = 0;
-        new MutationObserver(function(muts){
+        new MutationObserver(function(){
             try {
                 applyInline();
                 removeAds(document);
@@ -521,14 +576,14 @@
 
     const getGlobalWatermark = function (){
         try {
-            return localStorage.getItem(GLOBAL_WATERMARK_KEY) || '';
+            return safeGetRaw(GLOBAL_WATERMARK_KEY) || '';
         } catch (e) {console.error(e);
             return ''; }
     }
 
     const setGlobalWatermark = function (dateStr){
         try {
-            if(dateStr) localStorage.setItem(GLOBAL_WATERMARK_KEY, String(dateStr));
+            if(dateStr) safeSetRaw(GLOBAL_WATERMARK_KEY, String(dateStr));
         } catch (e) {console.error(e);
         }
     }
@@ -540,7 +595,7 @@
         let month = String(now.getMonth() + 1).padStart(2, '0');
         let hours = String(now.getHours()).padStart(2, '0');
         let minutes = String(now.getMinutes()).padStart(2, '0');
-        return day + '/' + month + ' ' + hours + ':' + minutes;;
+        return day + '/' + month + ' ' + hours + ':' + minutes;
     }
 
     // Initialize watermark once on page load with current date/time in "DD/MM HH:MM" format
@@ -627,7 +682,7 @@
         }
     }
 
-    // Normalize various request body types to a query-string
+    // Normalize letious request body types to a query-string
     const normalizeBodyToQuery = function (body){
         try {
             if(!body) return '';
@@ -803,9 +858,8 @@
     const hashMessage = function (s){let h=5381; s=String(s); for(let i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);} return (h>>>0).toString(36);}
     const NS = location.host + (window.curPage||'') + ':';
     const keyForHash = function (h){return STORAGE_PREFIX+NS+h;}
-    const setLast = function (h){try {localStorage.setItem(LAST_HASH_KEY,h);} catch (e) {console.error(e);
-    }}
-    const getLast = function (){try {return localStorage.getItem(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
+    const setLast = function (h){safeSetRaw(LAST_HASH_KEY,h);}
+    const getLast = function (){try {return safeGetRaw(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
         return ''}}
     const markSent = function (el){
         try {
@@ -822,40 +876,34 @@
 
     /* ---------- Exclusion checkboxes (persisted) ---------- */
     const EXC_KEY='321chataddons.excluded';
-    const loadExcluded = function (){ try { let raw=localStorage.getItem(EXC_KEY); if(!raw) return {}; let a=JSON.parse(raw)||[]; let map={},i; for(i=0; i<a.length; i++) map[a[i]]=1; return map; } catch (e) {console.error(e);
-        return {}; } }
-    const saveExcluded = function (map){ try { let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); localStorage.setItem(EXC_KEY,JSON.stringify(arr)); } catch (e) {console.error(e);
-    } }
-    const EXCLUDED=loadExcluded();
+    const loadExcluded = function () {
+        const raw = safeGetRaw(EXC_KEY);
+        if (!raw) return {};
+        const arr = Array.isArray(raw) ? raw : [];
+        const map = {};
+        for (let i = 0; i < arr.length; i++) {
+            const k = String(arr[i]);
+            if (k) map[k] = 1;
+        }
+        return map;
+    };
+const saveExcluded = function (map){  let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); safeSetRaw(EXC_KEY, arr); };
+const EXCLUDED=loadExcluded();
 
-    // Global "already messaged" list (applies to any message)
-    const SENT_ALL_KEY='321chataddons.sent.all';
-    const loadSentAll = function (){ try { let raw=localStorage.getItem(SENT_ALL_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch (e) {console.error(e);
-        return {}; } }
-    const saveSentAll = function (map){ try { localStorage.setItem(SENT_ALL_KEY, JSON.stringify(map)); } catch (e) {console.error(e);
-    } }
+// Global "already messaged" list (applies to any message)
+const SENT_ALL_KEY='321chataddons.sent.all';
+const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
+    const saveSentAll = function (map){ safeSetRaw(SENT_ALL_KEY, map); }
     let SENT_ALL = loadSentAll();
 
     // Track conversations that have been replied to
     const REPLIED_CONVOS_KEY='321chataddons.repliedConversations';
-    const loadRepliedConvos = function (){ try { let raw=localStorage.getItem(REPLIED_CONVOS_KEY); if(!raw) return {}; return JSON.parse(raw)||{}; } catch (e) {console.error(e);
-        return {}; } }
-    const saveRepliedConvos = function (map){ try { localStorage.setItem(REPLIED_CONVOS_KEY, JSON.stringify(map)); } catch (e) {console.error(e);
-    } }
+    const loadRepliedConvos = function (){ return (safeGetRaw(REPLIED_CONVOS_KEY) || {}) }
+    const saveRepliedConvos = function (map){ safeSetRaw(REPLIED_CONVOS_KEY, map); }
     const REPLIED_CONVOS = loadRepliedConvos();
 
     // Global user map: ID -> {name, avatar}
     const USER_MAP = {};
-// ---------- Preload stored user map from CA.CapturedUsers ----------
-    try {
-        if (CA && CA.CapturedUsers && typeof CA.CapturedUsers.getAll === 'function') {
-            const stored = CA.CapturedUsers.getAll();
-            for (const [id, name] of Object.entries(stored)) {
-                if (!USER_MAP[id]) USER_MAP[id] = name;
-            }
-            CA.debug('[321ChatAddons] Preloaded', Object.keys(stored).length, 'user mappings.');
-        }
-    } catch (e) { console.error(e); }
 
 // In-memory map for quick lookups
 
@@ -932,10 +980,9 @@
 
     // Persisted per-user last processed pcount to avoid refetching same batch
     const LAST_PCOUNT_MAP_KEY='321chataddons.lastPcountPerConversation';
-    const loadLastPcountMap = function (){ try { let raw=localStorage.getItem(LAST_PCOUNT_MAP_KEY); return raw ? (JSON.parse(raw)||{}) : {}; } catch (e) {console.error(e);
+    const loadLastPcountMap = function (){ try { let raw=safeGetRaw(LAST_PCOUNT_MAP_KEY); return raw ? (raw||{}) : {}; } catch (e) {console.error(e);
         return {}; } }
-    const saveLastPcountMap = function (map){ try { localStorage.setItem(LAST_PCOUNT_MAP_KEY, JSON.stringify(map||{})); } catch (e) {console.error(e);
-    } }
+    const saveLastPcountMap = function (map){ safeSetRaw(LAST_PCOUNT_MAP_KEY, map||{}); }
     const LAST_PCOUNT_MAP = loadLastPcountMap();
     const getLastPcountFor = function (uid){ try { return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; } catch (e) {console.error(e);
         return 0; } }
@@ -948,17 +995,14 @@
 
     const loadDisplayedLogIds = function (){
         try {
-            let raw=localStorage.getItem(DISPLAYED_LOGIDS_KEY);
-            return raw ? (JSON.parse(raw)||{}) : {};
+            let raw=safeGetRaw(DISPLAYED_LOGIDS_KEY);
+            return raw ? (raw||{}) : {};
         } catch (e) {console.error(e);
             return {}; }
     }
 
     const saveDisplayedLogIds = function (map){
-        try {
-            localStorage.setItem(DISPLAYED_LOGIDS_KEY, JSON.stringify(map||{}));
-        } catch (e) {console.error(e);
-        }
+        safeSetRaw(DISPLAYED_LOGIDS_KEY, map||{});
     }
 
     const DISPLAYED_LOGIDS = loadDisplayedLogIds();
@@ -1240,7 +1284,7 @@
         }
     }
 
-    const panel=document.getElementById('ca-panel') || buildPanel();
+    buildPanel();
 
     /* Refs */
     const $sUser=qs('#ca-specific-username'), $sMsg=qs('#ca-specific-msg'), $sSend=qs('#ca-specific-send'), $sStat=qs('#ca-specific-status'), $sReset=qs('#ca-specific-reset');
@@ -1402,20 +1446,21 @@
     }
 
     const saveLogEntry = function (ts, kind, details){
+        // Do not persist presence events on disk
+        if (kind === 'login' || kind === 'logout') return;
         let arr=[];
-        try { let raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; } catch (e) {console.error(e);
+        try { let raw=safeGetRaw(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
         arr.unshift({ts:ts, kind:kind, details:details});
         if(arr.length>LOG_MAX) arr=arr.slice(0,LOG_MAX);
-        try { localStorage.setItem(LOG_STORE_KEY, JSON.stringify(arr)); } catch (e) {console.error(e);
-        }
+        safeSetRaw(LOG_STORE_KEY, arr);
     }
 
 
     const restoreLog = function (){
         if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
         let arr=[];
-        try { const raw=localStorage.getItem(LOG_STORE_KEY); if(raw) arr=JSON.parse(raw)||[]; } catch (e) {console.error(e);
+        try { const raw=safeGetRaw(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
         $logBoxSent.innerHTML='';
 
@@ -1521,7 +1566,7 @@
             if($logBoxSent) $logBoxSent.innerHTML='';
             if($logBoxReceived) $logBoxReceived.innerHTML='';
             if($logBoxPresence) $logBoxPresence.innerHTML='';
-            try {localStorage.removeItem(LOG_STORE_KEY);} catch (e) {console.error(e);
+            try {safeRemoveItem(LOG_STORE_KEY);} catch (e) {console.error(e);
             }
         });
     }
@@ -1532,7 +1577,7 @@
     const buildProfileUrlForId = function (uid){
         try {
             if(!uid) return '';
-            const sel = 'a[href*="profile"][href*="'+uid+'"], a[href*="user"][href*="'+`${uid}"]`;
+            const sel = `a[href*="profile"][href*="${uid}"], a[href*="user"][href*="${uid}"]`;
             const found = document.querySelector(sel);
             if(found && found.href) return found.href;
             const fallbacks = [
@@ -1613,7 +1658,6 @@
                         openDm(dUidNum, dName, `${dAvatar}`);
                     } catch (err) {console.error(err);
                         console.error(LOG, 'Error opening private chat:', err);
-                        openDm(dUidNum, dName, `${dAvatar}`);
                     }
                 }
                 return;
@@ -1707,7 +1751,7 @@
     /* Reset tracking (per message) */
     const resetForText = function (text, statEl){
         let t=trim(text); if(!t) return false;
-        let h=hashMessage(t); localStorage.removeItem(keyForHash(h)); setLast(h);
+        let h=hashMessage(t); safeRemoveItem(keyForHash(h)); setLast(h);
         if(statEl) statEl.textContent='Cleared sent-tracking for this message.';
         return true;
     }
@@ -1741,7 +1785,6 @@
                 if(sentMap[item.id]){ if($sStat) $sStat.textContent='Already sent to '+(item.name||item.id)+'. Change text to resend.'; return; }
                 $sSend.disabled=true;
                 sendWithThrottle(item.id,text).then(function(r){
-                    let av = extractAvatar(item.el);
                     if(r && r.ok){
                         if($sStat) $sStat.textContent='Sent to '+(item.name||item.id)+'.';
                     } else {
@@ -1760,7 +1803,7 @@
             const text=trim($bMsg?$bMsg.value:''); if(!text){ if($bStat) $bStat.textContent='Type the message first.'; return; }
             let list=buildBroadcastList();
             const sent=loadSentAll();
-            let to=[], i; for(i=0; i<list.length; i++){ if(!sent[list[id]]) to.push(list[i]); }
+            let to=[], i; for(i=0; i<list.length; i++){ if(!sent[list[i].id]) to.push(list[i]); }
             if(!to.length){ if($bStat) $bStat.textContent='No new recipients for this message (after exclusions/rank filter).'; return; }
             $bSend.disabled=true;
             let ok=0,fail=0,B=10,T=Math.ceil(to.length/B);
@@ -1817,7 +1860,11 @@
                     if(!n||n===c)return;
                     let nm=extractUsername(n); if(!nm) return;
                     const inp=qs('#ca-specific-username');
-                    if(inp){ inp.value=nm; const ev=document.createEvent('Event'); ev.initEvent('input', true, true); inp.dispatchEvent(ev); }
+                    if (inp) {
+                        inp.value = nm;
+                        const ev = new Event('input', { bubbles: true, cancelable: true });
+                        inp.dispatchEvent(ev);
+                    }
                 } catch (e) {console.error(e);
                     console.error(e)}
             }, false); // bubble to avoid fighting site handlers
@@ -1839,6 +1886,9 @@
         });
     }
     let didInitialLog = false;
+
+    const PRESENCE_ARM_DELAY_MS = 4000;
+    let presenceArmed = false;
     const runInitialLogWhenReady = function (maxTries){
         if(maxTries==null) maxTries = 20; // ~2s max
         let c=getContainer();
@@ -1849,6 +1899,8 @@
             // Prep UI
             pruneNonFemale(); attachCheckboxes(); wireUserClickSelection();
             didInitialLog = true;
+
+            setTimeout(function(){ presenceArmed = true; }, PRESENCE_ARM_DELAY_MS);
             return;
         }
         if(maxTries<=0){
@@ -1861,8 +1913,8 @@
 
 
     const handleAddedNode = function (n){
-        let items=[];
-        if(safeMatches(n,'.user_item[data-gender="'+FEMALE_CODE+'"]')) items=[n];
+        let items;
+        if (safeMatches(n,'.user_item[data-gender="'+FEMALE_CODE+'"]')) items=[n];
         else items=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]', n);
         if(!items.length) return;
         items.forEach(function(el){
@@ -1879,7 +1931,7 @@
                 currentFemales.set(id, nm);
                 // Only log login if initial scan is complete AND this is truly a new appearance
                 // (not just a delayed initial scan item)
-                if(didInitialLog){
+                if (didInitialLog && presenceArmed) {
                     console.log(LOG, 'New user appeared:', nm, '(ID:', id, ')');
                     logLogin(nm, id, av);
                 }
@@ -1894,8 +1946,8 @@
     }
 
     const handleRemovedNode = function (n){
-        let items=[];
-        if(safeMatches(n,'.user_item')) items=[n];
+        let items;
+        if (safeMatches(n,'.user_item')) items=[n];
         else items=qsa('.user_item', n);
         if(!items.length) return;
         items.forEach(function(el){
@@ -1904,7 +1956,7 @@
             if(isFemale && currentFemales.has(id)){
                 const nm=currentFemales.get(id)||id;
                 currentFemales.delete(id);
-                logLogout(nm, id, extractAvatar(el));
+                if (didInitialLog && presenceArmed) { logLogout(nm, id, extractAvatar(el)); }
             }
         });
     }
@@ -2092,11 +2144,13 @@
                 // Lightweight parse just to check pico - only parse the fields we need
                 let data;
                 try {
-                    data = JSON.parse(txt);
+                    data = parseJSONOrEmpty(txt);
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Chat payload: JSON parse failed', e, '— response preview:', String(txt).slice(0, 200));
                     return;
                 }
+
+                data = toChatLogResponse(data);
 
                 // Update CHAT_CTX.last from public chat response
                 try {
@@ -2210,10 +2264,10 @@
                                 const qs = normalizeBodyToQuery(init && init.body);
 
                                 if(qs){
-                                    CA.debug(qs);
+                                    console.log(qs);
                                     caUpdateChatCtxFromBody(qs, url);
                                 } else if(req && typeof req === 'object' && typeof req.clone === 'function'){
-                                    CA.debug(qs);
+                                    console.log(qs);
                                     try { req.clone().text().then(function(t){ caUpdateChatCtxFromBody(t, url); }); } catch (err) {console.error(err);
                                         console.error(LOG, 'Fetch clone error:', err); }
                                 }
@@ -2262,12 +2316,8 @@
                         console.error(LOG, 'XHR body capture error:', err); }
                     xhr.addEventListener('readystatechange', function(){
                         try {
-                            if(xhr.readyState === 4 && xhr.status === 200 && isChatLogUrl(xhr.responseURL || xhr._ca_url || '')){
-                                let txt = '';
-                                // Prefer responseText to avoid JSON responseType issues
-                                try { txt = xhr.responseText; } catch (err) {console.error(err);
-                                    console.error(LOG, 'XHR responseText error:', err); txt = ''; }
-                                if(txt) caProcessChatPayload(txt);
+                            if(xhr.responseText && xhr.readyState === 4 && xhr.status === 200 && isChatLogUrl(xhr.responseURL || xhr._ca_url || '')){
+                                caProcessChatPayload(xhr?.responseText);
                             }
                         } catch (err) {console.error(err);
                             console.error(LOG, 'XHR readystatechange error:', err); }
@@ -2302,11 +2352,13 @@
 
                 let data;
                 try {
-                    data = JSON.parse(responseText);
+                    data = parseJSONOrEmpty(responseText);
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Private process parse error:', e);
                     return;
                 }
+
+                data = toPrivateSendResponse(data);
 
                 // Check if send was successful (code: 1)
                 if(!data || data.code !== 1) return;
@@ -2392,7 +2444,6 @@
 
             XMLHttpRequest.prototype.open = function(method, url){
                 try {
-                    this._ca_pm_url = String(url||'');
                     this._ca_pm_isTarget = isPrivateProcessUrl(url);
                 } catch (e) {console.error(e);
                 }
@@ -2415,11 +2466,10 @@
                         xhr.addEventListener('readystatechange', function(){
                             try {
                                 if(xhr.readyState === 4 && xhr.status === 200){
-                                    let txt = '';
-                                    try { txt = xhr.responseText; } catch (err) {console.error(err);
-                                        txt = ''; }
-                                    if(txt){
-                                        processPrivateSendResponse(txt, capturedBody);
+                                    try {
+                                        processPrivateSendResponse(xhr?.responseText || '', capturedBody);
+                                    } catch (err) {
+                                        console.error(err);
                                     }
                                 }
                             } catch (err) {console.error(err);
@@ -2480,7 +2530,7 @@
         });
     }
 
-    const caUpdatePrivateConversationsList = function (manual){
+    const caUpdatePrivateConversationsList = function (){
         return caFetchPrivateNotify().then(function(privateConversations){
             try {
                 console.log(LOG, 'Private conversations:', privateConversations.length);
@@ -2544,7 +2594,7 @@
             const body=new URLSearchParams(bodyObj).toString();
             try {
                 const bodyLog = body.replace(/token=[^&]*/,'token=[redacted]');
-                CA.debug(LOG, 'caFetchChatLogFor: Full request body:', bodyLog);
+                console.log(LOG, 'caFetchChatLogFor: Full request body:', bodyLog);
             } catch (err) {console.error(err);
                 console.error(LOG, 'caFetchChatLogFor: body log error', err); }
 
@@ -2558,11 +2608,11 @@
                 },
                 body: body
             }).then(function(res){
-                CA.debug(LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
+                console.log(LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
                 return res.text();
             })
                 .then(function(txt){
-                    CA.debug(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
+                    console.log(LOG, 'caFetchChatLogFor: Response preview:', String(txt||'').slice(0, 300));
                     return txt;
                 })
                 .catch(function(err){
@@ -2582,7 +2632,8 @@
 
             let conversationChatLog;
             try {
-                conversationChatLog = JSON.parse(response);
+                conversationChatLog = parseJSONOrEmpty(response);
+                conversationChatLog = toPrivateChatLogResponse(conversationChatLog);
             } catch (e) {console.error(e);
                 const prev = String(response||'').slice(0,200);
                 console.warn(LOG, 'Parse failed for conversation', uid, '— preview:', prev);
@@ -2622,9 +2673,9 @@
 
             for(let i=0; i<items.length; i++){
                 const t = items[i];
-                let fromId = t && t.user_id ? String(t.user_id) : null;
-                const logDate = t && t.log_date ? String(t.log_date) : '';
-                const logId = t && t.log_id ? String(t.log_id) : null;
+                let fromId = t?.user_id != null ? String(t.user_id) : null;
+                const logDate = String(t?.log_date ?? '');
+                const logId = t?.log_id != null ? String(t.log_id) : null;
 
                 // Track newest log_date from all messages (not just from other user)
                 if(logDate && (!newestLogDate || parseLogDateToNumber(logDate) > parseLogDateToNumber(newestLogDate))){
@@ -2739,24 +2790,15 @@
                         const uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
                         if(uidInput) userId = uidInput.value;
                     }
+                    if (userId && userName) {try{
+                        const __first = !(CA && CA.CapturedUsers && CA.CapturedUsers.has && CA.CapturedUsers.has(String(userId)));
+                        if (CA && CA.CapturedUsers && CA.CapturedUsers.set) { CA.CapturedUsers.set(String(userId), String(userName), String(userAvatar||'')); }
+                        if (__first) {
+                            console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
 
-                    // Fallback: Check global variables
-                    if(!userId && typeof window.privateUser !== 'undefined'){
-                        try {
-                            userId = window.privateUser.id || window.privateUser.uid;
-                            userName = userName || window.privateUser.name || window.privateUser.username;
-                            userAvatar = userAvatar || window.privateUser.avatar || window.privateUser.thumb;
-                        } catch (e) {console.error(e);
                         }
-                    }
-
-                    if (userId && userName) {
-                        const __already = CA.CapturedUsers.has(String(userId));
-                        CA.CapturedUsers.set(String(userId), String(userName));
-                        if (!__already) {
-                            console.log(LOG, 'Captured private chat user info:', { id: userId, name: userName });
-                            updateUserMap(userId, userName, userAvatar);
-                        }
+                    } catch (e) { console.error(e); }
+                        updateUserMap(userId, userName, userAvatar);
                     }
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Extract private box user info error:', e);
@@ -2806,4 +2848,53 @@
     })();
 
     console.log(LOG,'✓ 321ChatAddons ready — activity logging, message tracking, and throttled sending enabled');
+})();
+
+
+/* ===== DOM-based user list capture (observer-first) ===== */
+(function(){
+    try{
+        window.CA = window.CA || {};
+        function scan(){
+            try{
+                let root = document.getElementById('container_user') || document.querySelector('#container_user, .online_user');
+                if (!root) return;
+                let nodes = root.querySelectorAll('.online_user .user_item[data-id][data-name], .user_item[data-id][data-name]');
+                let added = 0;
+                nodes.forEach(function(el){
+                    try{
+                        let id = (el.getAttribute('data-id')||'').trim();
+                        let name = (el.getAttribute('data-name')||'').trim();
+                        let av = (el.getAttribute('data-av')||'').trim();
+                        if (!av) {
+                            try {
+                                let img = el.querySelector('.user_item_avatar img.avav, .user_item_avatar img');
+                                if (img && img.getAttribute('src')) av = img.getAttribute('src');
+                            } catch (e) {}
+                        }
+                        if (id && name && CA && CA.CapturedUsers && CA.CapturedUsers.set){
+                            CA.CapturedUsers.set(String(id), String(name), String(av||''));
+                            added++;
+                        }
+                    } catch (e) { console.error(e); }
+                });
+                CA.debug && CA.debug('[DOM capture] saved users:', added);
+            } catch (e) { console.error(e); }
+        }
+        function attach(){
+            try{
+                let target = document.getElementById('container_user') || document.querySelector('#container_user');
+                if (!target){ setTimeout(attach, 300); return; }
+                let obs = new MutationObserver(function(){ scan(); });
+                obs.observe(target, { childList: true, subtree: true });
+                CA.debug && CA.debug('[DOM capture] observer attached');
+                // initial scans
+                setTimeout(scan, 0);
+                setTimeout(scan, 600);
+                setTimeout(scan, 2000);
+            } catch (e) { console.error(e); }
+        }
+        if (document.readyState !== 'loading') attach();
+        else document.addEventListener('DOMContentLoaded', attach);
+    } catch (e) { console.error(e); }
 })();
