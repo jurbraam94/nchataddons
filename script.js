@@ -66,7 +66,7 @@
 
     /** Safe JSON.parse that returns {} on failure */
     function parseJSONOrEmpty(str){
-        try { return JSON.parse(String(str)); } catch (e) { try { console.error(e); } catch (__) {} return {}; }
+        try { return JSON.parse(String(str)); } catch (e) { try { console.error(e); } catch (_) {} return {}; }
     }
 
     /** @param {any} x @returns {PrivLogItem} */
@@ -117,64 +117,6 @@
             plogs
         };
     }
-    /* ====== End normalizers (added) ====== */
-
-
-
-
-
-    /* ===== Smart localStorage helpers (auto JSON detect) ===== */
-    /**
-     * Safely get a value from localStorage.
-     * - Automatically parses JSON if the value looks like JSON.
-     * @param {string} key
-     * @returns {any|null}
-     */
-    function safeGetRaw(key) {
-        try {
-            const raw = localStorage.getItem(key);
-            if (raw == null) return null;
-
-            const trimmed = String(raw).trim();
-            // Auto-detect JSON and parse if possible
-            if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
-                try {
-                    return JSON.parse(trimmed);
-                } catch {
-                    return raw; // return as-is if parsing fails
-                }
-            }
-
-            return raw;
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    }
-
-    /**
-     * Safely set a value in localStorage.
-     * - Automatically stringifies objects/arrays, leaves primitives as strings.
-     * @param {string} key
-     * @param {any} value
-     */
-    function safeSetRaw(key, value){
-        try{
-            const toStore = (typeof value === 'string') ? value : JSON.stringify(value == null ? {} : value);
-            localStorage.setItem(key, toStore);
-            return true;
-        }catch(e){ console.error(e); return false; }
-    }
-
-    /**
-     * Safely remove a key from localStorage.
-     * @param {string} key
-     */
-    function safeRemoveItem(key){
-        try{ localStorage.removeItem(key); }catch(e){ try{console.error(e);}catch(__){} }
-    }
-
-
 
     // ---------- Namespace and Modules ----------
     // Small, incremental refactor: add a namespace and a Drafts module for better structure
@@ -186,69 +128,61 @@
         }
     };
     CA.Drafts = {
-        save: function(which, value){
-            try {
-                let k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific : CA.Const.STORAGE_KEYS.draftBroadcast;
-                sessionStorage.setItem(k, String(value || ''));
-            } catch (e) {console.error(e);
-            }
+        save(which, value){
+            const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific
+                : CA.Const.STORAGE_KEYS.draftBroadcast;
+            CA.Store.set(k, value == null ? '' : String(value));
         },
-        load: function(which){
-            try {
-                const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific : CA.Const.STORAGE_KEYS.draftBroadcast;
-                return sessionStorage.getItem(k) || '';
-            } catch (e) {console.error(e);
-                return ''; }
+        load(which){
+            const k = which === 'specific' ? CA.Const.STORAGE_KEYS.draftSpecific
+                : CA.Const.STORAGE_KEYS.draftBroadcast;
+            return String(CA.Store.get(k, ''));
         },
-        restoreInputs: function(sMsgEl, bMsgEl){
-            try {
-                const d1 = CA.Drafts.load('specific');
-                const d2 = CA.Drafts.load('broadcast');
-                if(sMsgEl && d1) sMsgEl.value = d1;
-                if(bMsgEl && d2) bMsgEl.value = d2;
-            } catch (e) {console.error(e);
-            }
+        restoreInputs(sMsgEl, bMsgEl){
+            const d1 = CA.Drafts.load('specific');
+            const d2 = CA.Drafts.load('broadcast');
+            if (sMsgEl && d1) sMsgEl.value = d1;
+            if (bMsgEl && d2) bMsgEl.value = d2;
         }
     };
-
 
     // ---------- Centralized safe localStorage helpers ----------
-    CA.Safe = {
-        getItem(key) {
-            return safeGetRaw(key);
-        },
-        setItem(key, val) {
-            safeSetRaw(key, String(val));
-        },
-        getJSON(key, fallback) {
+    CA.Store = {
+        /** Raw get; auto-parses JSON if detected */
+        get(key){
             try {
-                const raw = safeGetRaw(key);
-                if (!raw) return (fallback === undefined ? {} : fallback);
-                const v = raw;
-                return (v == null ? (fallback === undefined ? {} : fallback) : v);
-            } catch (e) {console.error(e);
-                return (fallback === undefined ? {} : fallback);
+                const raw = localStorage.getItem(key);
+                if (raw == null) return null;
+
+                const trimmed = String(raw).trim();
+                // Auto-detect JSON and parse if possible
+                if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
+                    try {
+                        return JSON.parse(trimmed);
+                    } catch {
+                        return raw; // return as-is if parsing fails
+                    }
+                }
+
+                return raw;
+            } catch (e) {
+                console.error(e);
+                return null;
             }
         },
-        setJSON(key, obj) {
-            safeSetRaw(key, obj || {});
+        /** Raw set; accepts strings or objects */
+        set(key, value){
+            try{
+                const toStore = (typeof value === 'string') ? value : JSON.stringify(value == null ? {} : value);
+                localStorage.setItem(key, toStore);
+                return true;
+            }catch(e){ console.error(e); return false; }
+        },
+        remove(key) {
+            try{ localStorage.removeItem(key); }catch(e){ try{console.error(e);}catch(__){} }
         }
     };
-    CA.Store = {
-        get(key, fallback = '') {
-            const v = CA.Safe.getItem(key);
-            return v == null ? fallback : v;
-        },
-        set(key, val) {
-            CA.Safe.setItem(key, val);
-        },
-        getJSON(key, fallback) {
-            return CA.Safe.getJSON(key, fallback);
-        },
-        setJSON(key, obj) {
-            CA.Safe.setJSON(key, obj);
-        }
-    };
+
 // ---------- Persistent captured users (id -> {name, avatar}) ----------
     (function () {
         try {
@@ -257,11 +191,11 @@
 
             function load() {
                 try {
-                    if (CA && CA.Store && typeof CA.Store.getJSON === 'function') {
-                        return CA.Store.getJSON(KEY, {});
+                    if (CA && CA.Store && typeof CA.Store.get === 'function') {
+                        return CA.Store.get(KEY, {});
                     }
                     try {
-                        return safeGetRaw(KEY) ?? {};
+                        return CA.Store.get
                     } catch (e) {
                         return {};
                     }
@@ -273,11 +207,11 @@
 
             function save(map) {
                 try {
-                    if (CA && CA.Store && typeof CA.Store.setJSON === 'function') {
-                        return CA.Store.setJSON(KEY, map || {});
+                    if (CA && CA.Store && typeof CA.Store.set === 'function') {
+                        return CA.Store.set(KEY, map || {});
                     }
                     try {
-                        safeSetRaw(KEY, map || {});
+                        CA.Store.set(KEY, map || {});
                     } catch (e) {}
                 } catch (e) {
                     console.error(e);
@@ -343,8 +277,8 @@
         try{
             const KEY = '321chataddons.debug';
             const Store = (typeof CA !== 'undefined' && CA && CA.Store) ? CA.Store : {
-                get: (k, fb) => { try{ const v = safeGetRaw(k); return v==null?fb:v; } catch (e) { return fb; } },
-                set: (k, v)   => { try{ safeSetRaw(k, String(v)); } catch (e) {} }
+                get: (k, fb) => { try{ const v =CA.Store.get(k); return v==null?fb:v; } catch (e) { return fb; } },
+                set: (k, v)   => { try{ CA.Store.get(k, String(v)); } catch (e) {} }
             };
             CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
             CA.Debug = CA.Debug || {
@@ -576,14 +510,14 @@
 
     const getGlobalWatermark = function (){
         try {
-            return safeGetRaw(GLOBAL_WATERMARK_KEY) || '';
+            return CA.Store.get(GLOBAL_WATERMARK_KEY) || '';
         } catch (e) {console.error(e);
             return ''; }
     }
 
     const setGlobalWatermark = function (dateStr){
         try {
-            if(dateStr) safeSetRaw(GLOBAL_WATERMARK_KEY, String(dateStr));
+            if(dateStr) CA.Store.set(GLOBAL_WATERMARK_KEY, String(dateStr));
         } catch (e) {console.error(e);
         }
     }
@@ -858,8 +792,8 @@
     const hashMessage = function (s){let h=5381; s=String(s); for(let i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);} return (h>>>0).toString(36);}
     const NS = location.host + (window.curPage||'') + ':';
     const keyForHash = function (h){return STORAGE_PREFIX+NS+h;}
-    const setLast = function (h){safeSetRaw(LAST_HASH_KEY,h);}
-    const getLast = function (){try {return safeGetRaw(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
+    const setLast = function (h){CA.Store.set(LAST_HASH_KEY,h);}
+    const getLast = function (){try {return CA.Store.get(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
         return ''}}
     const markSent = function (el){
         try {
@@ -877,7 +811,7 @@
     /* ---------- Exclusion checkboxes (persisted) ---------- */
     const EXC_KEY='321chataddons.excluded';
     const loadExcluded = function () {
-        const raw = safeGetRaw(EXC_KEY);
+        const raw =CA.Store.get(EXC_KEY);
         if (!raw) return {};
         const arr = Array.isArray(raw) ? raw : [];
         const map = {};
@@ -887,19 +821,19 @@
         }
         return map;
     };
-const saveExcluded = function (map){  let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); safeSetRaw(EXC_KEY, arr); };
-const EXCLUDED=loadExcluded();
+    const saveExcluded = function (map){  let arr=[],k; for(k in map) if(map.hasOwnProperty(k)&&map[k]) arr.push(k); CA.Store.set(EXC_KEY, arr); };
+    const EXCLUDED=loadExcluded();
 
 // Global "already messaged" list (applies to any message)
-const SENT_ALL_KEY='321chataddons.sent.all';
-const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
-    const saveSentAll = function (map){ safeSetRaw(SENT_ALL_KEY, map); }
+    const SENT_ALL_KEY='321chataddons.sent.all';
+    const loadSentAll = function (){ return CA.Store.get(SENT_ALL_KEY) || {} }
+    const saveSentAll = function (map){ CA.Store.set(SENT_ALL_KEY, map); }
     let SENT_ALL = loadSentAll();
 
     // Track conversations that have been replied to
     const REPLIED_CONVOS_KEY='321chataddons.repliedConversations';
-    const loadRepliedConvos = function (){ return (safeGetRaw(REPLIED_CONVOS_KEY) || {}) }
-    const saveRepliedConvos = function (map){ safeSetRaw(REPLIED_CONVOS_KEY, map); }
+    const loadRepliedConvos = function (){ return (CA.Store.get(REPLIED_CONVOS_KEY) || {}) }
+    const saveRepliedConvos = function (map){ CA.Store.set(REPLIED_CONVOS_KEY, map); }
     const REPLIED_CONVOS = loadRepliedConvos();
 
     // Global user map: ID -> {name, avatar}
@@ -980,9 +914,9 @@ const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
 
     // Persisted per-user last processed pcount to avoid refetching same batch
     const LAST_PCOUNT_MAP_KEY='321chataddons.lastPcountPerConversation';
-    const loadLastPcountMap = function (){ try { let raw=safeGetRaw(LAST_PCOUNT_MAP_KEY); return raw ? (raw||{}) : {}; } catch (e) {console.error(e);
+    const loadLastPcountMap = function (){ try { let raw=CA.Store.get(LAST_PCOUNT_MAP_KEY); return raw ? (raw||{}) : {}; } catch (e) {console.error(e);
         return {}; } }
-    const saveLastPcountMap = function (map){ safeSetRaw(LAST_PCOUNT_MAP_KEY, map||{}); }
+    const saveLastPcountMap = function (map){ CA.Store.set(LAST_PCOUNT_MAP_KEY, map||{}); }
     const LAST_PCOUNT_MAP = loadLastPcountMap();
     const getLastPcountFor = function (uid){ try { return (LAST_PCOUNT_MAP && Number(LAST_PCOUNT_MAP[uid]))||0; } catch (e) {console.error(e);
         return 0; } }
@@ -995,14 +929,14 @@ const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
 
     const loadDisplayedLogIds = function (){
         try {
-            let raw=safeGetRaw(DISPLAYED_LOGIDS_KEY);
+            let raw=CA.Store.get(DISPLAYED_LOGIDS_KEY);
             return raw ? (raw||{}) : {};
         } catch (e) {console.error(e);
             return {}; }
     }
 
     const saveDisplayedLogIds = function (map){
-        safeSetRaw(DISPLAYED_LOGIDS_KEY, map||{});
+        CA.Store.set(DISPLAYED_LOGIDS_KEY, map||{});
     }
 
     const DISPLAYED_LOGIDS = loadDisplayedLogIds();
@@ -1449,18 +1383,18 @@ const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
         // Do not persist presence events on disk
         if (kind === 'login' || kind === 'logout') return;
         let arr=[];
-        try { let raw=safeGetRaw(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
+        try { let raw=CA.Store.get(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
         arr.unshift({ts:ts, kind:kind, details:details});
         if(arr.length>LOG_MAX) arr=arr.slice(0,LOG_MAX);
-        safeSetRaw(LOG_STORE_KEY, arr);
+        CA.Store.set(LOG_STORE_KEY, arr);
     }
 
 
     const restoreLog = function (){
         if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
         let arr=[];
-        try { const raw=safeGetRaw(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
+        try { const raw=CA.Store.get(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
         $logBoxSent.innerHTML='';
 
@@ -1566,7 +1500,7 @@ const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
             if($logBoxSent) $logBoxSent.innerHTML='';
             if($logBoxReceived) $logBoxReceived.innerHTML='';
             if($logBoxPresence) $logBoxPresence.innerHTML='';
-            try {safeRemoveItem(LOG_STORE_KEY);} catch (e) {console.error(e);
+            try {CA.Store.remove(LOG_STORE_KEY);} catch (e) {console.error(e);
             }
         });
     }
@@ -1751,7 +1685,7 @@ const loadSentAll = function (){ return safeGetRaw(SENT_ALL_KEY) || {} }
     /* Reset tracking (per message) */
     const resetForText = function (text, statEl){
         let t=trim(text); if(!t) return false;
-        let h=hashMessage(t); safeRemoveItem(keyForHash(h)); setLast(h);
+        let h=hashMessage(t); CA.Store.remove(keyForHash(h)); setLast(h);
         if(statEl) statEl.textContent='Cleared sent-tracking for this message.';
         return true;
     }
