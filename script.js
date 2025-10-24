@@ -190,8 +190,8 @@
         }
     };
 
-    CA.CapturedUsers = {
-        KEY: '321chataddons.capturedUsers',
+    CA.Users = {
+        KEY: '321chataddons.users',
 
         has(id) {
             if (!id) return false;
@@ -202,6 +202,40 @@
                 console.error(e);
                 return false;
             }
+        },
+
+        async fetch(name) {
+            console.warn('User not found. Looking through a remote search on the website.');
+            const usersFromRemote = await searchUsersRemote(name);
+            console.log('Remote search results:', usersFromRemote);
+            return usersFromRemote.length > 0 ? usersFromRemote[0] : null;
+        },
+
+        async getOrFetch(id) {
+            let user = CA.Users.get(id);
+            if (user) {
+                return user;
+            }
+
+            return await fetch(name);
+        },
+
+        async getOrFetchByName(name) {
+            // 2️⃣ Try lookup by name in the captured users map
+            if (name) {
+                const map = CA.Store.get(CA.Users.KEY) || {};
+                const found = Object.entries(map).find(([_, v]) =>
+                    String(v.name || '').toLowerCase() === String(name).toLowerCase()
+                );
+
+                if (found) {
+                    const [foundId, user] = found;
+                    return { id: foundId, ...user };
+                }
+
+                return await fetch(name);
+            }
+
         },
 
         get(id) {
@@ -705,25 +739,7 @@
         } catch (e) {console.error(e);
             return ''; }
     }
-    const findFemaleByUsername = async function (query){
-        let q=norm(query); if(!q) return [];
-        let c=getContainer(); if(!c) return [];
-        let els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c), out=[];
-        for(let i=0;i<els.length;i++){
-            let id=getUserId(els[i]); if(!id) continue;
-            let name=norm(extractUsername(els[i])); if(!name) continue;
-            if(name===q || name.indexOf(q)>-1) out.push({el:els[i],id:id,name:name});
-        }
-        if(out[0]) {
-            return out[0];
-        }
-        else {
-            console.warn('User not found (female). Looking through a remote search on the website.');
-            const usersFromRemote = await searchUsersRemote(q);
-            console.log('Remote search results:', usersFromRemote);
-            return usersFromRemote.length > 0 ? usersFromRemote[0] : null;
-        }
-    }
+
     const collectFemaleIds = function (){
         let c=getContainer(); if(!c) return [];
         let els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c), out=[];
@@ -779,11 +795,12 @@
                 headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','Accept':'*/*','X-Requested-With':'XMLHttpRequest','X-CA-OWN':'1'},
                 body: body
             }).then(function(res){ return res.text(); })
-                .then(function(html){ resolve(parseSearchHTML(html)); })
+                .then(function(html){ resolve(parseUserSearchHTML(html)); })
                 .catch(function(){ resolve([]); });
         });
     }
-    const parseSearchHTML = function (html){
+
+    const parseUserSearchHTML = function (html){
         let tmp=document.createElement('div'); tmp.innerHTML=html;
         let nodes=tmp.querySelectorAll('.user_item[data-id]'); let out=[];
         for(let i=0;i<nodes.length;i++){
@@ -804,16 +821,18 @@
     const setLast = function (h){CA.Store.set(LAST_HASH_KEY,h);}
     const getLast = function (){try {return CA.Store.get(LAST_HASH_KEY)||'';} catch (e) {console.error(e);
         return ''}}
-    const markSent = function (el){
+
+    const markSent = function (uid){
         try {
-            if(!el) return;
-            el.classList.add('chataddons-sent');
-            el.style.setProperty('outline','2px solid #8bc34a66','important');
-            el.style.setProperty('border-radius','8px','important');
-            let id = getUserId(el);
-            if(id){ ensureSentChip(el, !!SENT_ALL[id]); }
+            const userEl = findUserElementById(uid)
+            if(!userEl) return;
+            userEl.classList.add('chataddons-sent');
+            userEl.style.setProperty('outline','2px solid #8bc34a66','important');
+            userEl.style.setProperty('border-radius','8px','important');
+            ensureSentChip(uid, !!SENT_ALL[uid]);
             resortUserList();
-        } catch (e) {console.error(e);
+        } catch (e) {
+            console.error(e);
         }
     }
 
@@ -844,23 +863,6 @@
     const loadRepliedConvos = function (){ return (CA.Store.get(REPLIED_CONVOS_KEY) || {}) }
     const saveRepliedConvos = function (map){ CA.Store.set(REPLIED_CONVOS_KEY, map); }
     const REPLIED_CONVOS = loadRepliedConvos();
-
-    // Global user map: ID -> {name, avatar}
-    const USER_MAP = {};
-
-    const getUserFromMap = function (uid){
-        try {
-            if(!uid) return {name: '', avatar: ''};
-            let user = USER_MAP[uid];
-            if(!user) return {name: String(uid), avatar: ''}; // Fallback to ID as name
-            return {
-                name: user.name || String(uid),
-                avatar: user.avatar || ''
-            };
-        } catch (e) {console.error(e);
-            return {name: String(uid), avatar: ''};
-        }
-    }
 
     // Mark all received messages from a specific user as replied
     const markConversationAsReplied = function (uid){
@@ -976,18 +978,36 @@
             return false; }
     }
 
-    // Visual chip on user list items when already messaged
-    const ensureSentChip = function (el, on){
+    /**
+     * Find a .user_item element by its data-id attribute.
+     * @param {string|number} id - The user ID to search for.
+     * @param {ParentNode} [root=document] - Optional root element to limit the search.
+     * @returns {HTMLElement|null} The matching user element or null if not found.
+     */
+    function findUserElementById(id, root = document) {
+        if (!id) return null;
         try {
-            if(!el) return;
-            let chip = el.querySelector('.ca-sent-chip');
+            return root.querySelector(`.user_item[data-id="${id}"]`);
+        } catch (e) {
+            console.error('findUserElementById failed:', e);
+            return null;
+        }
+    }
+
+    // Visual chip on user list items when already messaged
+    const ensureSentChip = function (uid, on){
+        const userEl = findUserElementById(uid);
+        try {
+            if(!userEl) return;
+
+            let chip = userEl.querySelector('.ca-sent-chip');
             if(on){
                 if(!chip){
                     isMakingOwnChanges = true;
                     chip = document.createElement('span');
                     chip.className = 'ca-sent-chip';
                     chip.textContent = '✓';
-                    el.appendChild(chip);
+                    userEl.appendChild(chip);
                     setTimeout(function(){ isMakingOwnChanges = false; }, 10);
                 } else {
                     chip.textContent = '✓';
@@ -999,15 +1019,17 @@
                     setTimeout(function(){ isMakingOwnChanges = false; }, 10);
                 }
             }
-        } catch (e) {console.error(e);
+        } catch (e) {
+            console.error(e);
         }
     }
+
     const updateSentBadges = function (){
         try {
             let c=getContainer(); if(!c) return;
             qsa('.user_item', c).forEach(function(el){
                 let id=getUserId(el);
-                ensureSentChip(el, !!(id && SENT_ALL[id]));
+                ensureSentChip(id, !!(id && SENT_ALL[id]));
             });
         } catch (e) {console.error(e);
         }
@@ -1070,7 +1092,7 @@
                 let el = els[i];
                 ensureCheckboxOn(el);
                 let id = getUserId(el);
-                ensureSentChip(el, !!(id && SENT_ALL[id]));
+                ensureSentChip(id, !!(id && SENT_ALL[id]));
             }
             resortUserList();
         } catch (e) {console.error(e);
@@ -1248,6 +1270,13 @@
                 /* ignore */ }
         }
 
+        // 4) Build the entry (using innerHTML for the details span to render HTML)
+        const klass = 'ca-log-' + kind;
+        const isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ca-log-entry ' + klass;
+
         // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
         if(kind === 'pv' && targetBox.id === 'ca-log-box-received'){
             let hasReplied = false;
@@ -1265,14 +1294,15 @@
                 ? document.getElementById('ca-log-received-replied')
                 : document.getElementById('ca-log-received-unreplied');
             if(subTarget) targetBox = subTarget;
+
+            if(typeof SENT_ALL==='object' && SENT_ALL && SENT_ALL[uid]){
+                const badge = document.createElement('span');
+                badge.className = 'ca-badge-sent';
+                badge.title = 'Already messaged';
+                badge.textContent = '✓';
+                wrapper.appendChild(badge);
+            }
         }
-
-        // 4) Build the entry (using innerHTML for the details span to render HTML)
-        const klass = 'ca-log-' + kind;
-        const isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'ca-log-entry ' + klass;
 
         const tsEl = document.createElement('span');
         tsEl.className = 'ca-log-ts';
@@ -1365,13 +1395,7 @@
             dm.textContent = 'dm';
             wrapper.appendChild(dm);
 
-            if(typeof SENT_ALL==='object' && SENT_ALL && SENT_ALL[uid]){
-                const badge = document.createElement('span');
-                badge.className = 'ca-badge-sent';
-                badge.title = 'Already messaged';
-                badge.textContent = '✓';
-                wrapper.appendChild(badge);
-            }
+
         } catch (e) {console.error(e);
             /* ignore */ }
     }
@@ -1662,7 +1686,7 @@
                 resolve([]);
                 return;
             }
-            return  await findFemaleByUsername(q);
+            return await CA.Users.getOrFetchByName(q);
         });
     }
     const buildBroadcastList = function (){
@@ -1811,7 +1835,7 @@
         collectFemaleIds().forEach(function(it){
             currentFemales.set(it.id, it.name||'');
             // Also populate user map
-            CA.CapturedUsers.set(it.id, it.name, extractAvatar(it.el));
+            CA.Users.set(it.id, it.name, extractAvatar(it.el));
         });
     }
     let didInitialLog = false;
@@ -1853,7 +1877,7 @@
             let av=extractAvatar(el);
 
             // Update user map with latest info
-            CA.CapturedUsers.set(id, nm, av);
+            CA.Users.set(id, nm, av);
 
             if(!wasPresent){
                 // New user appeared
@@ -1870,7 +1894,7 @@
             }
 
             // Chip if already messaged
-            ensureSentChip(el, !!(SENT_ALL && SENT_ALL[id]));
+            ensureSentChip(id, !!(SENT_ALL && SENT_ALL[id]));
         });
     }
 
@@ -2306,12 +2330,11 @@
                 if(!content || !targetId) return;
 
                 // Look up username and avatar from user map
-                const userInfo = getUserFromMap(targetId);
+                const userInfo = CA.Users.get(targetId);
                 const targetName = userInfo.name;
                 const targetAvatar = userInfo.avatar;
                 SENT_ALL[targetId]=1; saveSentAll(SENT_ALL);
-                const user = findFemaleByUsername(targetName);
-                if(user.el) markSent(user.el);
+                markSent(targetId);
 
                 console.log(LOG, 'Intercepted native message send to', targetName, '(ID:', targetId, ')');
 
@@ -2720,7 +2743,7 @@
                         if(uidInput) userId = uidInput.value;
                     }
                     if (userId && userName) {
-                        CA.CapturedUsers.set(userId, userName, userAvatar);
+                        CA.Users.set(userId, userName, userAvatar);
                     }
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Extract private box user info error:', e);
@@ -2795,7 +2818,7 @@
                             } catch (e) {}
                         }
                         if (id && name){
-                            CA.CapturedUsers.set(id, name, av);
+                            CA.Users.set(id, name, av);
                             added++;
                         }
                     } catch (e) { console.error(e); }
