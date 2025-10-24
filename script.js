@@ -81,15 +81,19 @@
 
         upsert(user) {
             const arr = this.list();
-            const idx = arr.findIndex(u => u.id === user.id);
-            if (idx >= 0) arr[idx] = { ...arr[idx], ...user };
-            else arr.push(user);
+            const idx = arr.findIndex(u => String(u.uid) === String(user.uid));
+            if (idx >= 0) {
+                arr[idx] = { ...arr[idx], ...user };
+            }
+            else {
+                arr.push({ uid: String(user.uid), name: String(user.name || user.uid), avatar: String(user.avatar || '') });
+            }
             this.kv.set(this.cacheKey, arr);
             return user;
         }
 
         remove(id) {
-            const arr = this.list().filter(u => u.id !== id);
+            const arr = this.list().filter(u => u.uid !== id);
             this.kv.set(this.cacheKey, arr);
         }
     }
@@ -103,6 +107,7 @@
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
             this.GLOBAL_WATERMARK_KEY   = '321chataddons.global.watermark';
+            this.ACTIVITY_LOG_KEY       = '321chataddons.activityLog';
             this.STORAGE_PREFIX         = '321chataddons.pm.';              // drafts, per-message hash
             this.LAST_HASH_KEY          = this.STORAGE_PREFIX + 'lastMessageHash';
             this.USERS_KEY              = '321chataddons.users';
@@ -211,15 +216,15 @@
             if (!this.Users) {
                 // keep an in-memory index for fast lookups
                 const _index = new Map(
-                    (this.UserStore.list() || []).map(u => [String(u.id), {
-                        uid: String(u.id),
-                        name: u.name || String(u.id),
-                        avatar: u.avatar || ''
+                        (this.UserStore.list() || []).map(u => [String(u.uid), {
+                          uid: String(u.uid),
+                          name: u.name || String(u.uid),
+                          avatar: u.avatar || ''
                     }])
                 );
 
                 const _save = () => {
-                    const arr = Array.from(_index.values()).map(u => ({id: u.uid, name: u.name, avatar: u.avatar}));
+                    const arr = Array.from(_index.values()).map(u => ({uid: u.uid, name: u.name, avatar: u.avatar}));
                     this.UserStore.kv.set(this.UserStore.cacheKey, arr);
                 };
 
@@ -227,7 +232,7 @@
                     set: (id, name, avatar = '') => {
                         const rec = {uid: String(id), name: String(name || id), avatar: String(avatar || '')};
                         _index.set(rec.uid, rec);
-                        this.UserStore.upsert({id: rec.uid, name: rec.name, avatar: rec.avatar});
+                        this.UserStore.upsert({uid: rec.uid, name: rec.name, avatar: rec.avatar});
                         return rec;
                     },
                     has: (id) => _index.has(String(id)),
@@ -239,7 +244,7 @@
                         const needle = String(q || '').toLowerCase();
                         // try local first
                         const local = Array.from(_index.values()).filter(u => u.name.toLowerCase() === needle);
-                        if (local.length) return local.map(u => ({id: u.uid, name: u.name}));
+                        if (local.length) return local.map(u => ({uid: u.uid, name: u.name}));
                         // fallback to remote search the app already implements
                         return await this.searchUsersRemote(needle);
                     }
@@ -280,6 +285,7 @@
                 if (this.ui.sUser) this.Drafts.bindInput(this.ui.sUser, this.STORAGE_PREFIX + 'specificUsername');
             }
 
+            this.wireSpecificSendButton();   // enable the “Send” button in the panel
             this._wirePanelNav();
             this._wireLogClear();
 
@@ -293,7 +299,7 @@
             this.installPrivateSendInterceptor();  // <— enable intercept for native /private_process.php
             this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
 
-            this.observePrivateChatBox();
+            //this.observePrivateChatBox();
 
             this.observeDomUserList();   // ← start capturing users from the DOM list
 
@@ -377,148 +383,202 @@
         }
 
         _attachDomUserObserver() {
-            try {
-                const target =
-                    document.getElementById('container_user') ||
-                    document.querySelector('#container_user');
+            const container = this.getContainer();
+            if (!container) {
+                this._domScanUsers();            // capture whatever is present for now
+                setTimeout(() => this._attachDomUserObserver(), 300);
+                return;
+            }
 
-                if (!target) {
-                    setTimeout(() => this._attachDomUserObserver(), 300);
-                    return;
+            const mo = new MutationObserver((mutations) => {
+                try {
+                    let hasRelevant = false;
+
+                    for (const record of mutations) {
+                        // CHILD ADDED
+                        if (record.addedNodes?.length) {
+                            record.addedNodes.forEach(node => {
+                                if (node.nodeType === 1 && node.matches?.('.user_item, [data-uid]')) {
+                                    this._handleVisibilityOrGenderChange(node);
+                                    hasRelevant = true;
+                                }
+                            });
+                        }
+
+                        // CHILD REMOVED
+                        if (record.removedNodes?.length) {
+                            record.removedNodes.forEach(node => {
+                                if (node.nodeType === 1 && node.matches?.('.user_item, [data-uid]')) {
+                                    const uid = this.getUserId(node);
+                                    if (uid && this._currentFemales?.has(uid)) {
+                                        const name = this._currentFemales.get(uid) || uid;
+                                        this._currentFemales.delete(uid);
+                                        if (this._didInitialLog && this._presenceArmed) {
+                                            this.logLogout({ uid, name, avatar: '' });
+                                        }
+                                    }
+                                    hasRelevant = true;
+                                }
+                            });
+                        }
+
+                        // ATTRIBUTE CHANGES (this is what you care about for `ca-hidden`)
+                        if (record.type === 'attributes' && record.target) {
+                            const row = record.target.closest?.('.user_item, [data-uid], [data-userid], [data-id]') || record.target;
+                            if (!row) continue;
+
+                            const uid = this.getUserId(row);
+                            if (!uid) continue;
+
+                            // React to class/style/visibility flips
+                            this._handleVisibilityOrGenderChange(row);
+                            hasRelevant = true;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Observer error:', err);
                 }
+            });
 
-                if (this._domUserObs) {
-                    try { this._domUserObs.disconnect(); } catch {}
-                    this._domUserObs = null;
-                }
+            // Observe relevant mutations
+            mo.observe(container, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeOldValue: true,
+                attributeFilter: [
+                    'class',
+                    'style',
+                    'data-status',
+                    'data-online',
+                    'data-gender',
+                    'data-rank'
+                ],
+            });
 
-                this._domUserObs = new MutationObserver(() => this._domScanUsers());
-                this._domUserObs.observe(target, { childList: true, subtree: true });
-
-                this.debug && this.debug('[DOM capture] observer attached');
-
-                // initial scans (staggered to catch late content)
-                setTimeout(() => this._domScanUsers(), 0);
-                setTimeout(() => this._domScanUsers(), 600);
-                setTimeout(() => this._domScanUsers(), 2000);
-            } catch (e) { console.error(e); }
+            this._domUserObserver = mo;
         }
+
 
         observeDomUserList() {
             if (document.readyState !== 'loading') {
-                this._attachDomUserObserver();
-            } else {
-                document.addEventListener('DOMContentLoaded', () => this._attachDomUserObserver(), { once: true });
-            }
+                 this._attachDomUserObserver();
+                 this._domScanUsers();          // immediate best-effort capture
+             } else {
+                 document.addEventListener('DOMContentLoaded', () => {
+                     this._attachDomUserObserver();
+                     this._domScanUsers();      // first paint capture
+                 }, { once: true });
+             }
         }
-
-
-        /* ---------- Monitor private chat box for user info ---------- */
-        _extractPrivateBoxUserInfo() {
-            try {
-                const privateBox = document.getElementById('private_box');
-                if (!privateBox) return;
-
-                let userId = null;
-                let userName = null;
-                let userAvatar = null;
-
-                // 1) ID from #private_av[data]
-                const privateAv = document.getElementById('private_av');
-                if (privateAv) {
-                    userId = (privateAv.getAttribute('data') || '').trim() || null;
-                }
-
-                // 2) name from #private_name
-                const privateNameEl = document.getElementById('private_name');
-                if (privateNameEl) {
-                    userName = (privateNameEl.textContent || '').trim() || null;
-                }
-
-                // 3) avatar from #private_av[src]
-                if (privateAv) {
-                    userAvatar = (privateAv.getAttribute('src') || '').trim() || null;
-                }
-
-                // Fallbacks on container attrs
-                if (!userId) {
-                    userId =
-                        privateBox.getAttribute('data-uid') ||
-                        privateBox.getAttribute('data-user') ||
-                        privateBox.getAttribute('data-id') ||
-                        null;
-                }
-
-                // Fallbacks on hidden inputs
-                if (!userId) {
-                    const uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
-                    if (uidInput) userId = uidInput.value || null;
-                }
-
-                if (userId && userName) {
-                    // store in your users map
-                    this.Users?.set?.(String(userId), String(userName), userAvatar || '');
-                }
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Extract private box user info error:', e);
-            }
-        }
-
-        observePrivateChatBox() {
-            try {
-                const tryStart = () => {
-                    // Initial pass (give the page a beat)
-                    setTimeout(() => this._extractPrivateBoxUserInfo(), 500);
-
-                    const privateBox = document.getElementById('private_box');
-                    if (!privateBox) {
-                        // not mounted yet — retry in a bit
-                        setTimeout(() => this.observePrivateChatBox(), 1000);
-                        return;
-                    }
-
-                    // Avoid double-wiring
-                    if (this._privBoxObserver) {
-                        try { this._privBoxObserver.disconnect(); } catch {}
-                        this._privBoxObserver = null;
-                    }
-
-                    // Watch for relevant changes
-                    this._privBoxObserver = new MutationObserver((mutations) => {
-                        try {
-                            let shouldExtract = false;
-                            for (const mut of mutations) {
-                                if (mut.type === 'childList' && mut.addedNodes?.length) { shouldExtract = true; break; }
-                                if (mut.type === 'attributes' &&
-                                    (mut.attributeName === 'data-uid' ||
-                                        mut.attributeName === 'data-user' ||
-                                        mut.attributeName === 'data-name' ||
-                                        mut.attributeName === 'data-id' ||
-                                        mut.attributeName === 'data')) { shouldExtract = true; break; }
-                            }
-                            if (shouldExtract) this._extractPrivateBoxUserInfo();
-                        } catch (e) {
-                            console.error(e);
-                            console.error(this.LOG, 'Private box observer error:', e);
-                        }
-                    });
-
-                    this._privBoxObserver.observe(privateBox, {
-                        childList: true,
-                        subtree: true,
-                        attributes: true,
-                        attributeFilter: ['data-uid', 'data-user', 'data-name', 'data-id', 'data']
-                    });
-                };
-
-                // kick off
-                tryStart();
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Private chat box observer setup error:', e);
-            }
-        }
+        //
+        //
+        // /* ---------- Monitor private chat box for user info ---------- */
+        // _extractPrivateBoxUserInfo() {
+        //     try {
+        //         const privateBox = document.getElementById('private_box');
+        //         if (!privateBox) return;
+        //
+        //         let userId = null;
+        //         let userName = null;
+        //         let userAvatar = null;
+        //
+        //         // 1) ID from #private_av[data]
+        //         const privateAv = document.getElementById('private_av');
+        //         if (privateAv) {
+        //             userId = (privateAv.getAttribute('data') || '').trim() || null;
+        //         }
+        //
+        //         // 2) name from #private_name
+        //         const privateNameEl = document.getElementById('private_name');
+        //         if (privateNameEl) {
+        //             userName = (privateNameEl.textContent || '').trim() || null;
+        //         }
+        //
+        //         // 3) avatar from #private_av[src]
+        //         if (privateAv) {
+        //             userAvatar = (privateAv.getAttribute('src') || '').trim() || null;
+        //         }
+        //
+        //         // Fallbacks on container attrs
+        //         if (!userId) {
+        //             userId =
+        //                 privateBox.getAttribute('data-uid') ||
+        //                 privateBox.getAttribute('data-user') ||
+        //                 privateBox.getAttribute('data-id') ||
+        //                 null;
+        //         }
+        //
+        //         // Fallbacks on hidden inputs
+        //         if (!userId) {
+        //             const uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
+        //             if (uidInput) userId = uidInput.value || null;
+        //         }
+        //
+        //         if (userId && userName) {
+        //             // store in your users map
+        //             this.Users?.set?.(String(userId), String(userName), userAvatar || '');
+        //         }
+        //     } catch (e) {
+        //         console.error(e);
+        //         console.error(this.LOG, 'Extract private box user info error:', e);
+        //     }
+        // }
+        //
+        // observePrivateChatBox() {
+        //     try {
+        //         const tryStart = () => {
+        //             // Initial pass (give the page a beat)
+        //             setTimeout(() => this._extractPrivateBoxUserInfo(), 500);
+        //
+        //             const privateBox = document.getElementById('private_box');
+        //             if (!privateBox) {
+        //                 // not mounted yet — retry in a bit
+        //                 setTimeout(() => this.observePrivateChatBox(), 1000);
+        //                 return;
+        //             }
+        //
+        //             // Avoid double-wiring
+        //             if (this._privBoxObserver) {
+        //                 try { this._privBoxObserver.disconnect(); } catch {}
+        //                 this._privBoxObserver = null;
+        //             }
+        //
+        //             // Watch for relevant changes
+        //             this._privBoxObserver = new MutationObserver((mutations) => {
+        //                 try {
+        //                     let shouldExtract = false;
+        //                     for (const mut of mutations) {
+        //                         if (mut.type === 'childList' && mut.addedNodes?.length) { shouldExtract = true; break; }
+        //                         if (mut.type === 'attributes' &&
+        //                             (mut.attributeName === 'data-uid' ||
+        //                                 mut.attributeName === 'data-user' ||
+        //                                 mut.attributeName === 'data-name' ||
+        //                                 mut.attributeName === 'data-id' ||
+        //                                 mut.attributeName === 'data')) { shouldExtract = true; break; }
+        //                     }
+        //                     if (shouldExtract) this._extractPrivateBoxUserInfo();
+        //                 } catch (e) {
+        //                     console.error(e);
+        //                     console.error(this.LOG, 'Private box observer error:', e);
+        //                 }
+        //             });
+        //
+        //             this._privBoxObserver.observe(privateBox, {
+        //                 childList: true,
+        //                 subtree: true,
+        //                 attributes: true,
+        //                 attributeFilter: ['data-uid', 'data-user', 'data-name', 'data-id', 'data']
+        //             });
+        //         };
+        //
+        //         // kick off
+        //         tryStart();
+        //     } catch (e) {
+        //         console.error(e);
+        //         console.error(this.LOG, 'Private chat box observer setup error:', e);
+        //     }
+        // }
 
         /* =========================
    Private send interception
@@ -574,7 +634,7 @@
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
                 // Log to "Sent" box
-                this.logSendOK(userInfo, content);
+                this.logLine('dm-out', content, userInfo);
 
                 // Mark conversation as replied
                 this.markConversationAsReplied?.(targetId);
@@ -885,7 +945,7 @@
                     const user = (this.Users?.getOrFetch) ? await this.Users.getOrFetch(fromId) : { uid: fromId, name: String(fromId), avatar: '' };
 
                     // render
-                    this.logLine('pv', content, user);
+                    this.logLine('dm-in', content, user);
 
                     // mark id
                     if (logId) this.addDisplayedLogId?.(uid, logId);
@@ -1110,19 +1170,17 @@
             } catch (e) { console.error(e); }
         }
 
-
-        /* ===================== LOG RENDERING ===================== */
         buildLogHTML(kind, user = {}, content) {
             const link = this.userLinkHTML(user);
             const text = typeof content === 'object' ? content?.text : content;
             const status = typeof content === 'object' ? content?.status : null;
-
+            console.log(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
             switch (kind) {
-                case 'dm':
-                    return `${link} — “${this.escapeHTML(text || '')}”`;
-                case 'send-ok':
-                    return `${link} — “${this.escapeHTML(text || '')}”`;
-                case 'send-fail':
+                case 'dm-in':
+                    return `⬅️ ${link} — “${this.escapeHTML(text || '')}”`;
+                case 'dm-out':
+                    return `➡️ ${link} — “${this.escapeHTML(text || '')}”`;
+                case 'send-fail': // keep if you still log failures
                     return `${link} — failed (${String(status || 0)}) — “${this.escapeHTML(text || '')}”`;
                 case 'login':
                     return `${link} logged on`;
@@ -1131,11 +1189,6 @@
                 default:
                     return `${link} — ${this.escapeHTML(text || '')}`;
             }
-        }
-
-        logSendOK(user, text) {
-            // console.log('send-ok', text, user);
-            this.logLine('send-ok', text, user);
         }
 
         logLogin(user) {
@@ -1154,21 +1207,6 @@
             this.logLine('logout', null, user);
         }
 
-        // /* Clear buttons already handled in _wireLogClear(); if you prefer inline: */
-        // _clearAllLogsUIAndStorage() {
-        //     if (this.ui.sentBox) this.ui.sentBox.innerHTML = '';
-        //     if (this.ui.recvBox) this.ui.recvBox.innerHTML = '';
-        //     if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
-        //     try { this.Store.remove?.('321chataddons.activityLog.v1'); } catch (e) { console.error(e); }
-        // }    // /* Clear buttons already handled in _wireLogClear(); if you prefer inline: */
-        // _clearAllLogsUIAndStorage() {
-        //     if (this.ui.sentBox) this.ui.sentBox.innerHTML = '';
-        //     if (this.ui.recvBox) this.ui.recvBox.innerHTML = '';
-        //     if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
-        //     try { this.Store.remove?.('321chataddons.activityLog.v1'); } catch (e) { console.error(e); }
-        // }
-
-        /* Fallback profile URL builder */
         buildProfileUrlForId(uid) {
             try {
                 if (!uid) return '';
@@ -1184,28 +1222,119 @@
             } catch (e) { console.error(e); return ''; }
         }
 
-        /* Or attach to containers with delegation (recommended) */
         _attachLogClickHandlers(selectorList) {
-            (selectorList || '#ca-log-box-sent, #ca-log-box-received, #ca-log-box-presence')
-                .split(',')
-                .map(s => s.trim())
-                .forEach(sel => {
-                    const box = document.querySelector(sel);
-                    if (!box || box._caClickWired) return;
-                    box._caClickWired = true;
+            document.querySelectorAll(selectorList).forEach(box => {
+                if (!box || box._caClickWired) return;
+                box._caClickWired = true;
 
-                    box.addEventListener('click', (e) => {
-                        const entry = e.target?.closest?.('.ca-log-entry');
-                        if (!entry) return;
+                box.addEventListener('click', async (e) => {
+                    // 1) find the .ca-log-entry ancestor (manual walk, no closest())
+                    let node = e.target;
+                    let entry = null;
+                    while (node && node !== box) {
+                        if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
+                        node = node.parentNode;
+                    }
+                    if (!entry) return; // clicked outside an entry
+
+                    // 2) find the actionable element with [data-action] inside that entry (manual walk up to entry)
+                    let ptr = e.target;
+                    let actionEl = null;
+                    while (ptr && ptr !== entry) {
+                        if (ptr.getAttribute && ptr.hasAttribute('data-action')) { actionEl = ptr; break; }
+                        ptr = ptr.parentNode;
+                    }
+
+                    // 3) resolve uid (prefer entry's data-uid; allow override on the action element if you want)
+                    const uid = entry.getAttribute('data-uid');
+                    if (!uid) {
+                        console.error(`Provided user id was empty while trying to open profile or dm from a log line.`);
+                        return;
+                    }
+                    const user = await this.Users.getOrFetch(uid);
+
+                    // sanity check: we know this user?
+                    if (!user) {
+                        console.warn('[321ChatAddons] unknown uid:', uid);
+                        return;
+                    }
+
+                    // 4) decide the action
+                    const action = actionEl ? String(actionEl.getAttribute('data-action') || '').toLowerCase() : '';
+
+                    if (action === 'open-profile') {
                         e.preventDefault();
-                        const uid = entry.getAttribute('data-uid');
-                        if (!(this.Users?.has?.(uid))) {
-                            console.warn(`User not found: ${uid}. Aborting profile opening.`);
-                            return;
-                        }
                         this.openProfileOnHost(uid);
-                    });
+                        return;
+                    }
+
+                    if (action === 'open-dm') {
+                        e.preventDefault();
+                        this.applyLegacyAndOpenDm(user);
+                        return;
+                    }
+
+                    // 5) fallback: clicking empty area of the entry opens profile
+                    //    (remove this block if you want "no action" on background clicks)
+                    e.preventDefault();
+                    this.openProfileOnHost(uid);
                 });
+            });
+        }
+
+        openDmOnHost({ uid, name, avatar, entryEl }) {
+            console.log(`Open profile on host for uid=${uid}`, { uid, name, avatar, entryEl });
+
+        }
+
+        resolveHostFn(name) {
+            const fromSelf   = (typeof window[name] === 'function') ? window[name] : null;
+            const fromParent = (window.parent && typeof window.parent[name] === 'function') ? window.parent[name] : null;
+            return fromSelf || fromParent || null;
+        }
+
+        applyLegacyAndOpenDm({ uid, name, avatar }) {
+            // Legacy toggles
+            if (!this.safeSet(window, 'morePriv',   0)) return false;
+            if (!this.safeSet(window, 'privReload', 1)) return false;
+            if (!this.safeSet(window, 'lastPriv',   0)) return false;
+
+            // Legacy UI calls
+            if (!this.safeCall(window, 'closeList')) return false;
+            if (!this.safeCall(window, 'hideModal')) return false;
+            if (!this.safeCall(window, 'hideOver'))  return false;
+
+            // Host hook
+            const openDm = this.resolveHostFn('openPrivate');
+            if (!openDm) {
+                console.warn('[321ChatAddons] openPrivate() not available on host');
+                return false;
+            }
+
+            // Call openPrivate via safeCall by wrapping it in an object
+            return this.safeCall({openPrivate: openDm}, 'openPrivate', uid, name, avatar);
+        }
+
+        safeSet(obj, key, value) {
+            try {
+                if (typeof obj?.[key] === 'undefined') return true; // nothing to do
+                obj[key] = value;
+                return true;
+            } catch (e) {
+                console.error(`safeSet failed: window.${key} =`, value, e);
+                return false;
+            }
+        }
+
+        safeCall(obj, key, ...args) {
+            try {
+                if (typeof obj?.[key] !== 'function') return true; // nothing to do
+                obj[key](...args);
+                return true;
+            } catch (e) {
+                console.error(`safeCall failed: window.${key}()`, e);
+                return false;
+            }
         }
 
         openProfileOnHost(uid) {
@@ -1214,6 +1343,8 @@
                 : (window.parent && typeof window.parent.getProfile === 'function')
                     ? window.parent.getProfile
                     : null;
+
+            console.log(`Open profile on host for uid=${uid}`);
 
             if (getProfile) {
                 try {
@@ -1255,13 +1386,8 @@
             return out;
         }
 
-        /* ===================== RESET PER-MESSAGE TRACKING ===================== */
-        resetForText(text, statEl) {
-            const t = String(text || '').trim();
-            if (!t) return false;
-            const h = this._hashMessage(t);
-            this.Store.remove?.(this._keyForHash(h));
-            this._setLast(h);
+        resetForText(statEl) {
+            this._saveSentAll({});
             if (statEl) statEl.textContent = 'Cleared sent-tracking for this message.';
             return true;
         }
@@ -1274,100 +1400,109 @@
                 .then(() => this.sendPrivateMessage(id, text))
                 .then((r) => { this._lastSendAt = Date.now(); return r; });
         }
-        //
-        // /* ===================== SPECIFIC SEND BUTTON (if you keep buttons) ===================== */
-        // wireSpecificSendButton() {
-        //     if (!this.ui.sSend) return;
-        //     if (this.ui.sSend._wired) return;
-        //     this.ui.sSend._wired = true;
-        //
-        //     this.ui.sSend.addEventListener('click', () => {
-        //         const text = String(this.ui.sMsg?.value || '').trim();
-        //         if (!text) { this.ui.sStat && (this.ui.sStat.textContent = 'Type a message first.'); return; }
-        //         if (!this.ui.sUser || !String(this.ui.sUser.value || '').trim()) {
-        //             this.ui.sStat && (this.ui.sStat.textContent = 'Enter a username.');
-        //             return;
-        //         }
-        //
-        //         const h = this._hashMessage(text), last = this._getLast();
-        //         if (h !== last) this._setLast(h);
-        //
-        //         this.buildSpecificListAsync().then((list) => {
-        //             if (!list.length) { this.ui.sStat && (this.ui.sStat.textContent = 'User not found (female).'); return; }
-        //             const sentMap = this._loadSentAll();
-        //             const item = list[0];
-        //             if (sentMap[item.id]) { this.ui.sStat && (this.ui.sStat.textContent = `Already sent to ${item.name || item.id}. Change text to resend.`); return; }
-        //
-        //             this.ui.sSend.disabled = true;
-        //             this.sendWithThrottle(item.id, text).then((r) => {
-        //                 if (this.ui.sStat) this.ui.sStat.textContent = r && r.ok
-        //                     ? `Sent to ${item.name || item.id}.`
-        //                     : `Failed (HTTP ${r ? r.status : 0}).`;
-        //             }).catch(() => {
-        //                 if (this.ui.sStat) this.ui.sStat.textContent = 'Error sending.';
-        //                 this.logSendFail?.(item.name || item.id, item.id, '', 'ERR', text);
-        //             }).finally(() => {
-        //                 this.ui.sSend.disabled = false;
-        //             });
-        //         });
-        //     });
-        // }
-        //
-        // /* ===================== BROADCAST BUTTON (if you keep popup) ===================== */
-        // wireBroadcastSendButton() {
-        //     if (!this.ui.bSend || this.ui.bSend._wired) return;
-        //     this.ui.bSend._wired = true;
-        //
-        //     this.ui.bSend.addEventListener('click', () => {
-        //         const $bSend = this.ui.bSend, $bMsg = this.ui.bMsg, $bStat = this.ui.bStat;
-        //
-        //         const text = String($bMsg?.value || '').trim();
-        //         if (!text) { $bStat && ($bStat.textContent = 'Type the message first.'); return; }
-        //
-        //         const list = this.buildBroadcastList();
-        //         const sent = this._loadSentAll();
-        //         const to = [];
-        //         for (let i = 0; i < list.length; i++) if (!sent[list[i].id]) to.push(list[i]);
-        //         if (!to.length) { $bStat && ($bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).'); return; }
-        //
-        //         $bSend.disabled = true;
-        //         let ok = 0, fail = 0, B = 10, T = Math.ceil(to.length / B);
-        //
-        //         const runBatch = (bi) => {
-        //             if (bi >= T) { $bStat && ($bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`); $bSend.disabled = false; return; }
-        //             const start = bi * B, batch = to.slice(start, start + B); let idx = 0;
-        //             $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
-        //
-        //             const one = () => {
-        //                 if (idx >= batch.length) {
-        //                     if (bi < T - 1) {
-        //                         const wait = 10000 + Math.floor(Math.random() * 10000);
-        //                         $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} done — waiting ${Math.round(wait/1000)}s...`);
-        //                         return new Promise(r => setTimeout(r, wait)).then(() => runBatch(bi + 1));
-        //                     }
-        //                     return runBatch(bi + 1);
-        //                 }
-        //
-        //                 const item = batch[idx++], uname = item.name || item.id, av = this.extractAvatar(item.el);
-        //                 this.sendWithThrottle(item.id, text).then((r) => {
-        //                     if (r && r.ok) { ok++; sent[item.id] = 1; }
-        //                     else { fail++; this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text); }
-        //                     $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`);
-        //                     const delay = 2000 + Math.floor(Math.random() * 3000);
-        //                     return new Promise(r => setTimeout(r, delay));
-        //                 }).then(one).catch(() => {
-        //                     fail++; this.logSendFail?.(uname, item.id, av, 'ERR', text);
-        //                     const delay = 2000 + Math.floor(Math.random() * 3000);
-        //                     return new Promise(r => setTimeout(r, delay)).then(one);
-        //                 });
-        //             };
-        //
-        //             one();
-        //         };
-        //
-        //         runBatch(0);
-        //     });
-        // }
+
+        wireSpecificSendButton() {
+            if (!this.ui.sSend || this.ui.sSend._wired) return;
+            this.ui.sSend._wired = true;
+
+            this.ui.sSend.addEventListener('click', async () => {
+                const stat = this.ui.sStat;
+                const nameQ = String(this.ui.sUser?.value || '').trim();
+                const text  = String(this.ui.sMsg?.value  || '').trim();
+
+                if (!text)  { if (stat) stat.textContent = 'Type a message first.'; return; }
+                if (!nameQ) { if (stat) stat.textContent = 'Enter a username.';     return; }
+
+                // try local, then remote search
+                let candidates = [];
+                try {
+                    if (this.Users?.getOrFetchByName) {
+                        candidates = await this.Users.getOrFetchByName(nameQ);
+                    }
+                } catch (e) { console.error(e); }
+
+                if (!Array.isArray(candidates) || candidates.length === 0) {
+                    if (stat) stat.textContent = 'User not found (female).';
+                    return;
+                }
+
+                const target = candidates[0]; // first exact match
+                const sentMap = this._loadSentAll();
+                if (sentMap && sentMap[target.uid]) {
+                    if (stat) stat.textContent = `Already sent to ${target.name || target.uid}. Change text to resend.`;
+                    return;
+                }
+
+                this.ui.sSend.disabled = true;
+                try {
+                    const r = await this.sendWithThrottle(target.uid, text);
+                    if (stat) stat.textContent = r && r.ok
+                        ? `Sent to ${target.name || target.uid}.`
+                        : `Failed (HTTP ${r ? r.status : 0}).`;
+                } catch (err) {
+                    if (stat) stat.textContent = 'Error sending.';
+                    this.logSendFail?.(target.name || target.uid, target.uid, '', 'ERR', text);
+                } finally {
+                    this.ui.sSend.disabled = false;
+                }
+            });
+        }
+
+        /* ===================== BROADCAST BUTTON (if you keep popup) ===================== */
+        wireBroadcastSendButton() {
+            if (!this.ui.bSend || this.ui.bSend._wired) return;
+            this.ui.bSend._wired = true;
+
+            this.ui.bSend.addEventListener('click', () => {
+                const $bSend = this.ui.bSend, $bMsg = this.ui.bMsg, $bStat = this.ui.bStat;
+
+                const text = String($bMsg?.value || '').trim();
+                if (!text) { $bStat && ($bStat.textContent = 'Type the message first.'); return; }
+
+                const list = this.buildBroadcastList();
+                const sent = this._loadSentAll();
+                const to = [];
+                for (let i = 0; i < list.length; i++) if (!sent[list[i].id]) to.push(list[i]);
+                if (!to.length) { $bStat && ($bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).'); return; }
+
+                $bSend.disabled = true;
+                let ok = 0, fail = 0, B = 10, T = Math.ceil(to.length / B);
+
+                const runBatch = (bi) => {
+                    if (bi >= T) { $bStat && ($bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`); $bSend.disabled = false; return; }
+                    const start = bi * B, batch = to.slice(start, start + B); let idx = 0;
+                    $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
+
+                    const one = () => {
+                        if (idx >= batch.length) {
+                            if (bi < T - 1) {
+                                const wait = 10000 + Math.floor(Math.random() * 10000);
+                                $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} done — waiting ${Math.round(wait/1000)}s...`);
+                                return new Promise(r => setTimeout(r, wait)).then(() => runBatch(bi + 1));
+                            }
+                            return runBatch(bi + 1);
+                        }
+
+                        const item = batch[idx++], uname = item.name || item.id, av = this.extractAvatar(item.el);
+                        this.sendWithThrottle(item.id, text).then((r) => {
+                            if (r && r.ok) { ok++; sent[item.id] = 1; }
+                            else { fail++; this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text); }
+                            $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`);
+                            const delay = 2000 + Math.floor(Math.random() * 3000);
+                            return new Promise(r => setTimeout(r, delay));
+                        }).then(one).catch(() => {
+                            fail++; this.logSendFail?.(uname, item.id, av, 'ERR', text);
+                            const delay = 2000 + Math.floor(Math.random() * 3000);
+                            return new Promise(r => setTimeout(r, delay)).then(one);
+                        });
+                    };
+
+                    one();
+                };
+
+                runBatch(0);
+            });
+        }
 
         /* ===================== USER CLICK SELECTION ===================== */
         wireUserClickSelection() {
@@ -1521,14 +1656,17 @@
                             }
                         }
 
-                        if (r.type === 'attributes' && r.target && r.target.matches?.('.user_item')) {
-                            if (r.attributeName === 'data-gender' || r.attributeName === 'data-rank') {
-                                const uid = this.getUserId(r.target);
-                                if (uid && !processed.has(uid)) {
-                                    processed.add(uid);
-                                    this._handleAddedNode(r.target);
-                                    hasRelevant = true;
-                                }
+                        if (r.type === 'attributes' && r.target) {
+                            // Find the profile row: either `.user_item` or any node carrying data-uid
+                            const row = r.target.closest?.('.user_item, [data-uid]') || r.target;
+                            if (row && (row.matches?.('.user_item') || row.hasAttribute?.('data-uid'))) {
+                              const uid = this.getUserId(row);
+                              if (uid && !processed.has(uid)) {
+                                processed.add(uid);
+                                // Re-check gender + visibility whenever classes/styles/status flip
+                                this._handleVisibilityOrGenderChange(row);
+                                hasRelevant = true;
+                              }
                             }
                         }
                     });
@@ -1555,7 +1693,14 @@
                 }
             });
 
-            mo.observe(c, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-gender','data-rank'] });
+            mo.observe(c, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeOldValue: true,
+                // include class/style because presence is toggled via CSS
+                attributeFilter: ['class','style','data-status','data-online','data-gender','data-rank']
+            });
             this._moUsers = mo;
 
             // initial pass
@@ -1572,6 +1717,55 @@
             });
             ro.observe(document.body, { childList: true, subtree: true });
             this._moContainer = ro;
+        }
+
+        _handleVisibilityOrGenderChange(el) {
+            try {
+                // Accept either `.user_item` or a wrapper with data-uid
+                const row = el.closest?.('.user_item, [data-uid]') || el;
+                const uid = this.getUserId(row);
+                if (!uid) return;
+
+                const isFemale = row.getAttribute('data-gender') === this.FEMALE_CODE;
+                const visible = this.isUserVisible(row);
+                const name = this.extractUsername(row) || uid;
+                const avatar = this.extractAvatar(row);
+
+                if (uid && name && this.Users?.set) this.Users.set(uid, name, avatar);
+
+                const wasPresent = this._currentFemales.has(uid);
+
+                if (isFemale && visible && !wasPresent) {
+                    this._currentFemales.set(uid, name);
+                    if (this._didInitialLog && this._presenceArmed) {
+                        this.logLogin({ uid, name, avatar });
+                    }
+                    this.ensureSentChip?.(uid, !!(this.SENT_ALL && this.SENT_ALL[uid]));
+                } else if ((!isFemale || !visible) && wasPresent) {
+                    const prevName = this._currentFemales.get(uid) || name;
+                    this._currentFemales.delete(uid);
+                    if (this._didInitialLog && this._presenceArmed) {
+                        this.logLogout({ uid, name: prevName, avatar });
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Treat nodes with `.ca-hidden` (self or ancestor) as invisible
+        isUserVisible(el) {
+            try {
+                if (!el || el.nodeType !== 1) return false;
+                // If this node OR any ancestor is ca-hidden → invisible
+                if (el.classList?.contains('ca-hidden') || el.closest?.('.ca-hidden')) return false;
+
+                const cs = window.getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+                // offsetParent covers many hidden cases; also check size
+                if (el.offsetParent === null && (el.offsetWidth === 0 && el.offsetHeight === 0)) return false;
+                return true;
+            } catch { return true; }
         }
 
         /* ===================== CHAT TAP (partial) ===================== */
@@ -1892,7 +2086,7 @@
                     const dn = el.getAttribute('data-name');
                     if (dn) name = dn.trim();
                 }
-                out.push({ el: null, id: String(id), name });
+                out.push({ el: null, uid: String(id), name });
             }
             return out;
         }
@@ -1977,7 +2171,9 @@
         /* ---------- DOM find helper ---------- */
         findUserElementById(id, root = document) {
             if (!id) return null;
-            try { return root.querySelector(`.user_item[data-id="${id}"]`); }
+            try {
+                return root.querySelector(`.user_item[data-id="${id}"], .user_item[data-uid="${id}"], .user_item [data-id="${id}"], .user_item [data-uid="${id}"]`);
+            }
             catch (e) { console.error('findUserElementById failed:', e); return null; }
         }
 
@@ -2109,6 +2305,7 @@
                 '      <input id="ca-specific-username" class="ca-input-slim" type="text" placeholder="Enter username (case-insensitive)">'+
                 '      <button id="ca-specific-send" class="ca-btn ca-btn-slim" type="button">Send</button>'+
                 '    </div>'+
+                '    <div id="ca-specific-status" class="ca-status" style="min-height:18px"></div>'+
                 '    <textarea id="ca-specific-msg" class="ca-8" rows="3" placeholder="Type the message..."></textarea>'+
                 '  </div>'+
                 '  <hr class="ca-divider">'+
@@ -2137,7 +2334,7 @@
                 '  </div>'+
                 '</div>';
             this.appendAfterMain(h);
-            this._attachLogClickHandlers('#ca-log-box-sent #ca-log-box-received #ca-log-box-presence');
+            this._attachLogClickHandlers('#ca-log-box-sent, #ca-log-box-received, #ca-log-box-presence');
         }
 
         createBroadcastPopup() {
@@ -2193,9 +2390,10 @@
 
             if (this.ui.bReset && !this.ui.bReset._wired) {
                 this.ui.bReset._wired = true;
+
                 this.ui.bReset.addEventListener('click', (e) => {
                     e.preventDefault();
-                    this.resetForText(this.ui.bMsg ? this.ui.bMsg.value : '', this.ui.bStat);
+                    this.resetForText(this.ui.bStat);
                 });
             }
 
@@ -2210,7 +2408,7 @@
                     const list = this.buildBroadcastList();
                     const sent = this._loadSentAll();
                     const to = [];
-                    for (let i = 0; i < list.length; i++) { if (!sent[list[i].id]) to.push(list[i]); }
+                    for (let i = 0; i < list.length; i++) { if (!sent[list[i].uid]) to.push(list[i]); }
                     if (!to.length) { if ($bStat) $bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).'; return; }
 
                     $bSend.disabled = true;
@@ -2231,12 +2429,16 @@
                                     runBatch(bi+1);
                                 }
                                 return;
-                            }
+                                }
 
-                            const item = batch[idx++]
-                            this.sendWithThrottle(item.id, text).then((r) => {
-                                if (r && r.ok) { ok++; sent[item.id] = 1; }
-                                if ($bStat) $bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`;
+                                const item = batch[idx++];
+                                this.sendWithThrottle(item.uid, text).then((r) => {
+                                if (r && r.ok) {
+                                    ok++; sent[item.uid] = 1;
+                                }
+                                if ($bStat) {
+                                    $bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`;
+                                }
                                 return (this.sleep ? this.sleep(this.randBetween ? this.randBetween(2000,5000) : 2000+Math.floor(Math.random()*3000)) : new Promise(r=>setTimeout(r, 2500)));
                             }).then(one).catch(() => {
                                 const delay = this.randBetween ? this.randBetween(2000,5000) : 2500;
@@ -2287,7 +2489,7 @@
                         '</div>';
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
-                this.Store.set('321chataddons.activityLog.v1', []); // clear persisted log
+                this.Store.set(this.ACTIVITY_LOG_KEY, []); // clear persisted log
             });
         }
 
@@ -2327,82 +2529,100 @@
         }
 
         renderLogEntry(ts, kind, content, user) {
-            let targetContainer =
-                (kind === 'send-ok' || kind === 'send-fail') ? this.ui.sentBox :
-                    (kind === 'pv') ? this.ui.recvBox :
-                        (kind === 'login' || kind === 'logout') ? this.ui.presenceBox :
-                            null;
-
+            // 1) pick target container
+            let targetContainer = null;
+            switch (kind) {
+                case 'dm-out':        targetContainer = this.ui.sentBox;     break;
+                case 'dm-in':         targetContainer = this.ui.recvBox;     break;
+                case 'login':
+                case 'logout':        targetContainer = this.ui.presenceBox; break;
+                default:              targetContainer = this.ui.recvBox;     break;
+            }
             if (!targetContainer) return;
 
-            this.trimLogBoxToMax(targetContainer);
-
-            requestAnimationFrame(() => {
-                if (targetContainer) targetContainer.scrollTop = targetContainer.scrollHeight;
-            });
-
-            const detailsHTML = (this.decodeHTMLEntities ? this.decodeHTMLEntities(this.buildLogHTML(kind, user, content)) : this.buildLogHTML(kind, user, content));
-            const className = 'ca-log-' + kind;
-            const isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
-
-            const logEntryEl = document.createElement('div');
-            logEntryEl.className = 'ca-log-entry ' + className;
-            logEntryEl.setAttribute('data-uid', user.uid);
-
-            if (kind === 'pv' && targetContainer.id === 'ca-log-box-received') {
-                targetContainer = this.determineTargetMessagesContainer(user.uid, ts);
-                this.appendSentBadgeToLogEntry(logEntryEl, user.uid);
+            // 2) incoming DMs: send to "Not Replied" vs "Replied" section
+            //    (do this before DOM creation to choose the real container)
+            if (kind === 'dm-in' && targetContainer.id === 'ca-log-box-received') {
+                // target becomes either #ca-log-received-unreplied or #ca-log-received-replied
+                targetContainer = this.determineTargetMessagesContainer(user?.uid, ts) || targetContainer;
             }
 
+            // 3) enforce max entries (older removed)
+            try { this.trimLogBoxToMax?.(targetContainer); } catch {}
+
+            // 4) build details HTML (safe decode → build)
+            const html = this.buildLogHTML(kind, user || {}, content);
+            const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
+
+            // 5) entry root
+            const entry = document.createElement('div');
+            entry.className = 'ca-log-entry ' + ('ca-log-' + kind);
+            if (user && user.uid != null) entry.setAttribute('data-uid', String(user.uid));
+
+            // 6) optional: add a ✓ badge for users you already messaged (useful for dm-in)
+            if (kind === 'dm-in') {
+                try { this.appendSentBadgeToLogEntry?.(entry, user?.uid); } catch {}
+            }
+
+            // 7) timestamp (HH:MM or right part of "DD/MM HH:MM")
             const tsEl = document.createElement('span');
             tsEl.className = 'ca-log-ts';
-            tsEl.textContent = ts.split(' ')[1] || ts;
+            tsEl.textContent = (String(ts).split(' ')[1] || String(ts));
+            entry.appendChild(tsEl);
 
+            // 8) dot separator
             const dot = document.createElement('span');
             dot.className = 'ca-log-dot';
+            entry.appendChild(dot);
 
-            const text = document.createElement('span');
-            text.className = 'ca-log-text';
-            text.innerHTML = detailsHTML;
-
-            logEntryEl.appendChild(tsEl);
-            logEntryEl.appendChild(dot);
-
+            // 9) expand indicator for outgoing (optional – keep if you collapse long items)
+            const isSentMessage = (kind === 'dm-out');
             if (isSentMessage) {
                 const exp = document.createElement('span');
                 exp.className = 'ca-expand-indicator';
                 exp.title = 'Click to expand/collapse';
                 exp.textContent = '▾';
-                logEntryEl.appendChild(exp);
+                entry.appendChild(exp);
             }
 
-            logEntryEl.appendChild(text);
+            // 10) message text (trusted via buildLogHTML → innerHTML)
+            const text = document.createElement('span');
+            text.className = 'ca-log-text';
+            text.innerHTML = detailsHTML;
+            entry.appendChild(text);
 
-            // most recent at top per your original (prepend)
-            targetContainer.prepend(logEntryEl);
-
+            // 11) optional: add a small “dm” link on the right if you use it to open chat
             const dm = document.createElement('a');
             dm.className = 'ca-dm-link ca-dm-right';
             dm.href = '#';
+            dm.setAttribute('data-action', 'open-dm');
             dm.textContent = 'dm';
-            logEntryEl.appendChild(dm);
+            entry.appendChild(dm);
+
+            // 12) insert entry (newest at bottom)
+            targetContainer.appendChild(entry);
+
+            // 13) auto-scroll the box to the bottom (next frame for reliability)
+            requestAnimationFrame(() => {
+                try { targetContainer.scrollTop = targetContainer.scrollHeight; } catch {}
+            });
         }
 
         saveLogEntry(ts, kind, content, uid) {
             if (kind === 'login' || kind === 'logout') return; // don’t persist presence
             let arr = [];
-            try { const raw = this.Store.get('321chataddons.activityLog.v1'); if (raw) arr = raw || []; } catch (e) { console.error(e); }
+            try { const raw = this.Store.get(this.ACTIVITY_LOG_KEY); if (raw) arr = raw || []; } catch (e) { console.error(e); }
             arr.unshift({ ts, kind, uid, content });
             const LOG_MAX = 200;
             if (arr.length > LOG_MAX) arr = arr.slice(0, LOG_MAX);
-            this.Store.set('321chataddons.activityLog.v1', arr);
+            this.Store.set(this.ACTIVITY_LOG_KEY, arr);
         }
 
         async restoreLog() {
             if (!this.ui.sentBox || !this.ui.recvBox || !this.ui.presenceBox) return;
 
             let arr = [];
-            try { const raw = this.Store.get('321chataddons.activityLog.v1'); if (raw) arr = raw || []; } catch (e) { console.error(e); }
+            try { const raw = this.Store.get(this.ACTIVITY_LOG_KEY); if (raw) arr = raw || []; } catch (e) { console.error(e); }
 
             this.ui.sentBox.innerHTML = '';
             this.ui.recvBox.innerHTML =
@@ -2451,6 +2671,7 @@
             title="Open profile"
             data-uid="${esc(String(user.uid || ''))}"
             data-name="${esc(String(user.name || ''))}"
+            data-action="open-profile"
             data-avatar="${esc(String(user.avatar || ''))}">
             <strong>${esc(user.name || '?')}</strong>
           </a>`;
@@ -2710,7 +2931,7 @@
 
         /* ---------- Containers / lists ---------- */
         getContainer() {
-            return this.qs('#container_user') || this.qs('#chat_right_data');
+            return this.qs('#container_user') || this.qs('#chat_right_data') || this.qs('.online_user');
         }
 
         schedule(fn) {
