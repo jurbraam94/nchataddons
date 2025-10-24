@@ -8,7 +8,7 @@
     } catch (e) {}
 })();
 
-(function(){
+(async function(){
     /* =========================
      * 321ChatAddons Toolkit (with Activity Log) — initial page-load logging added
      * ========================= */
@@ -230,7 +230,7 @@
 
                 if (found) {
                     const [foundId, user] = found;
-                    return { id: foundId, ...user };
+                    return { uid: foundId, ...user };
                 }
 
                 return await fetch(name);
@@ -244,7 +244,7 @@
                 const data = CA.Store.get(this.KEY) || {};
                 const v = data[String(id)];
                 if (v && typeof v === 'object')
-                    return { name: String(v.name || ''), avatar: String(v.avatar || '') };
+                    return { uid: v.uid, name: String(v.name || ''), avatar: String(v.avatar || '') };
                 return v ? { name: String(v), avatar: '' } : null;
             } catch (e) {
                 console.error(e);
@@ -252,13 +252,14 @@
             }
         },
 
-        set(id, name, avatar) {
-            if (!id) return false;
+        set(uid, name, avatar) {
+            if (!uid) return false;
             try {
                 const data = CA.Store.get(this.KEY) || {};
-                const key = String(id);
+                const key = String(uid);
                 const prev = data[key] && typeof data[key] === 'object' ? data[key] : {};
                 data[key] = {
+                    uid: uid,
                     name: String(name || prev.name || ''),
                     avatar: String(avatar || prev.avatar || '')
                 };
@@ -471,6 +472,7 @@
         try {
             const scope = root && root.querySelectorAll ? root : document;
             const links = scope.querySelectorAll('a[href*="bit.ly"]');
+            document.querySelectorAll('.coo-widget').forEach(e => e.remove());
             if(!links || !links.length) return;
             links.forEach(function(a){
                 if(a && !a.closest('#ca-panel') && a.parentNode){
@@ -744,7 +746,7 @@
         let c=getContainer(); if(!c) return [];
         let els=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]',c), out=[];
         for(let i=0;i<els.length;i++){
-            let id=getUserId(els[i]); if(id) out.push({el:els[i],id:id,name:extractUsername(els[i])});
+            let uid=getUserId(els[i]); if(uid) out.push({el:els[i],uid:uid,name:extractUsername(els[i])});
         }
         return out;
     }
@@ -864,51 +866,40 @@
     const saveRepliedConvos = function (map){ CA.Store.set(REPLIED_CONVOS_KEY, map); }
     const REPLIED_CONVOS = loadRepliedConvos();
 
-    // Mark all received messages from a specific user as replied
-    const markConversationAsReplied = function (uid){
-        try {
-            if(!uid) return;
-            REPLIED_CONVOS[uid] = getTimeStampInWebsiteFormat();
-            saveRepliedConvos(REPLIED_CONVOS);
+    /**
+     * Mark all log entries as "replied" for a given user ID.
+     * Replaces the reply icon with a ✓ mark and moves the entry to the replied box.
+     *
+     * @param {string|number} uid - The user ID to mark as replied.
+     * @param {HTMLElement} repliedBox - The container to move replied entries into.
+     */
+    function markConversationAsReplied(uid) {
+        if (!uid) return;
+        const selector = `.log-entry[data-uid="${uid}"]`;
+        REPLIED_CONVOS[uid] = getTimeStampInWebsiteFormat();
+        saveRepliedConvos(REPLIED_CONVOS);
 
-            // Move messages from unreplied to replied section
-            const unrepliedBox = document.getElementById('ca-log-received-unreplied');
-            const repliedBox = document.getElementById('ca-log-received-replied');
+        // Move messages from unreplied to replied section
+        const unrepliedBox = document.getElementById('ca-log-received-unreplied');
+        const repliedBox = document.getElementById('ca-log-received-replied');
+        const logEntryEl = document.querySelector(selector);
 
-            if(unrepliedBox && repliedBox){
-                const entries = qsa('.ca-log-pv', unrepliedBox);
-                entries.forEach(function(entry){
-                    let userLink = entry.querySelector('.ca-user-link');
-                    if(!userLink) return;
-                    let entryUid = userLink.getAttribute('data-uid');
-                    if(entryUid === String(uid)){
-                        // Find and replace reply icon with replied mark
-                        let replyIcon = entry.querySelector('.ca-reply-icon');
-                        if(replyIcon && !entry.querySelector('.ca-replied-mark')){
-                            let uname = userLink.getAttribute('data-name') || '';
-
-                            // Create checkmark link (clickable to open chat)
-                            let mark = document.createElement('a');
-                            mark.className = 'ca-replied-mark';
-                            mark.setAttribute('data-reply','1');
-                            mark.setAttribute('data-uid', entryUid);
-                            mark.setAttribute('data-name', uname);
-                            mark.href = '#';
-                            mark.textContent = '✓';
-                            mark.title = 'Replied - Click to open chat';
-
-                            // Replace reply icon with checkmark
-                            replyIcon.parentNode.replaceChild(mark, replyIcon);
-                        }
-
-                        // Move entry to replied section
-                        repliedBox.appendChild(entry);
-                    }
-                });
-            }
-        } catch (e) {console.error(e);
-            console.error(LOG, 'Mark conversation replied error:', e);
+        if(!unrepliedBox || !repliedBox){
+            console.error('Unreplied box or replied box not found.');
+            return;
         }
+
+        const badge = document.createElement('a');
+        badge.className = 'ca-badge-sent';
+        badge.title = 'Already messaged';
+        badge.textContent = '✓';
+        badge.title = 'Replied - Click to open chat';
+        badge.href = '#';
+        logEntryEl.appendChild(badge);
+        //
+        // if (repliedBox instanceof HTMLElement) {
+        //     repliedBox.appendChild(logEntryEl);
+        // }
     }
 
     // Persisted per-user last processed pcount to avoid refetching same batch
@@ -1062,6 +1053,7 @@
         } catch (e) {console.error(e);
             return false; }
     }
+
     const ensureCheckboxOn = function (el){
         try {
             if(!el || el.getAttribute('data-gender')!==FEMALE_CODE) return;
@@ -1157,7 +1149,7 @@
             '  </div>'+
             '</div>';
         appendAfterMain(h);
-        return h;
+        attachLogClickHandlers('#ca-log-box-sent #ca-log-box-received #ca-log-box-presence');
     }
     // Popup for Broadcast
     const createBroadcastPopup = function (){
@@ -1192,10 +1184,12 @@
         if(hdr){ hdr.addEventListener('mousedown', function(e){ sx=e.clientX; sy=e.clientY; const r=pop.getBoundingClientRect(); ox=r.left; oy=r.top; document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu); }); }
         return pop;
     }
+
     const openBroadcast = function (){
         const pop=createBroadcastPopup();
         if(pop){ pop.style.display='block'; if(!openBroadcast._wired){ wireBroadcastControls(); openBroadcast._wired=true; } }
     }
+
     const wireBroadcastControls = function (){
         // rebind refs and handlers for broadcast controls inside popup
         $bMsg = qs('#ca-bc-msg'); $bSend = qs('#ca-bc-send'); $bReset = qs('#ca-bc-reset'); $bStat = qs('#ca-bc-status');
@@ -1242,66 +1236,86 @@
     /* Refs */
     const $sUser=qs('#ca-specific-username'), $sMsg=qs('#ca-specific-msg'), $sSend=qs('#ca-specific-send'), $sStat=qs('#ca-specific-status'), $sReset=qs('#ca-specific-reset');
     let $bMsg=qs('#ca-bc-msg'), $bSend=qs('#ca-bc-send'), $bStat=qs('#ca-bc-status'), $bReset=qs('#ca-bc-reset');
-    const $logBoxSent=qs('#ca-log-box-sent'), $logBoxReceived=qs('#ca-log-box-received'), $logBoxPresence=qs('#ca-log-box-presence'), $logClear=qs('#ca-log-clear');
+    const sentMessagesContainer=qs('#ca-log-box-sent'), receivedMessagesContainer=qs('#ca-log-box-received'), LoginActivityContainer=qs('#ca-log-box-presence'), $logClear=qs('#ca-log-clear');
     const $navBc=qs('#ca-nav-bc');
     if($navBc){ $navBc.addEventListener('click', function(){ openBroadcast(); }); }
 
     /* ---------- Activity Log ---------- */
     const LOG_MAX=200;
     const LOG_STORE_KEY='321chataddons.activityLog.v1';
-    // Replace the whole function
-    const renderLogEntry = function (targetBox, ts, kind, details, userId){
-        if(!targetBox) return;
 
-        // 1) Decode any HTML entities so rich content (emoticons/img) renders
-        const detailsHTML = decodeHTMLEntities(String(details || ''));
+    // --- Helpers: replied state + badge ---
 
-        // 2) If this is a received private message and we didn't get a userId,
-        //    extract it from the details markup (works for restore *and* live).
-        if(kind === 'pv'){
-            try {
-                if(!userId){
-                    let tmp = document.createElement('div');
-                    tmp.innerHTML = detailsHTML;
-                    const link = tmp.querySelector('.ca-user-link');
-                    if(link) userId = link.getAttribute('data-uid') || null;
-                }
-            } catch (e) {console.error(e);
-                /* ignore */ }
+    function hasRepliedSince(uid, msgTimestamp) {
+        try {
+            if (!uid) return false;
+            const repliedAt = REPLIED_CONVOS && REPLIED_CONVOS[uid];
+            if (!repliedAt) return false;
+
+            const repliedTime = parseLogDateToNumber(repliedAt);
+            const msgTime     = parseLogDateToNumber(msgTimestamp);
+            return !!(repliedTime && msgTime && repliedTime > msgTime);
+        } catch (e) {
+            console.error(e);
+            return false;
         }
+    }
 
-        // 4) Build the entry (using innerHTML for the details span to render HTML)
-        const klass = 'ca-log-' + kind;
-        const isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
+    function determineTargetMessagesContainer(uid, msgTimestamp) {
+        const replied = hasRepliedSince(uid, msgTimestamp);
+        return document.getElementById(
+            replied ? 'ca-log-received-replied' : 'ca-log-received-unreplied'
+        );
+    }
 
-        const wrapper = document.createElement('div');
-        wrapper.className = 'ca-log-entry ' + klass;
-
-        // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
-        if(kind === 'pv' && targetBox.id === 'ca-log-box-received'){
-            let hasReplied = false;
-
-            if (REPLIED_CONVOS[userId]) {
-                const repliedTime = parseLogDateToNumber(REPLIED_CONVOS[userId]); // numeric timestamp for replied datetime
-                const msgTime = parseLogDateToNumber(ts); // numeric timestamp for this message
-
-                // only mark as replied if repliedTime is *set* and strictly newer than message time
-                if (repliedTime && msgTime && repliedTime > msgTime) {
-                    hasReplied = true;
-                }
-            }
-            const subTarget = hasReplied
-                ? document.getElementById('ca-log-received-replied')
-                : document.getElementById('ca-log-received-unreplied');
-            if(subTarget) targetBox = subTarget;
-
-            if(typeof SENT_ALL==='object' && SENT_ALL && SENT_ALL[uid]){
+    function appendSentBadgeToLogEntry(wrapper, uid) {
+        try {
+            if (typeof SENT_ALL === 'object' && SENT_ALL && SENT_ALL[uid]) {
                 const badge = document.createElement('span');
                 badge.className = 'ca-badge-sent';
                 badge.title = 'Already messaged';
                 badge.textContent = '✓';
                 wrapper.appendChild(badge);
             }
+        } catch (e) { console.error(e); }
+    }
+
+// Optional: call this from your “message replied” hook to record the moment
+    function recordReplyNow(uid) {
+        if (!uid) return;
+        // keep format consistent with the rest of your logs
+        REPLIED_CONVOS[uid] = new Date().toLocaleString();
+    }
+
+
+    const renderLogEntry = function (ts, kind, content, user){
+        let targetContainer = (kind==='send-ok' || kind==='send-fail') ? sentMessagesContainer
+            : (kind==='pv') ? receivedMessagesContainer
+                : (kind==='login' || kind==='logout') ? LoginActivityContainer
+                    : null;
+
+        if(!targetContainer) return;
+
+        trimLogBoxToMax(targetContainer);
+        // Always auto-scroll to bottom when new entry is added (use RAF for reliability)
+        requestAnimationFrame(function(){
+            if(targetContainer) targetContainer.scrollTop = targetContainer.scrollHeight;
+        });
+
+        console.log('renderLogEntry:', targetContainer, ts, kind, content, user);
+
+        const detailsHTML = decodeHTMLEntities(buildLogHTML(kind, user, content));
+        const className = 'ca-log-' + kind;
+        const isSentMessage = (kind === 'send-ok' || kind === 'send-fail');
+
+        const logEmtryEl = document.createElement('div');
+        logEmtryEl.className = 'ca-log-entry ' + className;
+        logEmtryEl.setAttribute('data-uid', user.uid);
+
+        // 3) Route pv to "Not Replied" vs "Replied" subsection (now centralized here)
+        if (kind === 'pv' && targetContainer.id === 'ca-log-box-received') {
+            targetContainer = determineTargetMessagesContainer(user.uid, ts);
+            appendSentBadgeToLogEntry(logEmtryEl, user.uid);
         }
 
         const tsEl = document.createElement('span');
@@ -1315,113 +1329,50 @@
         text.className = 'ca-log-text';
         text.innerHTML = detailsHTML; // ← render HTML for ALL kinds
 
-        wrapper.appendChild(tsEl);
-        wrapper.appendChild(dot);
+        logEmtryEl.appendChild(tsEl);
+        logEmtryEl.appendChild(dot);
 
         if(isSentMessage){
             const exp = document.createElement('span');
             exp.className = 'ca-expand-indicator';
             exp.title = 'Click to expand/collapse';
             exp.textContent = '▾';
-            wrapper.appendChild(exp);
+            logEmtryEl.appendChild(exp);
         }
 
-        wrapper.appendChild(text);
+        logEmtryEl.appendChild(text);
 
         // Append to end so newest appears at bottom (matches existing behavior)
-        targetBox.prepend(wrapper);
+        targetContainer.prepend(logEmtryEl);
 
-
-        // 5) Post-decorate with reply/DM/badge — this already works for all kinds
-        try {
-            let a = wrapper.querySelector('.ca-user-link');
-            if(!a) return;
-            let uid = a.getAttribute('data-uid')||'';
-            let name = a.getAttribute('data-name')||'';
-            let avatar = a.getAttribute('data-avatar')||'';
-            if(!uid) return;
-
-            if(kind === 'pv'){
-                let hasReplied2 = false;
-
-                if (REPLIED_CONVOS[userId]) {
-                    const repliedTime = parseLogDateToNumber(REPLIED_CONVOS[userId]); // numeric timestamp for replied datetime
-                    const msgTime = parseLogDateToNumber(ts); // numeric timestamp for this message
-
-                    // only mark as replied if repliedTime is *set* and strictly newer than message time
-                    if (repliedTime && msgTime && repliedTime > msgTime) {
-                        hasReplied2 = true;
-                    }
-                }
-                const afterDot = wrapper.querySelector('.ca-log-dot');
-
-                if(hasReplied2){
-                    const mark = document.createElement('a');
-                    mark.className = 'ca-replied-mark';
-                    mark.setAttribute('data-reply','1');
-                    mark.setAttribute('data-uid', uid);
-                    mark.setAttribute('data-name', name);
-
-                    mark.setAttribute('data-avatar', avatar);
-                    mark.href = '#';
-                    mark.textContent = '✓';
-                    mark.title = 'Replied - Click to open chat';
-                    if(afterDot && afterDot.nextSibling){
-                        wrapper.insertBefore(mark, afterDot.nextSibling);
-                    }
-                } else {
-                    const replyIcon = document.createElement('a');
-                    replyIcon.className = 'ca-reply-icon';
-                    replyIcon.setAttribute('data-reply','1');
-                    replyIcon.setAttribute('data-uid', uid);
-                    replyIcon.setAttribute('data-name', name);
-                    replyIcon.setAttribute('data-avatar', avatar);
-                    replyIcon.href = '#';
-                    replyIcon.textContent = '↩';
-                    replyIcon.title =`Reply to ${name}`;
-                    if(afterDot && afterDot.nextSibling){
-                        wrapper.insertBefore(replyIcon, afterDot.nextSibling);
-                    }
-                }
-            }
-
-            let dm = document.createElement('a');
-            dm.className = 'ca-dm-link ca-dm-right';
-            dm.setAttribute('data-dm','1');
-            dm.setAttribute('data-uid', uid);
-            dm.setAttribute('data-name', name);
-            dm.setAttribute('data-avatar', avatar);
-            dm.href = '#';
-            dm.textContent = 'dm';
-            wrapper.appendChild(dm);
-
-
-        } catch (e) {console.error(e);
-            /* ignore */ }
+        let dm = document.createElement('a');
+        dm.className = 'ca-dm-link ca-dm-right';
+        dm.href = '#';
+        dm.textContent = 'dm';
+        logEmtryEl.appendChild(dm);
     }
 
-    const saveLogEntry = function (ts, kind, details){
+    const saveLogEntry = function (ts, kind, content, uid){
         // Do not persist presence events on disk
+        console.log(ts, kind, content, uid)
         if (kind === 'login' || kind === 'logout') return;
         let arr=[];
         try { let raw=CA.Store.get(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
-        arr.unshift({ts:ts, kind:kind, details:details});
+        arr.unshift({ts:ts, kind:kind, uid: uid, content: content});
         if(arr.length>LOG_MAX) arr=arr.slice(0,LOG_MAX);
         CA.Store.set(LOG_STORE_KEY, arr);
     }
 
-
-    const restoreLog = function (){
-        if(!$logBoxSent || !$logBoxReceived || !$logBoxPresence) return;
+    const restoreLog = async function (){
+        if(!sentMessagesContainer || !receivedMessagesContainer || !LoginActivityContainer) return;
         let arr=[];
         try { const raw=CA.Store.get(LOG_STORE_KEY); if(raw) arr=raw||[]; } catch (e) {console.error(e);
         }
-        $logBoxSent.innerHTML='';
-
+        sentMessagesContainer.innerHTML='';
 
         // Rebuild received box with subsections
-        $logBoxReceived.innerHTML =
+        receivedMessagesContainer.innerHTML =
             '<div class="ca-log-subsection-unreplied-wrapper">'+
             '  <div class="ca-log-subsection-header">Not Replied</div>'+
             '  <div id="ca-log-received-unreplied"></div>'+
@@ -1431,21 +1382,10 @@
             '  <div id="ca-log-received-replied"></div>'+
             '</div>';
 
-        // $logBoxPresence.innerHTML='';
-
-        // In restoreLog(), inside the loop:
         for(let i=arr.length-1; i>=0; i--){
             const e=arr[i];
-            if(!e || !e.kind) continue;
-            if(e.kind==='send-ok' || e.kind==='send-fail'){
-                renderLogEntry($logBoxSent, e.ts, e.kind, e.details||'');
-            } else if(e.kind==='pv'){
-                // OLD code that parsed userId can be removed.
-                // Just call renderLogEntry; it will decode + route + decorate itself.
-                renderLogEntry($logBoxReceived, e.ts, e.kind, e.details||'');
-            } else if(e.kind==='login' || e.kind==='logout'){
-                renderLogEntry($logBoxPresence, e.ts, e.kind, e.details||'');
-            }
+            const user = await CA.Users.getOrFetch(e.uid);
+            renderLogEntry(e.ts, e.kind, e.content, user);
         }
     }
     const trimLogBoxToMax = function (targetBox){
@@ -1469,64 +1409,102 @@
             console.error(LOG, 'Trim log error:', e);
         }
     }
-    const logLine = function (kind, details, userId){
+
+    const logLine = function (kind, content, user){
         const ts= getTimeStampInWebsiteFormat();
-        const target = (kind==='send-ok' || kind==='send-fail') ? $logBoxSent
-            : (kind==='pv') ? $logBoxReceived
-                : (kind==='login' || kind==='logout') ? $logBoxPresence
-                    : null;
-        if(!target) return;
-        renderLogEntry(target, ts, kind, details, userId);
-        trimLogBoxToMax(target);
-        // Always auto-scroll to bottom when new entry is added (use RAF for reliability)
-        requestAnimationFrame(function(){
-            if(target) target.scrollTop = target.scrollHeight;
-        });
+        console.log(ts, kind, content, user);
+
+        renderLogEntry(ts, kind, content, user);
+
         // Save all log types to localStorage for persistence across page reloads
-        saveLogEntry(ts, kind, details);
+        saveLogEntry(ts, kind, content, user.uid);
     }
-    const nameAndDmHtml = function (username, uid, avatar){
-        return '<a href="#" class="ca-user-link" title="Open profile" data-uid="'+escapeHTML(String(uid||''))+'" data-name="'+escapeHTML(String(username||''))+'" data-avatar="'+escapeHTML(String(avatar||''))+'"><strong>'+escapeHTML(username||'?')+'</strong></a>';
+
+    const userLinkHTML = function (user){
+        return `<a href="#"
+        class="ca-user-link"
+        title="Open profile"
+        data-uid="${escapeHTML(String(user.uid || ''))}"
+        data-name="${escapeHTML(String(user.name || ''))}"
+        data-avatar="${escapeHTML(String(user.avatar || ''))}">
+        <strong>${escapeHTML(user.name || '?')}</strong>
+      </a>`;
     }
-    const logSendOK = function (username, uid, avatar, text){
-        logLine('send-ok', nameAndDmHtml(username, uid, avatar)+' — “'+text+'”');
+
+    /**
+     * Build log message HTML dynamically by kind.
+     * @param {string} kind - Type of message ('dm', 'send-ok', 'send-fail', 'login', 'logout', etc.)
+     * @param {object} user - User info { id, name, avatar }
+     * @param {object|string} [content] - Optional content or options (can be text string or { text, status })
+     * @returns {string} HTML string
+     */
+    function buildLogHTML(kind, user = {}, content) {
+        const link = userLinkHTML(user);
+        const text = typeof content === 'object' ? content.text : content;
+        const status = typeof content === 'object' ? content.status : null;
+
+        switch (kind) {
+            case 'dm':
+                return `${link} — “${escapeHTML(text || '')}”`;
+            case 'send-ok':
+                return `${link} — “${escapeHTML(text || '')}”`;
+
+            case 'send-fail':
+                return `${link} — failed (${String(status || 0)}) — “${escapeHTML(text || '')}”`;
+
+            case 'login':
+                return `${link} logged on`;
+
+            case 'logout':
+                return `${link} logged off`;
+
+            default:
+                return `${link} — ${escapeHTML(text || '')}`;
+        }
     }
-    const logSendFail = function (username, uid, avatar, status, text){
-        logLine('send-fail', nameAndDmHtml(username, uid, avatar)+' — failed ('+String(status||0)+') — “'+text+'”');
+
+    // --- Logging wrappers (use the separate builders) ---
+
+    const logSendOK = function(user, text) {
+        console.log('send-ok', text, user);
+        logLine('send-ok', text, user);
     }
+
+    const logLogin = function (user){
+        let now = Date.now();
+        let key =`login_${user.uid}`;
+        if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
+            return; // Skip - logged too recently
+        }
+        lastPresenceLog[key] = now;
+        logLine('login', null, user);
+    }
+
+    const logLogout = function (user){
+        let now = Date.now();
+        const key =`logout_${user.uid}`;
+        if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
+            return; // Skip - logged too recently
+        }
+        lastPresenceLog[key] = now;
+        logLine('logout', null, user);
+    }
+
     // Throttle presence logging to prevent duplicates
     const lastPresenceLog = {}; // uid -> timestamp
     const PRESENCE_LOG_THROTTLE = 5000; // 5 seconds
 
-    const logLogin = function (username, uid, avatar){
-        let now = Date.now();
-        let key =`login_${uid}`;
-        if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
-            return; // Skip - logged too recently
-        }
-        lastPresenceLog[key] = now;
-        logLine('login', nameAndDmHtml(username, uid, avatar)+' logged on');
-    }
-    const logLogout = function (username, uid, avatar){
-        let now = Date.now();
-        const key =`logout_${uid}`;
-        if(lastPresenceLog[key] && (now - lastPresenceLog[key]) < PRESENCE_LOG_THROTTLE){
-            return; // Skip - logged too recently
-        }
-        lastPresenceLog[key] = now;
-        logLine('logout', nameAndDmHtml(username, uid, avatar)+' logged off');
-    }
     if($logClear){
         $logClear.addEventListener('click', function(){
-            if($logBoxSent) $logBoxSent.innerHTML='';
-            if($logBoxReceived) $logBoxReceived.innerHTML='';
-            if($logBoxPresence) $logBoxPresence.innerHTML='';
+            if(sentMessagesContainer) sentMessagesContainer.innerHTML='';
+            if(receivedMessagesContainer) receivedMessagesContainer.innerHTML='';
+            if(LoginActivityContainer) LoginActivityContainer.innerHTML='';
             try {CA.Store.remove(LOG_STORE_KEY);} catch (e) {console.error(e);
             }
         });
     }
     // Apply restored preferences now
-    restoreLog();
+    await restoreLog();
 
     // Fallback profile URL builder (only used if site function is not present)
     const buildProfileUrlForId = function (uid){
@@ -1544,131 +1522,152 @@
         } catch (e) {console.error(e);
             return ''; }
     }
-    const attachLogClickHandlers = function (box){
-        if(!box) return;
-        box.addEventListener('click', function(e){
-            // Reply icon - open chat like DM link
-            let reply = e.target && e.target.closest ? e.target.closest('a[data-reply="1"]') : null;
-            if(reply){
-                e.preventDefault();
-                const rUid = reply.getAttribute('data-uid')||'';
-                const rName = reply.getAttribute('data-name')||'';
-                // Get avatar from the user link if available
-                let rAvatar = '';
-                try {
-                    let entry = reply.closest('.ca-log-entry');
-                    if(entry){
-                        const userLink = entry.querySelector('.ca-user-link');
-                        if(userLink){
-                            rAvatar = userLink.getAttribute('data-avatar')||'';
-                        }
-                    }
-                } catch (err) {console.error(err);
-                }
-                if (rAvatar && !rAvatar.startsWith('avatar/')) {
-                    rAvatar = 'avatar/' + rAvatar;
-                }
-                let openDm = (typeof window.openPrivate==='function') ? window.openPrivate
-                    : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
-                        : null;
-                if(openDm){
-                    morePriv = 0;
-                    closeList();
-                    hideModal();
-                    hideOver();
-                    privReload = 1;
-                    lastPriv = 0;
-                    try {
-                        const rUidNum = /^\d+$/.test(rUid) ? parseInt(rUid,10) : rUid;
-                        openDm(rUidNum, rName, `${rAvatar}`);
-                    } catch (err) {console.error(err);
-                        console.error(LOG, 'Error opening private chat:', err);
-                        openDm(rUid, rName, `${rAvatar}`);
-                    }
-                }
+
+    const attachLogClickHandlers = function (logEmtryEl){
+        logEmtryEl.addEventListener('click', function(e){
+            e.preventDefault();
+            const uid = this.getAttribute('data-uid');
+
+            if(!CA.Users.has(uid)) {
+                console.warn(`User not found: ${uid}. Aborting profile opening.`);
                 return;
             }
-            // DM link
-            let dm = e.target && e.target.closest ? e.target.closest('a[data-dm="1"]') : null;
-            if(dm){
-                e.preventDefault();
-                const dUid = dm.getAttribute('data-uid')||'';
-                const dName = dm.getAttribute('data-name')||'';
-                let dAvatar = dm.getAttribute('data-avatar')||'';
-                if (dAvatar && !dAvatar.startsWith('avatar/')) {
-                    dAvatar = 'avatar/' + dAvatar;
-                }
-                const openDm = (typeof window.openPrivate==='function') ? window.openPrivate
-                    : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
-                        : null;
-                if(openDm){
-                    morePriv = 0;
-                    closeList();
-                    hideModal();
-                    hideOver();
-                    privReload = 1;
-                    lastPriv = 0;
-                    try {
-                        const dUidNum = /^\d+$/.test(dUid) ? parseInt(dUid,10) : dUid;
-                        openDm(dUidNum, dName, `${dAvatar}`);
-                    } catch (err) {console.error(err);
-                        console.error(LOG, 'Error opening private chat:', err);
-                    }
-                }
-                return;
-            }
-            // Username link opens profile via site function
-            const a = e.target && e.target.closest ? e.target.closest('a[data-uid]') : null;
-            if(a){
-                e.preventDefault();
-                let uid = a.getAttribute('data-uid')||'';
-                const getProf = (typeof window.getProfile==='function') ? window.getProfile
-                    : (window.parent && typeof window.parent.getProfile==='function') ? window.parent.getProfile
-                        : null;
-                if(getProf){
-                    try {
-                        const uidNum = /^\d+$/.test(uid) ? parseInt(uid,10) : uid;
-                        getProf(uidNum);
-                    } catch (err) {console.error(err);
-                        getProf(uid);
-                    }
-                } else {
-                    let url = buildProfileUrlForId(uid);
-                    if(url){ window.open(url, '_blank'); }
-                }
-            }
+
+            openProfileOnHost(uid)
         });
     }
-    attachLogClickHandlers($logBoxSent);
-    attachLogClickHandlers($logBoxReceived);
-    attachLogClickHandlers($logBoxPresence);
 
-    // Add expand/collapse handler for sent messages
-    if($logBoxSent){
-        $logBoxSent.addEventListener('click', function(e){
+    const openProfileOnHost = function (uid){
+        const getProfileFunctionFromHostWebsite = (typeof window.getProfile==='function') ? window.getProfile
+            : (window.parent && typeof window.parent.getProfile==='function') ? window.parent.getProfile
+                : null;
+
+        if(getProfileFunctionFromHostWebsite){
             try {
-                // Check if clicked on expand indicator or message text in a sent message
-                const entry = e.target.closest('.ca-log-send-ok, .ca-log-send-fail');
-                if(!entry) return;
-
-                const isExpandBtn = e.target.classList.contains('ca-expand-indicator');
-                const isMessageText = e.target.classList.contains('ca-log-text');
-
-                if(isExpandBtn || isMessageText){
-                    e.stopPropagation();
-                    entry.classList.toggle('ca-expanded');
-
-                    // Update indicator arrow
-                    const indicator = entry.querySelector('.ca-expand-indicator');
-                    if(indicator){
-                        indicator.textContent = entry.classList.contains('ca-expanded') ? '▴' : '▾';
-                    }
-                }
-            } catch (err) {console.error(err);
-                console.error(LOG, 'Expand/collapse error:', err);
+                const uidNum = /^\d+$/.test(uid) ? parseInt(uid,10) : uid;
+                getProfileFunctionFromHostWebsite(uidNum);
+            } catch (err) {
+                console.error(`Failed to open profile for uid ${uid}`, err);
             }
-        });
+        } else {
+            console.warn(`The open profile method could not be found on the host website. Falling back to a generic URL builder. This may not work for all sites. (uid: ${uid})`);
+            let url = buildProfileUrlForId(uid);
+            if(url){
+                window.open(url, '_blank');
+            }
+        }
     }
+
+    //
+    // const attachLogClickHandlers = function (box){
+    //     if(!box) return;
+    //     box.addEventListener('click', function(e){
+    //         // Reply icon - open chat like DM link
+    //         let reply = e.target && e.target.closest ? e.target.closest('a[data-uid]') : null;
+    //         console.error(reply);
+    //         if(reply){
+    //             e.preventDefault();
+    //             const rUid = reply.getAttribute('data-uid')||'';
+    //             const rName = reply.getAttribute('data-name')||'';
+    //             // Get avatar from the user link if available
+    //             let rAvatar = '';
+    //             try {
+    //                 let entry = reply.closest('.ca-log-entry');
+    //                 if(entry){
+    //                     const userLink = entry.querySelector('.ca-user-link');
+    //                     if(userLink){
+    //                         rAvatar = userLink.getAttribute('data-avatar')||'';
+    //                     }
+    //                 }
+    //             } catch (err) {console.error(err);
+    //             }
+    //             if (rAvatar && !rAvatar.startsWith('avatar/')) {
+    //                 rAvatar = 'avatar/' + rAvatar;
+    //             }
+    //             let openDm = (typeof window.openPrivate==='function') ? window.openPrivate
+    //                 : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
+    //                     : null;
+    //             if(openDm){
+    //                 morePriv = 0;
+    //                 closeList();
+    //                 hideModal();
+    //                 hideOver();
+    //                 privReload = 1;
+    //                 lastPriv = 0;
+    //                 try {
+    //                     const rUidNum = /^\d+$/.test(rUid) ? parseInt(rUid,10) : rUid;
+    //                     openDm(rUidNum, rName, `${rAvatar}`);
+    //                 } catch (err) {console.error(err);
+    //                     console.error(LOG, 'Error opening private chat:', err);
+    //                     openDm(rUid, rName, `${rAvatar}`);
+    //                 }
+    //             }
+    //             return;
+    //         }
+    //         // DM link
+    //         let dm = e.target && e.target.closest ? e.target.closest('a[data-dm="1"]') : null;
+    //         if(dm){
+    //             e.preventDefault();
+    //             const dUid = dm.getAttribute('data-uid')||'';
+    //             const dName = dm.getAttribute('data-name')||'';
+    //             let dAvatar = dm.getAttribute('data-avatar')||'';
+    //             if (dAvatar && !dAvatar.startsWith('avatar/')) {
+    //                 dAvatar = 'avatar/' + dAvatar;
+    //             }
+    //             const openDm = (typeof window.openPrivate==='function') ? window.openPrivate
+    //                 : (window.parent && typeof window.parent.openPrivate==='function') ? window.parent.openPrivate
+    //                     : null;
+    //             if(openDm){
+    //                 morePriv = 0;
+    //                 closeList();
+    //                 hideModal();
+    //                 hideOver();
+    //                 privReload = 1;
+    //                 lastPriv = 0;
+    //                 try {
+    //                     const dUidNum = /^\d+$/.test(dUid) ? parseInt(dUid,10) : dUid;
+    //                     openDm(dUidNum, dName, `${dAvatar}`);
+    //                 } catch (err) {console.error(err);
+    //                     console.error(LOG, 'Error opening private chat:', err);
+    //                 }
+    //             }
+    //             return;
+    //         }
+    //         // Username link opens profile via site function
+    //         const a = e.target && e.target.closest ? e.target.closest('a[data-uid]') : null;
+    //         if(a){
+    //             e.preventDefault();
+    //
+    //         }
+    //     });
+    // }
+    //
+    // // Add expand/collapse handler for sent messages
+    // if(sentMessagesContainer){
+    //     sentMessagesContainer.addEventListener('click', function(e){
+    //         try {
+    //             // Check if clicked on expand indicator or message text in a sent message
+    //             const entry = e.target.closest('.ca-log-send-ok, .ca-log-send-fail');
+    //             if(!entry) return;
+    //
+    //             const isExpandBtn = e.target.classList.contains('ca-expand-indicator');
+    //             const isMessageText = e.target.classList.contains('ca-log-text');
+    //
+    //             if(isExpandBtn || isMessageText){
+    //                 e.stopPropagation();
+    //                 entry.classList.toggle('ca-expanded');
+    //
+    //                 // Update indicator arrow
+    //                 const indicator = entry.querySelector('.ca-expand-indicator');
+    //                 if(indicator){
+    //                     indicator.textContent = entry.classList.contains('ca-expanded') ? '▴' : '▾';
+    //                 }
+    //             }
+    //         } catch (err) {console.error(err);
+    //             console.error(LOG, 'Expand/collapse error:', err);
+    //         }
+    //     });
+   // }
 
     // --- Usage ---
     CA.Drafts.bindInput($sMsg, CA.Const.STORAGE_KEYS.draftSpecific);
@@ -1690,13 +1689,13 @@
         });
     }
     const buildBroadcastList = function (){
-        let list = collectFemaleIds(), out=[], i, id, el, include;
+        let list = collectFemaleIds(), out=[], i, uid, el, include;
         for(i=0;i<list.length;i++){
-            el=list[i].el; id=list[i].id;
+            el=list[i].el; uid=list[i].uid;
             if(!isAllowedRank(el)) continue;
-            if(SENT_ALL && SENT_ALL[id]) continue; // skip users already messaged globally
+            if(SENT_ALL && SENT_ALL[uid]) continue; // skip users already messaged globally
             const cb = el ? qs('.ca-ck', el) : null;
-            include = cb ? cb.checked : !EXCLUDED[id];
+            include = cb ? cb.checked : !EXCLUDED[uid];
             if(include) out.push(list[i]);
         }
         return out;
@@ -1714,6 +1713,7 @@
 
     /* Global throttle */
     let lastSendAt = 0;
+
     const sendWithThrottle = function (id, text, minGapMs){
         if(minGapMs===void 0) minGapMs = 3500;
         let now=Date.now(); let wait = Math.max(0, minGapMs - (now - lastSendAt));
@@ -1830,18 +1830,20 @@
     /* ---------- Login/Logout logging ---------- */
     const currentFemales = new Map(); // id -> name
     let isMakingOwnChanges = false; // Flag to prevent observer loops
+
     const scanCurrentFemales = function (){
         currentFemales.clear();
         collectFemaleIds().forEach(function(it){
             currentFemales.set(it.id, it.name||'');
             // Also populate user map
-            CA.Users.set(it.id, it.name, extractAvatar(it.el));
+            CA.Users.set(it.uid, it.name, extractAvatar(it.el));
         });
     }
     let didInitialLog = false;
 
     const PRESENCE_ARM_DELAY_MS = 4000;
     let presenceArmed = false;
+
     const runInitialLogWhenReady = function (maxTries){
         if(maxTries==null) maxTries = 20; // ~2s max
         let c=getContainer();
@@ -1871,30 +1873,30 @@
         else items=qsa('.user_item[data-gender="'+FEMALE_CODE+'"]', n);
         if(!items.length) return;
         items.forEach(function(el){
-            let id=getUserId(el); if(!id) return;
-            const wasPresent = currentFemales.has(id);
-            let nm=extractUsername(el)||id;
+            let uid=getUserId(el); if(!uid) return;
+            const wasPresent = currentFemales.has(uid);
+            let nm=extractUsername(el)||uid;
             let av=extractAvatar(el);
 
             // Update user map with latest info
-            CA.Users.set(id, nm, av);
+            CA.Users.set(uid, nm, av);
 
             if(!wasPresent){
                 // New user appeared
-                currentFemales.set(id, nm);
+                currentFemales.set(uid, nm);
                 // Only log login if initial scan is complete AND this is truly a new appearance
                 // (not just a delayed initial scan item)
                 if (didInitialLog && presenceArmed) {
-                    console.log(LOG, 'New user appeared:', nm, '(ID:', id, ')');
-                    logLogin(nm, id, av);
+                    console.log(LOG, 'New user appeared:', nm, '(UID:', uid, ')');
+                    logLogin(nm, uid, av);
                 }
             } else {
                 // User already tracked, just update name if changed (no logging)
-                currentFemales.set(id, nm);
+                currentFemales.set(uid, nm);
             }
 
             // Chip if already messaged
-            ensureSentChip(id, !!(SENT_ALL && SENT_ALL[id]));
+            ensureSentChip(uid, !!(SENT_ALL && SENT_ALL[uid]));
         });
     }
 
@@ -2149,16 +2151,18 @@
                 caUpdatePrivateConversationsList(false).then((privateConversations)=>{
                     try {
                         privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-
+                        console.log(LOG, 'Private messages count:', privateConversations.length, privateConversations);
                         // Only fetch if unread > 0
                         const toFetch = privateConversations
                             .filter(pc => pc.unread > 0)
-                            .map(function(it){ return { id:String(it.id), unread:Number(it.unread)||0 }; });
+                            .map(function(it){ return { uid:String(it.uid), unread:Number(it.unread)||0 }; });
 
                         if(!toFetch.length){
                             console.log(LOG, 'None of the conversations has new messages');
                             return;
                         }
+
+                        console.log(toFetch);
 
                         console.log(LOG, 'Fetching', toFetch.length, 'conversations' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
 
@@ -2166,18 +2170,18 @@
                             for(let i=0;i<toFetch.length;i++){
                                 const conversation = toFetch[i];
                                 try {
-                                    console.log(LOG, 'Fetch chat_log for conversation', conversation.id, '— unread messages:', conversation.unread);
+                                    console.log(LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread messages:', conversation.unread);
 
-                                    let conversationChatLog = await caFetchChatLogFor(conversation.id, getLastPcountFor(conversation.id));
+                                    let conversationChatLog = await caFetchChatLogFor(conversation.uid, getLastPcountFor(conversation.uid));
                                     try {
-                                        caProcessPrivateLogResponse(conversation.id, conversationChatLog);
-                                        setLastPcountFor(conversation.id, CHAT_CTX.pcount);
+                                        await caProcessPrivateLogResponse(conversation.uid, conversationChatLog);
+                                        setLastPcountFor(conversation.uid, CHAT_CTX.pcount);
 
                                     } catch (err) {console.error(err);
                                         console.error(LOG, 'Process messages error:', err);
                                     }
                                 } catch (err) {console.error(err);
-                                    console.error(LOG, 'Fetch error for conversation', conversation.id, '—', err);
+                                    console.error(LOG, 'Fetch error for conversation', conversation.uid, '—', err);
                                 }
                             }
                         })();
@@ -2332,14 +2336,13 @@
                 // Look up username and avatar from user map
                 const userInfo = CA.Users.get(targetId);
                 const targetName = userInfo.name;
-                const targetAvatar = userInfo.avatar;
                 SENT_ALL[targetId]=1; saveSentAll(SENT_ALL);
                 markSent(targetId);
+                console.log(userInfo, targetName, content)
 
                 console.log(LOG, 'Intercepted native message send to', targetName, '(ID:', targetId, ')');
-
                 // Log to sent messages box - pass full content for HTML rendering
-                logSendOK(targetName, targetId, targetAvatar, content);
+                logSendOK(userInfo, content);
 
                 // Mark conversation as replied
                 markConversationAsReplied(targetId);
@@ -2457,7 +2460,7 @@
                     let t = (cntEl.textContent||'').trim();
                     unread = parseInt(t.replace(/\D+/g,''),10) || 0;
                 }
-                out.push({id:id, name:name, avatar:av, unread:unread});
+                out.push({uid:id, name:name, avatar:av, unread:unread});
             }
             console.log(LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
             return out;
@@ -2573,8 +2576,9 @@
                 });
         } catch (e) {console.error(e); return Promise.resolve(''); }
     }
+
     // Process a private chat_log.php response fetched by us
-    const caProcessPrivateLogResponse = function (uid, response){
+    const caProcessPrivateLogResponse = async function (uid, response){
         try {
             // Handle empty or invalid responses
             if(!response || typeof response !== 'string' || response.trim() === ''){
@@ -2654,15 +2658,13 @@
                     continue;
                 }
 
-                const uname = (t.user_name) || (fromId!=null?String(fromId):'?');
-                const av  = (t.user_tumb) || '';
                 const rawContent = (t.log_content) ? String(t.log_content) : '';
                 // Decode HTML entities (like &lt;3 to <3), then escape for safe display
                 const decodedContent = decodeHTMLEntities(rawContent);
                 const content = escapeHTML(decodedContent).replace(/\s+/g,' ').trim();
                 // Parse content as HTML to support emoticons (img tags), but keep username link escaped
-                const details = nameAndDmHtml(uname, fromId, av) + ' — ' + content;
-                logLine('pv', details, fromId);
+                const user = await CA.Users.getOrFetch(fromId);
+                logLine('pv', content, user);
 
                 // Mark this log_id as displayed
                 if(logId) addDisplayedLogId(uid, logId);
@@ -2795,7 +2797,6 @@
     console.log(LOG,'✓ 321ChatAddons ready — activity logging, message tracking, and throttled sending enabled');
 })();
 
-
 /* ===== DOM-based user list capture (observer-first) ===== */
 (function(){
     try{
@@ -2826,6 +2827,7 @@
                 CA.debug && CA.debug('[DOM capture] saved users:', added);
             } catch (e) { console.error(e); }
         }
+
         function attach(){
             try{
                 let target = document.getElementById('container_user') || document.querySelector('#container_user');
