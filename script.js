@@ -247,68 +247,87 @@
             }
         }
     };
-// ---------- Debug toggle & logger (refactored to use CA.Store directly) ----------
-    (function () {
-        try {
-            window.CA = window.CA || {};
-            const DEBUG_KEY = '321chataddons.debug';
 
-            // Persisted flag
-            const persisted = String(CA.Store.get(DEBUG_KEY) ?? '0') === '1';
 
-            CA.Debug = {
-                enabled: persisted,
-                set(on) {
-                    this.enabled = !!on;
-                    try {
-                        CA.Store.set(DEBUG_KEY, this.enabled ? '1' : '0');
-                    } catch (e) {}
-                }
-            };
+    CA.Debug = {
+        KEY: '321chataddons.debug',
 
-            // Conditional logger
-            CA.debug = function () {
-                if (CA.Debug && CA.Debug.enabled) {
-                    try { console.log.apply(console, arguments); } catch (e) {}
-                }
-            };
+        // Current enabled state (lazy-loaded from Store)
+        get enabled() {
+            return String(CA.Store.get(this.KEY) ?? '0') === '1';
+        },
 
-            // UI toggle in panel header
-            CA.ensureDebugToggle = function () {
+        set enabled(val) {
+            this.set(val);
+        },
+
+        // Explicitly toggle persistence and state
+        set(on) {
+            const state = !!on;
+            try {
+                CA.Store.set(this.KEY, state ? '1' : '0');
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        // Log only if enabled
+        log(...args) {
+            if (this.enabled) {
                 try {
-                    const panel = document.getElementById('ca-panel');
-                    if (!panel || panel.querySelector('#ca-debug-toggle')) return;
-
-                    const row = document.createElement('div');
-                    row.className = 'ca-debug-row';
-                    row.style.cssText = 'display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:4px 6px;border-bottom:1px solid rgba(0,0,0,.06);';
-
-                    const label = document.createElement('label');
-                    label.style.cssText = 'display:flex;align-items:center;gap:6px;font:12px/1.2 sans-serif;cursor:pointer;';
-
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.id = 'ca-debug-toggle';
-                    cb.checked = !!(CA.Debug && CA.Debug.enabled);
-
-                    const span = document.createElement('span');
-                    span.textContent = 'Debug logs';
-
-                    label.appendChild(cb);
-                    label.appendChild(span);
-                    row.appendChild(label);
-                    panel.insertBefore(row, panel.firstChild);
-
-                    cb.addEventListener('change', function () {
-                        if (CA && CA.Debug) CA.Debug.set(!!this.checked);
-                    });
+                    console.log(...args);
                 } catch (e) {}
-            };
+            }
+        },
 
-            // Mount toggle a bit after panel render
-            setTimeout(function () { try { CA.ensureDebugToggle(); } catch (e) {} }, 300);
-        } catch (e) {}
-    })();
+        // Inject a toggle checkbox into the panel
+        ensureToggle() {
+            try {
+                const panel = document.getElementById('ca-panel');
+                if (!panel || panel.querySelector('#ca-debug-toggle')) return;
+
+                const row = document.createElement('div');
+                row.className = 'ca-debug-row';
+                row.style.cssText =
+                    'display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:4px 6px;border-bottom:1px solid rgba(0,0,0,.06);';
+
+                const label = document.createElement('label');
+                label.style.cssText =
+                    'display:flex;align-items:center;gap:6px;font:12px/1.2 sans-serif;cursor:pointer;';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.id = 'ca-debug-toggle';
+                cb.checked = this.enabled;
+
+                const span = document.createElement('span');
+                span.textContent = 'Debug logs';
+
+                label.append(cb, span);
+                row.appendChild(label);
+                panel.insertBefore(row, panel.firstChild);
+
+                cb.addEventListener('change', () => this.set(cb.checked));
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        // Bootstraps the toggle automatically
+        init() {
+            setTimeout(() => {
+                try {
+                    this.ensureToggle();
+                } catch (e) {}
+            }, 300);
+        }
+    };
+
+    // Shortcut alias for logging
+    CA.debug = (...args) => CA.Debug.log(...args);
+
+// Initialize toggle
+    CA.Debug.init();
 
     /* ---------- Audio autoplay gate (avoid NotAllowedError before user gesture) ---------- */
     (function setup321ChatAddonsAudioGate(){
