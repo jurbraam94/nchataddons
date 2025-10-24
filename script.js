@@ -1,13 +1,8 @@
 (function(){
     try{
-        if (typeof window !== 'undefined'){
-            window.CA = window.CA || {};
-            window.CA.CAPTURED_USERS = (window.CA.CAPTURED_USERS instanceof Set) ? window.CA.CAPTURED_USERS : new Set();
-            var CAPTURED_USERS = window.CA.CAPTURED_USERS;
-            window.CAPTURED_USERS = CAPTURED_USERS; // optional global fallback
-        } else {
-            // Non-browser fallback
-            var CAPTURED_USERS = (typeof CAPTURED_USERS !== 'undefined' && CAPTURED_USERS instanceof Set) ? CAPTURED_USERS : new Set();
+        window.CA = window.CA || {};
+        if (typeof window.CA.debug !== 'function') {
+            window.CA.debug = function(){ /* debug shim: no-op until Debug module loads */ };
         }
     }catch(e){ /* ignore */ }
 })();
@@ -122,6 +117,168 @@
             CA.Safe.setJSON(key, obj);
         }
     };
+    // ---------- Persistent captured users (per-session/per-install) ----------
+
+    // ---------- Persistent captured users (id -> username) ----------
+    CA.CapturedUsers = CA.CapturedUsers ||
+        // ---------- Capture users from /system/panel/user_list.php ----------
+        (function(){
+            try{
+                CA = (typeof CA!=='undefined' && CA) ? CA : (window.CA = (window.CA||{}));
+
+                // Parser: extracts id->name from returned HTML
+                CA.captureUsersFromUserListHTML = CA.captureUsersFromUserListHTML || function(htmlText){
+                    try {
+                        if (!htmlText) return 0;
+                        var parser = new DOMParser();
+                        var doc = parser.parseFromString(String(htmlText), 'text/html');
+                        var items = doc.querySelectorAll('.online_user .user_item[data-id][data-name], .user_item[data-id][data-name]');
+                        var count = 0;
+                        items.forEach(function(el){
+                            try{
+                                var id = (el.getAttribute('data-id')||'').trim();
+                                var name = (el.getAttribute('data-name')||'').trim();
+                                if (id && name){
+                                    /* ensure persistence even if CA.CapturedUsers not ready yet */
+                                    if (CA && CA.CapturedUsers && typeof CA.CapturedUsers.set === 'function') {
+                                        CA.CapturedUsers.set(String(id), String(name));
+                                    } else {
+                                        try {
+                                            var __key = '321chataddons.capturedUsers';
+                                            var raw = null;
+                                            try { raw = localStorage.getItem(__key); } catch(e) { console.error(e); }
+                                            var map = {};
+                                            if (raw) { try { map = JSON.parse(raw) || {}; } catch(e) { console.error(e); }
+                                            }
+                                            map[String(id)] = String(name);
+                                            try { localStorage.setItem(__key, JSON.stringify(map)); } catch(e) { console.error(e); }
+                                        } catch (e) { console.error(e); }
+                                    }
+                                    count++;}
+                            }catch(e){ console.error(e); }
+                        });
+                        if (count > 0) {
+                            CA.debug('[321ChatAddons] captured', count, 'users from user_list.php');
+                        }
+                        return count;
+                    } catch (e) { console.error(e); return 0; }
+                };
+
+                // Intercept fetch
+                (function(){
+                    try{
+                        if (window.__CA_fetchHooked) return;
+                        window.__CA_fetchHooked = true;
+                        var _fetch = window.fetch;
+                        window.fetch = function(input, init){
+                            try{
+                                var url = (typeof input === 'string') ? input : (input && input.url) ? input.url : '';
+                                var method = (init && init.method) || (input && input.method) || 'GET';
+                                if (url && /\/system\/panel\/user_list\.php(?:$|\?)/.test(url) && String(method).toUpperCase() === 'POST'){
+                                    return _fetch.apply(this, arguments).then(function(res){
+                                        try{
+                                            var clone = res.clone();
+                                            return clone.text().then(function(txt){
+                                                try{ CA.captureUsersFromUserListHTML(txt); }catch(e){ console.error(e); }
+                                                return res;
+                                            }).catch(function(){ return res; });
+                                        }catch(e){ return res; }
+                                    });
+                                }
+                            }catch(e){ /* fallthrough */ }
+                            return _fetch.apply(this, arguments);
+                        };
+                    }catch(e){ console.error(e); }
+                })();
+
+                // Intercept XMLHttpRequest
+                (function(){
+                    try{
+                        if (window.__CA_xhrHooked) return;
+                        window.__CA_xhrHooked = true;
+                        var _open = XMLHttpRequest.prototype.open;
+                        var _send = XMLHttpRequest.prototype.send;
+                        XMLHttpRequest.prototype.open = function(method, url){
+                            try{
+                                this.__ca_method = method;
+                                this.__ca_url = url;
+                            }catch(e){}
+                            return _open.apply(this, arguments);
+                        };
+                        XMLHttpRequest.prototype.send = function(body){
+                            try{
+                                var url = String(this.__ca_url || '');
+                                var method = String(this.__ca_method || 'GET').toUpperCase();
+                                if (url && /\/system\/panel\/user_list\.php(?:$|\?)/.test(url) && method === 'POST'){
+                                    var xhr = this;
+                                    var done = function(){
+                                        try{
+                                            if (xhr && xhr.readyState === 4 && xhr.status === 200){
+                                                var ctype = (xhr.getResponseHeader && xhr.getResponseHeader('content-type')) || '';
+                                                // Expecting text/html
+                                                var txt = '';
+                                                try { txt = xhr.responseText; } catch(e){}
+                                                CA.captureUsersFromUserListHTML(txt);
+                                            }
+                                        }catch(e){ console.error(e); }
+                                    };
+                                    this.addEventListener('load', done);
+                                    this.addEventListener('readystatechange', done);
+                                }
+                            }catch(e){}
+                            return _send.apply(this, arguments);
+                        };
+                    }catch(e){ console.error(e); }
+                })();
+
+                // One-off: attempt to capture from current DOM if container already present
+                (function tryInitialDOMCapture(){
+                    try{
+                        var container = document.getElementById('container_user') || document.querySelector('#container_user, .online_user');
+                        if (container){
+                            var html = container.outerHTML || container.innerHTML || '';
+                            CA.captureUsersFromUserListHTML(html);
+                        }
+                    }catch(e){ console.error(e); }
+                })();
+
+            }catch(e){ console.error(e); }
+        })();
+    (function(){
+        const KEY = '321chataddons.capturedUsers';
+        function load(){
+            try{ return CA.Store.getJSON(KEY, {}); }catch(e){ console.error(e); return {}; }
+        }
+        function save(map){
+            try{ CA.Store.setJSON(KEY, map||{}); }catch(e){ console.error(e); }
+        }
+        return {
+            has(userId){
+                if(!userId) return false;
+                const m = load();
+                return Object.prototype.hasOwnProperty.call(m, String(userId));
+            },
+            set(userId, userName){
+                if(!userId) return;
+                const m = load();
+                m[String(userId)] = String(userName || '');
+                save(m);
+            },
+            getName(userId){
+                if(!userId) return '';
+                const m = load();
+                return m[String(userId)] || '';
+            },
+            getAll(){
+                return load();
+            },
+            clear(){
+                save({});
+            }
+        };
+    })();
+
+
     // ---------- Debug toggle & logger ----------
     (function(){
         try{
@@ -689,6 +846,17 @@
 
     // Global user map: ID -> {name, avatar}
     const USER_MAP = {};
+// ---------- Preload stored user map from CA.CapturedUsers ----------
+    try {
+        if (CA && CA.CapturedUsers && typeof CA.CapturedUsers.getAll === 'function') {
+            const stored = CA.CapturedUsers.getAll();
+            for (const [id, name] of Object.entries(stored)) {
+                if (!USER_MAP[id]) USER_MAP[id] = name;
+            }
+            CA.debug('[321ChatAddons] Preloaded', Object.keys(stored).length, 'user mappings.');
+        }
+    } catch (e) { console.error(e); }
+
 // In-memory map for quick lookups
 
     const updateUserMap = function (uid, name, avatar){
@@ -2582,10 +2750,13 @@
                         }
                     }
 
-                    if (userId && userName && !CAPTURED_USERS.has(String(userId))) {
-                        CAPTURED_USERS.add(String(userId));
-                        console.log(LOG, 'Captured private chat user info:', {id: userId, name: userName});
-                        updateUserMap(userId, userName, userAvatar);
+                    if (userId && userName) {
+                        const __already = CA.CapturedUsers.has(String(userId));
+                        CA.CapturedUsers.set(String(userId), String(userName));
+                        if (!__already) {
+                            console.log(LOG, 'Captured private chat user info:', { id: userId, name: userName });
+                            updateUserMap(userId, userName, userAvatar);
+                        }
                     }
                 } catch (e) {console.error(e);
                     console.error(LOG, 'Extract private box user info error:', e);
