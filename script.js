@@ -11,16 +11,22 @@
 
     /** Key/Value store backed by localStorage */
     class KeyValueStore {
-        constructor({ namespace = "" } = {}) {
+        constructor({namespace = ""} = {}) {
             this.ns = namespace ? namespace + ":" : "";
             this.storage = localStorage; // assume available
         }
 
-        _key(k) { return this.ns + String(k ?? ""); }
+        _key(k) {
+            return this.ns + String(k ?? "");
+        }
 
         has(key) {
-            try { return this.storage.getItem(this._key(key)) !== null; }
-            catch (e) { console.error(e); return false; }
+            try {
+                return this.storage.getItem(this._key(key)) !== null;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
 
         get(key) {
@@ -29,10 +35,17 @@
                 if (raw == null) return null;
                 const trimmed = String(raw).trim();
                 if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
-                    try { return JSON.parse(trimmed); } catch { return raw; }
+                    try {
+                        return JSON.parse(trimmed);
+                    } catch {
+                        return raw;
+                    }
                 }
                 return raw;
-            } catch (e) { console.error(e); return null; }
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
         }
 
         set(key, value) {
@@ -40,17 +53,16 @@
                 const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
                 this.storage.setItem(this._key(key), toStore);
                 return true;
-            } catch (e) { console.error(e); return false; }
-        }
-
-        remove(key) {
-            try { this.storage.removeItem(this._key(key)); } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
     }
 
     /** Drafts store that uses a KeyValueStore */
     class DraftsStore {
-        constructor({ kv }) {
+        constructor({kv}) {
             if (!kv) throw new Error("DraftsStore requires a KeyValueStore");
             this.kv = kv;
         }
@@ -70,7 +82,7 @@
 
     /** Example Users store */
     class UsersStore {
-        constructor({ kv, cacheKey }) {
+        constructor({kv, cacheKey}) {
             this.kv = kv;
             this.cacheKey = cacheKey;
         }
@@ -83,18 +95,16 @@
             const arr = this.list();
             const idx = arr.findIndex(u => String(u.uid) === String(user.uid));
             if (idx >= 0) {
-                arr[idx] = { ...arr[idx], ...user };
-            }
-            else {
-                arr.push({ uid: String(user.uid), name: String(user.name || user.uid), avatar: String(user.avatar || '') });
+                arr[idx] = {...arr[idx], ...user};
+            } else {
+                arr.push({
+                    uid: String(user.uid),
+                    name: String(user.name || user.uid),
+                    avatar: String(user.avatar || '')
+                });
             }
             this.kv.set(this.cacheKey, arr);
             return user;
-        }
-
-        remove(id) {
-            const arr = this.list().filter(u => u.uid !== id);
-            this.kv.set(this.cacheKey, arr);
         }
     }
 
@@ -106,14 +116,14 @@
             this.FEMALE_CODE = '2';
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
-            this.GLOBAL_WATERMARK_KEY   = '321chataddons.global.watermark';
-            this.ACTIVITY_LOG_KEY       = '321chataddons.activityLog';
-            this.STORAGE_PREFIX         = '321chataddons.pm.';              // drafts, per-message hash
-            this.USERS_KEY              = '321chataddons.users';
-            this.EXC_KEY                = '321chataddons.excluded';
-            this.REPLIED_CONVOS_KEY     = '321chataddons.repliedConversations';
-            this.LAST_PCOUNT_MAP_KEY    = '321chataddons.lastPcountPerConversation';
-            this.DISPLAYED_LOGIDS_KEY   = '321chataddons.displayedLogIds';
+            this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
+            this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
+            this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
+            this.USERS_KEY = '321chataddons.users';
+            this.EXC_KEY = '321chataddons.excluded';
+            this.REPLIED_CONVOS_KEY = '321chataddons.repliedConversations';
+            this.LAST_PCOUNT_MAP_KEY = '321chataddons.lastPcountPerConversation';
+            this.DISPLAYED_LOGIDS_KEY = '321chataddons.displayedLogIds';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 
             /* ========= App State ========= */
@@ -138,7 +148,8 @@
                 bMsg: null, bSend: null, bStat: null, bReset: null,
                 sentBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
                 repliedMessageBox: null, unrepliedMessageBox: null,
-                navBc: null   };
+                navBc: null
+            };
 
             /* ========= Flags / Scheduling ========= */
             this._isMakingOwnChanges = false;     // avoid reacting to our own DOM edits
@@ -156,7 +167,7 @@
             this._cp_lastCheck = 0;               // last time processed public chat payload
             this._cp_lastPN = 0;                  // last time fetched private messages
             this._cp_CHECK_INTERVAL = 30_000;     // 30s
-            this._cp_PN_INTERVAL    = 10_000;     // 10s
+            this._cp_PN_INTERVAL = 10_000;     // 10s
 
             /* ========= Observers & Listeners (refs only) ========= */
             this._privBoxObserver = null;
@@ -191,48 +202,70 @@
             };
 
             /* ========= Misc ========= */
-            this.debug = this.debug || (() => {});   // noop if you don’t provide one
-            this._escapeMap = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+            this.debug = this.debug || (() => {
+            });   // noop if you don’t provide one
+            this._escapeMap = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
 
             this.sel = {
                 panel: '#ca-panel',
                 // specific send section
                 specific: {
                     username: '#ca-specific-username',
-                    msg:      '#ca-specific-msg',
-                    send:     '#ca-specific-send',
-                    status:   '#ca-specific-status',
-                    reset:    '#ca-specific-reset',
+                    msg: '#ca-specific-msg',
+                    send: '#ca-specific-send',
+                    status: '#ca-specific-status',
+                    reset: '#ca-specific-reset',
                 },
                 // logs
                 log: {
-                    sent:      '#ca-log-box-sent',
-                    received:  '#ca-log-box-received',
-                    replied:   '#ca-log-received-replied',
+                    classes: {
+                        ca_box_scrollable: '.ca-log-box-scrollable',
+                    },
+                    sent: '#ca-log-box-sent',
+                    received: '#ca-log-box-received',
+                    replied: '#ca-log-received-replied',
                     unreplied: '#ca-log-received-unreplied',
-                    presence:  '#ca-log-box-presence',
-                    clear:     '#ca-log-clear',
+                    presence: '#ca-log-box-presence',
+                    clear: '#ca-log-clear',
                 },
                 // nav
                 nav: {
+                    spec: '#ca-nav-specific',
                     bc: '#ca-nav-bc',
                 },
                 // broadcast popup
                 bcPop: {
                     container: '#ca-bc-pop',
-                    header:    '#ca-bc-pop-header',
-                    close:     '#ca-bc-pop-close',
-                    msg:       '#ca-bc-msg',
-                    send:      '#ca-bc-send',
-                    reset:     '#ca-bc-reset',
-                    status:    '#ca-bc-status',
+                    header: '#ca-bc-pop-header',
+                    close: '#ca-bc-pop-close',
+                    msg: '#ca-bc-msg',
+                    send: '#ca-bc-send',
+                    reset: '#ca-bc-reset',
+                    status: '#ca-bc-status',
                 },
+                specificPop: {
+                    container: '#ca-specific-pop',
+                    header: '#ca-specific-pop-header',
+                    close: '#ca-specific-pop-close',
+                    username: '#ca-specific-username',
+                    msg: '#ca-specific-msg',
+                    send: '#ca-specific-send',
+                    reset: '#ca-specific-reset',
+                    status: '#ca-specific-status',
+                },
+                container: '#ca-bc-pop',
+                header: '#ca-bc-pop-header',
+                close: '#ca-bc-pop-close',
+                msg: '#ca-bc-msg',
+                send: '#ca-bc-send',
+                reset: '#ca-bc-reset',
+                status: '#ca-bc-status',
                 // user list containers (first existing wins)
                 users: {
-                    main:        '#container_user',
-                    online:      '.online_user',
-                    chatRight:   '#chat_right_data',
-                    combined:    '#container_user, .online_user, #chat_right_data', // still handy if you want a fast query
+                    main: '#container_user',
+                    online: '.online_user',
+                    chatRight: '#chat_right_data',
+                    combined: '#container_user, .online_user, #chat_right_data', // still handy if you want a fast query
                 },
             };
         }
@@ -245,27 +278,22 @@
             this.Store = this.Store || new KeyValueStore();
 
             // Persist message drafts
-            this.Drafts = this.Drafts || new DraftsStore({ kv: this.Store });
+            this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
 
             // Backing store for users (separate namespace so the map stays tidy)
             const usersKV = new KeyValueStore();
-            this.UserStore = this.UserStore || new UsersStore({ kv: usersKV, cacheKey: this.USERS_KEY });
+            this.UserStore = this.UserStore || new UsersStore({kv: usersKV, cacheKey: this.USERS_KEY});
 
             // Adapt UsersStore to the API the rest of the code expects: set/has/get/getOrFetch/getOrFetchByName
             if (!this.Users) {
                 // keep an in-memory index for fast lookups
                 const _index = new Map(
-                        (this.UserStore.list() || []).map(u => [String(u.uid), {
-                          uid: String(u.uid),
-                          name: u.name || String(u.uid),
-                          avatar: u.avatar || ''
+                    (this.UserStore.list() || []).map(u => [String(u.uid), {
+                        uid: String(u.uid),
+                        name: u.name || String(u.uid),
+                        avatar: u.avatar || ''
                     }])
                 );
-
-                const _save = () => {
-                    const arr = Array.from(_index.values()).map(u => ({uid: u.uid, name: u.name, avatar: u.avatar}));
-                    this.UserStore.kv.set(this.UserStore.cacheKey, arr);
-                };
 
                 this.Users = {
                     set: (id, name, avatar = '') => {
@@ -294,8 +322,13 @@
 
             if (document.body) {
                 // small delay to let layout settle
-                setTimeout(() => { this.applyInline(); this.removeAds(document); }, 0);
-                setTimeout(() => { this.adjustForFooter(); }, 500);
+                setTimeout(() => {
+                    this.applyInline();
+                    this.removeAds(document);
+                }, 0);
+                setTimeout(() => {
+                    this.adjustForFooter();
+                }, 500);
 
                 this._wireMutations();
                 this._wireResize();
@@ -312,11 +345,12 @@
 
             // build panel + wire refs + handlers
             this.buildPanel();
+            this.addSpecificNavButton();
             this._bindStaticRefs();
 
             if (this.Drafts) {
                 // persist the “send to specific” message + username
-                if (this.ui.sMsg)  this.Drafts.bindInput(this.ui.sMsg,  this.STORAGE_PREFIX + 'draftSpecific');
+                if (this.ui.sMsg) this.Drafts.bindInput(this.ui.sMsg, this.STORAGE_PREFIX + 'draftSpecific');
                 if (this.ui.sUser) this.Drafts.bindInput(this.ui.sUser, this.STORAGE_PREFIX + 'specificUsername');
             }
 
@@ -334,31 +368,46 @@
             this.installPrivateSendInterceptor();  // <— enable intercept for native /private_process.php
             this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
 
-            //this.observePrivateChatBox();
-
-            this.observeDomUserList();   // ← start capturing users from the DOM list
-
             return this;
         }
 
         /* ---------- Helpers ---------- */
-        qs(s, r) { return (r || document).querySelector(s); }
-        qsa(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+        qs(s, r) {
+            return (r || document).querySelector(s);
+        }
 
-        trim(s) { return String(s || '').replace(/^\s+|\s+$/g, ''); }
-        norm(s) { return this.trim(s).toLowerCase(); }
+        qsa(s, r) {
+            return Array.prototype.slice.call((r || document).querySelectorAll(s));
+        }
 
-        sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-        randBetween(minMs, maxMs) { return Math.floor(minMs + Math.random() * (maxMs - minMs)); }
+        trim(s) {
+            return String(s || '').replace(/^\s+|\s+$/g, '');
+        }
+
+        sleep(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+
+        randBetween(minMs, maxMs) {
+            return Math.floor(minMs + Math.random() * (maxMs - minMs));
+        }
 
         safeMatches(n, sel) {
-            try { return !!(n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(sel)); }
-            catch (e) { console.error(e); return false; }
+            try {
+                return !!(n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(sel));
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
 
         safeQuery(n, sel) {
-            try { return n && n.querySelector ? n.querySelector(sel) : null; }
-            catch (e) { console.error(e); return null; }
+            try {
+                return n && n.querySelector ? n.querySelector(sel) : null;
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
         }
 
         escapeHTML(s) {
@@ -370,7 +419,10 @@
                 const txt = document.createElement('textarea');
                 txt.innerHTML = String(s);
                 return txt.value;
-            } catch (e) { console.error(e); return String(s); }
+            } catch (e) {
+                console.error(e);
+                return String(s);
+            }
         }
 
         timeHHMM() {
@@ -380,50 +432,8 @@
             return `${h}:${m}`;
         }
 
-        /* ===== DOM-based user list capture (observer-first) ===== */
-        _domScanUsers() {
-            try {
-                const root =
-                    document.getElementById('container_user') ||
-                    document.querySelector('#container_user, .online_user');
-                if (!root) return;
-
-                const nodes = root.querySelectorAll(
-                    '.online_user .user_item[data-id][data-name], .user_item[data-id][data-name]'
-                );
-
-                let added = 0;
-                nodes.forEach((el) => {
-                    try {
-                        let id   = (el.getAttribute('data-id')   || '').trim();
-                        let name = (el.getAttribute('data-name') || '').trim();
-                        let av   = (el.getAttribute('data-av')   || '').trim();
-
-                        if (!av) {
-                            try {
-                                const img = el.querySelector('.user_item_avatar img.avav, .user_item_avatar img');
-                                if (img && img.getAttribute('src')) av = img.getAttribute('src');
-                            } catch {}
-                        }
-
-                        if (id && name) {
-                            this.Users?.set?.(id, name, av);
-                            added++;
-                        }
-                    } catch (e) { console.error(e); }
-                });
-
-                this.debug && this.debug('[DOM capture] saved users:', added);
-            } catch (e) { console.error(e); }
-        }
-
         _attachDomUserObserver() {
             const container = this.getContainer();
-            if (!container) {
-                this._domScanUsers();            // capture whatever is present for now
-                setTimeout(() => this._attachDomUserObserver(), 300);
-                return;
-            }
 
             const mo = new MutationObserver((mutations) => {
                 try {
@@ -449,7 +459,7 @@
                                         const name = this._currentFemales.get(uid) || uid;
                                         this._currentFemales.delete(uid);
                                         if (this._didInitialLog && this._presenceArmed) {
-                                            this.logLogout({ uid, name, avatar: '' });
+                                            this.logLogout({uid, name, avatar: ''});
                                         }
                                     }
                                     hasRelevant = true;
@@ -494,29 +504,21 @@
             this._domUserObserver = mo;
         }
 
-
-        observeDomUserList() {
-            if (document.readyState !== 'loading') {
-                 this._attachDomUserObserver();
-                 this._domScanUsers();          // immediate best-effort capture
-             } else {
-                 document.addEventListener('DOMContentLoaded', () => {
-                     this._attachDomUserObserver();
-                     this._domScanUsers();      // first paint capture
-                 }, { once: true });
-             }
-        }
-
         /* =========================
-   Private send interception
-   ========================= */
+Private send interception
+========================= */
         isPrivateProcessUrl(u) {
             try {
                 if (!u) return false;
                 let s = String(u);
-                try { s = new URL(s, location.origin).pathname; } catch {}
+                try {
+                    s = new URL(s, location.origin).pathname;
+                } catch {
+                }
                 return s.indexOf('system/action/private_process.php') !== -1;
-            } catch { return false; }
+            } catch {
+                return false;
+            }
         }
 
         processPrivateSendResponse(responseText, requestBody) {
@@ -545,12 +547,18 @@
                 try {
                     const params = new URLSearchParams(requestBody || '');
                     targetId = params.get('target') || '';
-                } catch (e) { console.error(e); }
+                } catch (e) {
+                    console.error(e);
+                }
 
                 if (!content || !targetId) return;
 
                 // Look up user
-                const userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : { uid: targetId, name: String(targetId), avatar: '' };
+                const userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : {
+                    uid: targetId,
+                    name: String(targetId),
+                    avatar: ''
+                };
 
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
@@ -572,34 +580,43 @@
                     this._pp_origFetch = window.fetch;
                     const self = this;
 
-                    window.fetch = function(...args) {
-                        const req  = args[0];
+                    window.fetch = function (...args) {
+                        const req = args[0];
                         const init = args[1] || null;
-                        const url  = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req || '');
+                        const url = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req || '');
 
                         let capturedBody = '';
                         try {
                             if (self.isPrivateProcessUrl(url)) {
                                 capturedBody = self.normalizeBodyToQuery(init && init.body);
                             }
-                        } catch (err) { console.error(err); }
+                        } catch (err) {
+                            console.error(err);
+                        }
 
                         const p = self._pp_origFetch.apply(this, args);
 
                         try {
                             if (self.isPrivateProcessUrl(url) && capturedBody) {
                                 p.then((res) => {
-                                    try { res.clone().text().then(txt => self.processPrivateSendResponse(txt, capturedBody)); }
-                                    catch (err) { console.error(self.LOG, 'Clone response error:', err); }
+                                    try {
+                                        res.clone().text().then(txt => self.processPrivateSendResponse(txt, capturedBody));
+                                    } catch (err) {
+                                        console.error(self.LOG, 'Clone response error:', err);
+                                    }
                                     return res;
                                 });
                             }
-                        } catch (e) { console.error(e); }
+                        } catch (e) {
+                            console.error(e);
+                        }
 
                         return p;
                     };
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
 
             // XMLHttpRequest
             try {
@@ -608,19 +625,25 @@
 
                 const self = this;
 
-                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                    try { this._ca_pm_isTarget = self.isPrivateProcessUrl(url); } catch (e) { console.error(e); }
+                XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                    try {
+                        this._ca_pm_isTarget = self.isPrivateProcessUrl(url);
+                    } catch (e) {
+                        console.error(e);
+                    }
                     return self._pp_xhrOpen.apply(this, [method, url, ...rest]);
                 };
 
-                XMLHttpRequest.prototype.send = function(...sendArgs) {
+                XMLHttpRequest.prototype.send = function (...sendArgs) {
                     try {
                         let capturedBody = '';
                         try {
                             if (this._ca_pm_isTarget && sendArgs && sendArgs.length) {
                                 capturedBody = self.normalizeBodyToQuery(sendArgs[0]);
                             }
-                        } catch (err) { console.error(err); }
+                        } catch (err) {
+                            console.error(err);
+                        }
 
                         if (this._ca_pm_isTarget && capturedBody) {
                             this.addEventListener('readystatechange', () => {
@@ -628,46 +651,68 @@
                                     if (this.readyState === 4 && this.status === 200) {
                                         self.processPrivateSendResponse(this?.responseText || '', capturedBody);
                                     }
-                                } catch (err) { console.error(self.LOG, 'XHR readystate error:', err); }
+                                } catch (err) {
+                                    console.error(self.LOG, 'XHR readystate error:', err);
+                                }
                             });
                         }
-                    } catch (e) { console.error(e); }
+                    } catch (e) {
+                        console.error(e);
+                    }
 
                     return self._pp_xhrSend.apply(this, sendArgs);
                 };
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         uninstallPrivateSendInterceptor() {
-            try { if (this._pp_origFetch) { window.fetch = this._pp_origFetch; this._pp_origFetch = null; } } catch (e) { console.error(e); }
             try {
-                if (this._pp_xhrOpen) { XMLHttpRequest.prototype.open = this._pp_xhrOpen; this._pp_xhrOpen = null; }
-                if (this._pp_xhrSend) { XMLHttpRequest.prototype.send = this._pp_xhrSend; this._pp_xhrSend = null; }
-            } catch (e) { console.error(e); }
+                if (this._pp_origFetch) {
+                    window.fetch = this._pp_origFetch;
+                    this._pp_origFetch = null;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            try {
+                if (this._pp_xhrOpen) {
+                    XMLHttpRequest.prototype.open = this._pp_xhrOpen;
+                    this._pp_xhrOpen = null;
+                }
+                if (this._pp_xhrSend) {
+                    XMLHttpRequest.prototype.send = this._pp_xhrSend;
+                    this._pp_xhrSend = null;
+                }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         /* ======================================
-           Private notifications & conversations
-           ====================================== */
+       Private notifications & conversations
+       ====================================== */
         caParsePrivateNotify(html) {
             try {
-                const tmp = document.createElement('div'); tmp.innerHTML = html;
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
                 const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
                 const out = [];
                 for (let i = 0; i < nodes.length; i++) {
                     const el = nodes[i];
                     const info = el.querySelector('.fmenu_name.gprivate');
                     if (!info) continue;
-                    const id   = (info.getAttribute('data') || '').trim();
+                    const id = (info.getAttribute('data') || '').trim();
                     const name = (info.getAttribute('value') || '').trim();
-                    const av   = (info.getAttribute('data-av') || '').trim();
+                    const av = (info.getAttribute('data-av') || '').trim();
                     const cntEl = el.querySelector('.ulist_notify .pm_notify');
                     let unread = 0;
                     if (cntEl) {
                         const t = (cntEl.textContent || '').trim();
                         unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
                     }
-                    out.push({ uid:id, name, avatar:av, unread });
+                    out.push({uid: id, name, avatar: av, unread});
                 }
                 console.log(this.LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
                 return out;
@@ -682,14 +727,14 @@
             const token = this.getToken();
             if (!token) return Promise.resolve([]);
 
-            const body = new URLSearchParams({ token, cp:'chat' }).toString();
+            const body = new URLSearchParams({token, cp: 'chat'}).toString();
             return fetch('/system/float/private_notify.php', {
-                method:'POST', credentials:'include',
-                headers:{
-                    'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
-                    'X-Requested-With':'XMLHttpRequest',
-                    'Accept':'*/*',
-                    'X-CA-OWN':'1'
+                method: 'POST', credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': '*/*',
+                    'X-CA-OWN': '1'
                 },
                 body
             })
@@ -728,7 +773,8 @@
         /* Carry over site chat context and fetch private chat_log for uid */
         caFetchChatLogFor(uid, lastCheckedPcount) {
             try {
-                const token = this.getToken(); if (!token || !uid) return Promise.resolve('');
+                const token = this.getToken();
+                if (!token || !uid) return Promise.resolve('');
 
                 const bodyObj = {
                     token,
@@ -744,12 +790,12 @@
                     const CC = (this.state && this.state.CHAT_CTX) ? this.state.CHAT_CTX : null;
                     if (CC) {
                         if (CC.caction) bodyObj.caction = String(CC.caction);
-                        if (CC.last)    bodyObj.last    = String(CC.last);
-                        if (CC.room)    bodyObj.room    = String(CC.room);
-                        if (CC.notify)  bodyObj.notify  = String(CC.notify);
-                        if (CC.curset)  bodyObj.curset  = String(CC.curset);
-                        if (CC.lastp)   bodyObj.lastp   = String(CC.lastp);
-                        if (CC.pcount)  bodyObj.pcount  = String(CC.pcount);
+                        if (CC.last) bodyObj.last = String(CC.last);
+                        if (CC.room) bodyObj.room = String(CC.room);
+                        if (CC.notify) bodyObj.notify = String(CC.notify);
+                        if (CC.curset) bodyObj.curset = String(CC.curset);
+                        if (CC.lastp) bodyObj.lastp = String(CC.lastp);
+                        if (CC.pcount) bodyObj.pcount = String(CC.pcount);
                     }
                 } catch (e) {
                     console.error(e);
@@ -758,19 +804,21 @@
 
                 // Debug log (sanitized)
                 try {
-                    const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/,'token=[redacted]');
+                    const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
                     console.log(this.LOG, 'caFetchChatLogFor uid=', uid, ' body:', bodyLog);
-                } catch (err) { console.error(err); }
+                } catch (err) {
+                    console.error(err);
+                }
 
                 const body = new URLSearchParams(bodyObj).toString();
 
                 return fetch('/system/action/chat_log.php?timestamp=234284923', {
-                    method:'POST', credentials:'include',
-                    headers:{
-                        'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept':'application/json, text/javascript, */*; q=0.01',
-                        'X-Requested-With':'XMLHttpRequest',
-                        'X-CA-OWN':'1'
+                    method: 'POST', credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json, text/javascript, */*; q=0.01',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CA-OWN': '1'
                     },
                     body
                 })
@@ -786,7 +834,10 @@
                         console.error(this.LOG, 'Fetch chat log error:', err);
                         return '';
                     });
-            } catch (e) { console.error(e); return Promise.resolve(''); }
+            } catch (e) {
+                console.error(e);
+                return Promise.resolve('');
+            }
         }
 
         /* Parse & render the private chat log for a given user */
@@ -814,7 +865,9 @@
                         this.state.CHAT_CTX = this.state.CHAT_CTX || {};
                         this.state.CHAT_CTX.last = String(conversationChatLog.last);
                     }
-                } catch (e) { console.error(e); }
+                } catch (e) {
+                    console.error(e);
+                }
 
                 const items = Array.isArray(conversationChatLog?.pload) ? conversationChatLog.pload
                     : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
@@ -824,23 +877,24 @@
                 let myUserId = null;
                 try { /* global on page */  // eslint-disable-next-line no-undef
                     myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-                } catch {}
+                } catch {
+                }
 
                 // chronological
-                items.sort((a,b) => (a.log_id || 0) - (b.log_id || 0));
+                items.sort((a, b) => (a.log_id || 0) - (b.log_id || 0));
 
                 const watermark = this.getGlobalWatermark?.() || '';
                 console.log(this.LOG, 'Processing messages for', uid, '— watermark:', watermark || 'not set');
 
                 let newMessages = 0;
-                const skipped = { fromMe: 0, alreadyShown: 0, tooOld: 0 };
+                const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
                 let newestLogDate = null;
 
                 for (let i = 0; i < items.length; i++) {
                     const t = items[i];
                     const fromId = (t?.user_id != null) ? String(t.user_id) : null;
                     const logDate = String(t?.log_date ?? '');
-                    const logId   = (t?.log_id != null) ? String(t.log_id) : null;
+                    const logId = (t?.log_id != null) ? String(t.log_id) : null;
 
                     // track newest date
                     if (logDate && (!newestLogDate || this.parseLogDateToNumber(logDate) > this.parseLogDateToNumber(newestLogDate))) {
@@ -848,14 +902,23 @@
                     }
 
                     // skip from me
-                    if (myUserId && fromId === myUserId) { skipped.fromMe++; continue; }
+                    if (myUserId && fromId === myUserId) {
+                        skipped.fromMe++;
+                        continue;
+                    }
 
                     // skip duplicates
-                    if (logId && this.hasDisplayedLogId?.(uid, logId)) { skipped.alreadyShown++; continue; }
+                    if (logId && this.hasDisplayedLogId?.(uid, logId)) {
+                        skipped.alreadyShown++;
+                        continue;
+                    }
 
                     // skip older than watermark
                     const shouldShow = this.isMessageNewer?.(logDate, false);
-                    if (!shouldShow) { skipped.tooOld++; continue; }
+                    if (!shouldShow) {
+                        skipped.tooOld++;
+                        continue;
+                    }
 
                     // decode → escape → normalize whitespace
                     const rawContent = t?.log_content ? String(t.log_content) : '';
@@ -863,7 +926,11 @@
                     const content = (this.escapeHTML ? this.escapeHTML(decodedContent) : decodedContent).replace(/\s+/g, ' ').trim();
 
                     // resolve user
-                    const user = (this.Users?.getOrFetch) ? await this.Users.getOrFetch(fromId) : { uid: fromId, name: String(fromId), avatar: '' };
+                    const user = (this.Users?.getOrFetch) ? await this.Users.getOrFetch(fromId) : {
+                        uid: fromId,
+                        name: String(fromId),
+                        avatar: ''
+                    };
 
                     // render
                     this.logLine('dm-in', content, user);
@@ -937,7 +1004,7 @@
 
                 // throttle actual PM fetches when pico > 0
                 if (this._cp_lastPN && (now - this._cp_lastPN) <= this._cp_PN_INTERVAL) {
-                    console.log(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN)/1000), 's ago');
+                    console.log(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
                     return;
                 }
                 this._cp_lastPN = now;
@@ -952,7 +1019,7 @@
 
                         const toFetch = privateConversations
                             .filter(pc => pc.unread > 0)
-                            .map(it => ({ uid: String(it.uid), unread: Number(it.unread) || 0 }));
+                            .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
 
                         if (!toFetch.length) {
                             console.log(this.LOG, 'None of the conversations has new messages');
@@ -1000,7 +1067,7 @@
                     this._origFetch = window.fetch;
                     const self = this;
 
-                    window.fetch = function(...args) {
+                    window.fetch = function (...args) {
                         const req = args[0];
                         const init = args[1] || null;
                         const url = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req || '');
@@ -1016,18 +1083,26 @@
                                         else if (Array.isArray(h)) own = h.some(x => String((x[0] || '').toLowerCase()) === 'x-ca-own' && String(x[1] || '') === '1');
                                         else if (typeof h === 'object') own = String(h['X-CA-OWN'] || h['x-ca-own'] || '') === '1';
                                     }
-                                } catch (e) { console.error(e); }
+                                } catch (e) {
+                                    console.error(e);
+                                }
 
                                 if (!own) {
                                     const qs = self.normalizeBodyToQuery(init && init.body);
                                     if (qs) {
                                         self.caUpdateChatCtxFromBody(qs, url);
                                     } else if (req && typeof req === 'object' && typeof req.clone === 'function') {
-                                        try { req.clone().text().then(t => self.caUpdateChatCtxFromBody(t, url)); } catch (err) { console.error(self.LOG, 'Fetch clone error:', err); }
+                                        try {
+                                            req.clone().text().then(t => self.caUpdateChatCtxFromBody(t, url));
+                                        } catch (err) {
+                                            console.error(self.LOG, 'Fetch clone error:', err);
+                                        }
                                     }
                                 }
                             }
-                        } catch (err) { console.error(err); }
+                        } catch (err) {
+                            console.error(err);
+                        }
 
                         const p = self._origFetch.apply(this, args);
 
@@ -1036,30 +1111,41 @@
                                 p.then((res) => {
                                     try {
                                         res?.clone?.().text().then(txt => self.caProcessChatPayload(txt));
-                                    } catch (err) { console.error(self.LOG, 'Response clone error:', err); }
+                                    } catch (err) {
+                                        console.error(self.LOG, 'Response clone error:', err);
+                                    }
                                     return res;
                                 });
                             }
-                        } catch (e) { console.error(e); }
+                        } catch (e) {
+                            console.error(e);
+                        }
 
                         return p;
                     };
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
 
             // XHR
             try {
-                if (!this._xhrOpen)  this._xhrOpen  = XMLHttpRequest.prototype.open;
-                if (!this._xhrSend)  this._xhrSend  = XMLHttpRequest.prototype.send;
+                if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
+                if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
 
                 const self = this;
 
-                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                    try { this._ca_url = String(url || ''); } catch (e) { console.error(e); this._ca_url = ''; }
+                XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                    try {
+                        this._ca_url = String(url || '');
+                    } catch (e) {
+                        console.error(e);
+                        this._ca_url = '';
+                    }
                     return self._xhrOpen.apply(this, [method, url, ...rest]);
                 };
 
-                XMLHttpRequest.prototype.send = function(...sendArgs) {
+                XMLHttpRequest.prototype.send = function (...sendArgs) {
                     try {
                         const targetUrl = this._ca_url || '';
                         // capture POST body into context
@@ -1068,27 +1154,50 @@
                                 const qs0 = self.normalizeBodyToQuery(sendArgs[0]);
                                 self.caUpdateChatCtxFromBody(qs0 || '', targetUrl);
                             }
-                        } catch (err) { console.error(self.LOG, 'XHR body capture error:', err); }
+                        } catch (err) {
+                            console.error(self.LOG, 'XHR body capture error:', err);
+                        }
 
-                        this.addEventListener('readystatechange', function() {
+                        this.addEventListener('readystatechange', function () {
                             try {
                                 if (this.responseText && this.readyState === 4 && this.status === 200 && self.isChatLogUrl(this.responseURL || this._ca_url || '')) {
                                     self.caProcessChatPayload(this.responseText);
                                 }
-                            } catch (err) { console.error(self.LOG, 'XHR readystatechange error:', err); }
+                            } catch (err) {
+                                console.error(self.LOG, 'XHR readystatechange error:', err);
+                            }
                         });
-                    } catch (e) { console.error(e); }
+                    } catch (e) {
+                        console.error(e);
+                    }
                     return self._xhrSend.apply(this, sendArgs);
                 };
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         uninstallNetworkTaps() {
-            try { if (this._origFetch) { window.fetch = this._origFetch; this._origFetch = null; } } catch (e) { console.error(e); }
             try {
-                if (this._xhrOpen) { XMLHttpRequest.prototype.open = this._xhrOpen; this._xhrOpen = null; }
-                if (this._xhrSend) { XMLHttpRequest.prototype.send = this._xhrSend; this._xhrSend = null; }
-            } catch (e) { console.error(e); }
+                if (this._origFetch) {
+                    window.fetch = this._origFetch;
+                    this._origFetch = null;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            try {
+                if (this._xhrOpen) {
+                    XMLHttpRequest.prototype.open = this._xhrOpen;
+                    this._xhrOpen = null;
+                }
+                if (this._xhrSend) {
+                    XMLHttpRequest.prototype.send = this._xhrSend;
+                    this._xhrSend = null;
+                }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         buildLogHTML(kind, user = {}, content) {
@@ -1140,7 +1249,10 @@
                     '/system/profile.php?uid=' + uid,
                 ];
                 return fallbacks[0];
-            } catch (e) { console.error(e); return ''; }
+            } catch (e) {
+                console.error(e);
+                return '';
+            }
         }
 
         // Wires generic click handling on sent/received/presence logs,
@@ -1165,16 +1277,25 @@
                 let node = e.target;
                 let entry = null;
                 while (node && node !== box) {
-                    if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
+                    if (node.classList && node.classList.contains('ca-log-entry')) {
+                        entry = node;
+                        break;
+                    }
                     node = node.parentNode;
                 }
-                if (!entry) return;
+                if (!entry) {
+                    console.error(`No entry was found to call the handler for click on ${e.target}`)
+                    return;
+                }
 
                 // 2) find actionable element with [data-action] inside that entry (manual walk)
                 let ptr = e.target;
                 let actionEl = null;
                 while (ptr && ptr !== entry) {
-                    if (ptr.getAttribute && ptr.hasAttribute('data-action')) { actionEl = ptr; break; }
+                    if (ptr.getAttribute && ptr.hasAttribute('data-action')) {
+                        actionEl = ptr;
+                        break;
+                    }
                     ptr = ptr.parentNode;
                 }
 
@@ -1218,7 +1339,10 @@
                 // find .ca-log-entry (manual walk)
                 let node = e.target, entry = null;
                 while (node && node !== box) {
-                    if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
+                    if (node.classList && node.classList.contains('ca-log-entry')) {
+                        entry = node;
+                        break;
+                    }
                     node = node.parentNode;
                 }
                 if (!entry) return;
@@ -1231,7 +1355,7 @@
 
                 // only toggle when clicking the expand indicator or the message text
                 const tgt = e.target;
-                const isExpandBtn  = !!(tgt && tgt.classList && tgt.classList.contains('ca-expand-indicator'));
+                const isExpandBtn = !!(tgt && tgt.classList && tgt.classList.contains('ca-expand-indicator'));
                 const isMessageTxt = !!(tgt && tgt.classList && tgt.classList.contains('ca-log-text'));
                 if (!isExpandBtn && !isMessageTxt) return;
 
@@ -1246,7 +1370,10 @@
                 // update indicator arrow
                 let child = entry.firstChild, indicator = null;
                 while (child) {
-                    if (child.classList && child.classList.contains('ca-expand-indicator')) { indicator = child; break; }
+                    if (child.classList && child.classList.contains('ca-expand-indicator')) {
+                        indicator = child;
+                        break;
+                    }
                     child = child.nextSibling;
                 }
                 indicator = indicator || entry.querySelector('.ca-expand-indicator');
@@ -1257,21 +1384,21 @@
         }
 
         resolveHostFn(name) {
-            const fromSelf   = (typeof window[name] === 'function') ? window[name] : null;
+            const fromSelf = (typeof window[name] === 'function') ? window[name] : null;
             const fromParent = (window.parent && typeof window.parent[name] === 'function') ? window.parent[name] : null;
             return fromSelf || fromParent || null;
         }
 
-        applyLegacyAndOpenDm({ uid, name, avatar }) {
+        applyLegacyAndOpenDm({uid, name, avatar}) {
             // Legacy toggles
-            if (!this.safeSet(window, 'morePriv',   0)) return false;
+            if (!this.safeSet(window, 'morePriv', 0)) return false;
             if (!this.safeSet(window, 'privReload', 1)) return false;
-            if (!this.safeSet(window, 'lastPriv',   0)) return false;
+            if (!this.safeSet(window, 'lastPriv', 0)) return false;
 
             // Legacy UI calls
             if (!this.safeCall(window, 'closeList')) return false;
             if (!this.safeCall(window, 'hideModal')) return false;
-            if (!this.safeCall(window, 'hideOver'))  return false;
+            if (!this.safeCall(window, 'hideOver')) return false;
 
             // Host hook
             const openDm = this.resolveHostFn('openPrivate');
@@ -1328,6 +1455,7 @@
                 if (url) window.open(url, '_blank');
             }
         }
+
         //
         // /* ===================== RECIPIENT LISTS ===================== */
         // async buildSpecificListAsync() {
@@ -1356,7 +1484,7 @@
         }
 
         resetForText(statEl) {
-            this._saveSentAll({});
+            this._saveRepliedConvos({});
             if (statEl) statEl.textContent = 'Cleared sent-tracking for this message.';
             return true;
         }
@@ -1367,7 +1495,10 @@
             const wait = Math.max(0, minGapMs - (now - this._lastSendAt));
             return new Promise(r => setTimeout(r, wait))
                 .then(() => this.sendPrivateMessage(id, text))
-                .then((r) => { this._lastSendAt = Date.now(); return r; });
+                .then((r) => {
+                    this._lastSendAt = Date.now();
+                    return r;
+                });
         }
 
         wireSpecificSendButton() {
@@ -1377,10 +1508,16 @@
             this.ui.sSend.addEventListener('click', async () => {
                 const stat = this.ui.sStat;
                 const nameQ = String(this.ui.sUser?.value || '').trim();
-                const text  = String(this.ui.sMsg?.value  || '').trim();
+                const text = String(this.ui.sMsg?.value || '').trim();
 
-                if (!text)  { if (stat) stat.textContent = 'Type a message first.'; return; }
-                if (!nameQ) { if (stat) stat.textContent = 'Enter a username.';     return; }
+                if (!text) {
+                    if (stat) stat.textContent = 'Type a message first.';
+                    return;
+                }
+                if (!nameQ) {
+                    if (stat) stat.textContent = 'Enter a username.';
+                    return;
+                }
 
                 // try local, then remote search
                 let candidates = [];
@@ -1388,7 +1525,9 @@
                     if (this.Users?.getOrFetchByName) {
                         candidates = await this.Users.getOrFetchByName(nameQ);
                     }
-                } catch (e) { console.error(e); }
+                } catch (e) {
+                    console.error(e);
+                }
 
                 if (!Array.isArray(candidates) || candidates.length === 0) {
                     if (stat) stat.textContent = 'User not found (female).';
@@ -1396,7 +1535,7 @@
                 }
 
                 const target = candidates[0]; // first exact match
-                const sentMap = this._loadSentAll();
+                const sentMap = this._loadRepliedConvos();
                 if (sentMap && sentMap[target.uid]) {
                     if (stat) stat.textContent = `Already sent to ${target.name || target.uid}. Change text to resend.`;
                     return;
@@ -1426,27 +1565,38 @@
                 const $bSend = this.ui.bSend, $bMsg = this.ui.bMsg, $bStat = this.ui.bStat;
 
                 const text = String($bMsg?.value || '').trim();
-                if (!text) { $bStat && ($bStat.textContent = 'Type the message first.'); return; }
+                if (!text) {
+                    $bStat && ($bStat.textContent = 'Type the message first.');
+                    return;
+                }
 
                 const list = this.buildBroadcastList();
-                const sent = this._loadSentAll();
+                const sent = this._loadRepliedConvos();
                 const to = [];
                 for (let i = 0; i < list.length; i++) if (!sent[list[i].id]) to.push(list[i]);
-                if (!to.length) { $bStat && ($bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).'); return; }
+                if (!to.length) {
+                    $bStat && ($bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).');
+                    return;
+                }
 
                 $bSend.disabled = true;
                 let ok = 0, fail = 0, B = 10, T = Math.ceil(to.length / B);
 
                 const runBatch = (bi) => {
-                    if (bi >= T) { $bStat && ($bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`); $bSend.disabled = false; return; }
-                    const start = bi * B, batch = to.slice(start, start + B); let idx = 0;
-                    $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
+                    if (bi >= T) {
+                        $bStat && ($bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`);
+                        $bSend.disabled = false;
+                        return;
+                    }
+                    const start = bi * B, batch = to.slice(start, start + B);
+                    let idx = 0;
+                    $bStat && ($bStat.textContent = `Batch ${bi + 1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
 
                     const one = () => {
                         if (idx >= batch.length) {
                             if (bi < T - 1) {
                                 const wait = 10000 + Math.floor(Math.random() * 10000);
-                                $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} done — waiting ${Math.round(wait/1000)}s...`);
+                                $bStat && ($bStat.textContent = `Batch ${bi + 1}/${T} done — waiting ${Math.round(wait / 1000)}s...`);
                                 return new Promise(r => setTimeout(r, wait)).then(() => runBatch(bi + 1));
                             }
                             return runBatch(bi + 1);
@@ -1454,13 +1604,19 @@
 
                         const item = batch[idx++], uname = item.name || item.id, av = this.extractAvatar(item.el);
                         this.sendWithThrottle(item.id, text).then((r) => {
-                            if (r && r.ok) { ok++; sent[item.id] = 1; }
-                            else { fail++; this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text); }
-                            $bStat && ($bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`);
+                            if (r && r.ok) {
+                                ok++;
+                                sent[item.id] = 1;
+                            } else {
+                                fail++;
+                                this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text);
+                            }
+                            $bStat && ($bStat.textContent = `Batch ${bi + 1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`);
                             const delay = 2000 + Math.floor(Math.random() * 3000);
                             return new Promise(r => setTimeout(r, delay));
                         }).then(one).catch(() => {
-                            fail++; this.logSendFail?.(uname, item.id, av, 'ERR', text);
+                            fail++;
+                            this.logSendFail?.(uname, item.id, av, 'ERR', text);
                             const delay = 2000 + Math.floor(Math.random() * 3000);
                             return new Promise(r => setTimeout(r, delay)).then(one);
                         });
@@ -1476,7 +1632,8 @@
         /* ===================== USER CLICK SELECTION ===================== */
         wireUserClickSelection() {
             try {
-                const c = this.getContainer(); if (!c) return;
+                const c = this.getContainer();
+                if (!c) return;
                 if (c.getAttribute('data-ca-wired') === '1') return;
 
                 c.addEventListener('click', (e) => {
@@ -1488,69 +1645,59 @@
                         while (n && n !== c && !(n.classList && n.classList.contains('user_item'))) n = n.parentNode;
                         if (!n || n === c) return;
 
-                        const nm = this.extractUsername(n); if (!nm) return;
+                        const nm = this.extractUsername(n);
+                        if (!nm) return;
                         const inp = this.qs('#ca-specific-username');
                         if (inp) {
                             inp.value = nm;
-                            const ev = new Event('input', { bubbles: true, cancelable: true });
+                            const ev = new Event('input', {bubbles: true, cancelable: true});
                             inp.dispatchEvent(ev);
                         }
-                    } catch (err) { console.error(err); }
+                    } catch (err) {
+                        console.error(err);
+                    }
                 }, false);
 
                 c.setAttribute('data-ca-wired', '1');
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
-        /* ===================== PRESENCE TRACKING / OBSERVER ===================== */
-        _scanOnlineFemaleAccounts() {
-            this._currentFemales.clear();
-            this.collectFemaleIds().forEach(it => {
-                this._currentFemales.set(it.uid, it.name || '');
-                this.Users?.set?.(it.uid, it.name, this.extractAvatar(it.el));
-            });
-        }
+        _runInitialLogWhenReady() {
+            // 0) arm container-level click delegation once (idempotent)
+            this.wireUserClickSelection?.();
 
-        _runInitialLogWhenReady(maxTries = 20) {
             const c = this.getContainer();
-            const ready = !!c && this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c).length > 0;
-
-            if (ready) {
-                this._scanOnlineFemaleAccounts();
-                this.pruneNonFemale(); this.attachCheckboxes(); this.wireUserClickSelection();
-                this._didInitialLog = true;
-                setTimeout(() => { this._presenceArmed = true; }, 4000);
-                return;
+            if (c) {
+                for (const row of this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c)) {
+                    this.processFemaleRow(row);
+                }
             }
-            if (maxTries <= 0) {
-                this._didInitialLog = true;
-                return;
-            }
-            setTimeout(() => this._runInitialLogWhenReady(maxTries - 1), 100);
         }
 
         _handleAddedNode(n) {
             let items;
-            const isFemaleItem = (el) => el?.matches?.(`.user_item[data-gender="${this.FEMALE_CODE}"]`);
-            if (isFemaleItem(n)) items = [n];
-            else items = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, n);
+            if (this.safeMatches(n, '.user_item[data-gender="' + this.FEMALE_CODE + '"]')) items = [n];
+            else items = this.qsa('.user_item[data-gender="' + this.FEMALE_CODE + '"]', n);
             if (!items.length) return;
+            console.log('Found new female users and processing them:', items);
 
             items.forEach((el) => {
-                const uid = this.getUserId(el); if (!uid) return;
+                const uid = this.getUserId(el);
+                if (!uid) return;
                 const wasPresent = this._currentFemales.has(uid);
                 const nm = this.extractUsername(el) || uid;
                 const av = this.extractAvatar(el);
+                console.log('Processing new female user:', uid, nm, av);
 
                 this.Users?.set?.(uid, nm, av);
 
                 if (!wasPresent) {
                     this._currentFemales.set(uid, nm);
-                    if (this._didInitialLog && this._presenceArmed) {
-                        this.logLogin({ uid, name: nm, avatar: av });
-                    }
-                } else {
-                    this._currentFemales.set(uid, nm);
+                }
+                if (this._didInitialLog && this._presenceArmed) {
+                    this.logLogin({uid, name: nm, avatar: av});
                 }
 
                 this.ensureSentChip(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
@@ -1559,19 +1706,19 @@
 
         _handleRemovedNode(n) {
             let items;
-            const isUserItem = (el) => el?.matches?.('.user_item');
-            if (isUserItem(n)) items = [n];
-            else items = this.qsa('.user_item', n);
+            if (this.safeMatches(n, '.user_item')) items = [n];
+            else items = qsa('.user_item', n);
             if (!items.length) return;
 
             items.forEach((el) => {
-                const id = this.getUserId(el); if (!id) return;
+                const id = this.getUserId(el);
+                if (!id) return;
                 const isFemale = (el.getAttribute && el.getAttribute('data-gender') === this.FEMALE_CODE);
                 if (isFemale && this._currentFemales.has(id)) {
                     const nm = this._currentFemales.get(id) || id;
                     this._currentFemales.delete(id);
                     if (this._didInitialLog && this._presenceArmed) {
-                        this.logLogout({ uid: id, name: nm, avatar: this.extractAvatar(el) });
+                        this.logLogout({uid: id, name: nm, avatar: this.extractAvatar(el)});
                     }
                 }
             });
@@ -1579,13 +1726,6 @@
 
         startObserver() {
             const c = this.getContainer();
-            if (!c) {
-                const iv = setInterval(() => {
-                    const cc = this.getContainer();
-                    if (cc) { clearInterval(iv); this.startObserver(); this._runInitialLogWhenReady(); }
-                }, 250);
-                return;
-            }
 
             const mo = new MutationObserver((recs) => {
                 try {
@@ -1604,7 +1744,7 @@
                                     if (node.closest?.('#ca-panel')) continue;
                                     if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
                                 }
-                                if (node.matches?.('.user_item') || node.querySelector?.('.user_item')) {
+                                if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
                                     this._handleAddedNode(node);
                                     hasRelevant = true;
                                 }
@@ -1618,7 +1758,7 @@
                                     if (node.closest?.('#ca-panel')) continue;
                                     if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
                                 }
-                                if (node.matches?.('.user_item') || node.querySelector?.('.user_item')) {
+                                if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
                                     this._handleRemovedNode(node);
                                     hasRelevant = true;
                                 }
@@ -1629,33 +1769,17 @@
                             // Find the profile row: either `.user_item` or any node carrying data-uid
                             const row = r.target.closest?.('.user_item, [data-uid]') || r.target;
                             if (row && (row.matches?.('.user_item') || row.hasAttribute?.('data-uid'))) {
-                              const uid = this.getUserId(row);
-                              if (uid && !processed.has(uid)) {
-                                processed.add(uid);
-                                // Re-check gender + visibility whenever classes/styles/status flip
-                                this._handleVisibilityOrGenderChange(row);
-                                hasRelevant = true;
-                              }
+                                const uid = this.getUserId(row);
+                                if (uid && !processed.has(uid)) {
+                                    processed.add(uid);
+                                    // Re-check gender + visibility whenever classes/styles/status flip
+                                    this._handleVisibilityOrGenderChange(row);
+                                    hasRelevant = true;
+                                }
                             }
                         }
                     });
 
-                    if (!hasRelevant) return;
-
-                    this.schedule?.(() => {
-                        try {
-                            this._isMakingOwnChanges = true;
-                            this.pruneNonFemale();
-                            this.attachCheckboxes();
-                            this.wireUserClickSelection();
-                            this.updateSentBadges?.();
-                            this.resortUserList();
-                            setTimeout(() => { this._isMakingOwnChanges = false; }, 50);
-                        } catch (e) {
-                            console.error(e);
-                            this._isMakingOwnChanges = false;
-                        }
-                    });
                 } catch (e) {
                     console.error(e);
                     console.error(this.LOG, 'Observer error:', e);
@@ -1668,24 +1792,12 @@
                 attributes: true,
                 attributeOldValue: true,
                 // include class/style because presence is toggled via CSS
-                attributeFilter: ['class','style','data-status','data-online','data-gender','data-rank']
+                attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
             });
             this._moUsers = mo;
 
             // initial pass
             this._runInitialLogWhenReady();
-
-            const ro = new MutationObserver(() => {
-                const nc = this.getContainer();
-                if (nc && nc !== c) {
-                    mo.disconnect(); ro.disconnect();
-                    this._scanOnlineFemaleAccounts();
-                    this.pruneNonFemale(); this.attachCheckboxes(); this.wireUserClickSelection();
-                    this.startObserver();
-                }
-            });
-            ro.observe(document.body, { childList: true, subtree: true });
-            this._moContainer = ro;
         }
 
         _handleVisibilityOrGenderChange(el) {
@@ -1704,17 +1816,19 @@
 
                 const wasPresent = this._currentFemales.has(uid);
 
+                console.log('Handling visibility change:', uid, name, avatar, isFemale, visible);
+
                 if (isFemale && visible && !wasPresent) {
                     this._currentFemales.set(uid, name);
                     if (this._didInitialLog && this._presenceArmed) {
-                        this.logLogin({ uid, name, avatar });
+                        this.logLogin({uid, name, avatar});
                     }
                     this.ensureSentChip?.(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
                 } else if ((!isFemale || !visible) && wasPresent) {
                     const prevName = this._currentFemales.get(uid) || name;
                     this._currentFemales.delete(uid);
                     if (this._didInitialLog && this._presenceArmed) {
-                        this.logLogout({ uid, name: prevName, avatar });
+                        this.logLogout({uid, name: prevName, avatar});
                     }
                 }
             } catch (e) {
@@ -1732,9 +1846,11 @@
                 const cs = window.getComputedStyle(el);
                 if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
                 // offsetParent covers many hidden cases; also check size
-                if (el.offsetParent === null && (el.offsetWidth === 0 && el.offsetHeight === 0)) return false;
+                return !(el.offsetParent === null && (el.offsetWidth === 0 && el.offsetHeight === 0));
+
+            } catch {
                 return true;
-            } catch { return true; }
+            }
         }
 
         /* ===================== CHAT TAP (partial) ===================== */
@@ -1742,9 +1858,14 @@
             try {
                 if (!u) return false;
                 let s = String(u);
-                try { s = new URL(s, location.origin).pathname; } catch {}
+                try {
+                    s = new URL(s, location.origin).pathname;
+                } catch {
+                }
                 return s.indexOf('system/action/chat_log.php') !== -1;
-            } catch { return false; }
+            } catch {
+                return false;
+            }
         }
 
         caUpdateChatCtxFromBody(bodyLike, urlMaybe) {
@@ -1756,7 +1877,8 @@
                     try {
                         const u = new URL(urlMaybe, location.origin);
                         qs = u.search ? u.search.replace(/^\?/, '') : '';
-                    } catch {}
+                    } catch {
+                    }
                 }
                 if (!qs) {
                     console.warn(this.LOG, 'No parameters found from chat_log.php call.');
@@ -1769,18 +1891,26 @@
                     nf = p.get('notify'), cs = p.get('curset'), pc = p.get('pcount');
 
                 this.state = this.state || {};
-                this.state.CHAT_CTX = this.state.CHAT_CTX || { caction:'', last:'', lastp:'', room:'', notify:'', curset:'', pcount: 0 };
+                this.state.CHAT_CTX = this.state.CHAT_CTX || {
+                    caction: '',
+                    last: '',
+                    lastp: '',
+                    room: '',
+                    notify: '',
+                    curset: '',
+                    pcount: 0
+                };
 
                 if (ca) this.state.CHAT_CTX.caction = String(ca);
-                if (lp) this.state.CHAT_CTX.lastp   = String(lp);
-                if (rm) this.state.CHAT_CTX.room    = String(rm);
-                if (nf) this.state.CHAT_CTX.notify  = String(nf);
-                if (cs) this.state.CHAT_CTX.curset  = String(cs);
+                if (lp) this.state.CHAT_CTX.lastp = String(lp);
+                if (rm) this.state.CHAT_CTX.room = String(rm);
+                if (nf) this.state.CHAT_CTX.notify = String(nf);
+                if (cs) this.state.CHAT_CTX.curset = String(cs);
 
                 this.caUpdateChatCtxFromBody._initialized = true;
 
                 this.state.CHAT_CTX.pcount = String(pc);
-                this.state.CHAT_CTX.last   = String(la);
+                this.state.CHAT_CTX.last = String(la);
             } catch (e) {
                 console.error(e);
                 console.error(this.LOG, 'Chat context initialization error:', e);
@@ -1789,8 +1919,15 @@
 
         /** Safe JSON.parse that returns {} on failure */
         parseJSONOrEmpty(str) {
-            try { return JSON.parse(String(str)); }
-            catch (e) { try { console.error(e); } catch (_) {} return {}; }
+            try {
+                return JSON.parse(String(str));
+            } catch (e) {
+                try {
+                    console.error(e);
+                } catch (_) {
+                }
+                return {};
+            }
         }
 
         /** @param {any} x @returns {{log_id:string,log_date:string,user_id:string,user_name:string,user_tumb:string,log_content:string}} */
@@ -1828,7 +1965,7 @@
                 (typeof o.code === 'string' ? (Number(o.code) || 0) : 0);
             return {
                 code: codeNum,
-                log: { log_content: String(o?.log?.log_content ?? '') }
+                log: {log_content: String(o?.log?.log_content ?? '')}
             };
         }
 
@@ -1851,7 +1988,7 @@
                 if (!watermark) return true; // no watermark -> everything is "new"
 
                 const msgNum = this.parseLogDateToNumber(logDateStr);
-                const wmNum  = this.parseLogDateToNumber(watermark);
+                const wmNum = this.parseLogDateToNumber(watermark);
                 if (!msgNum) return false;
 
                 const isNewer = msgNum >= wmNum;
@@ -1877,12 +2014,15 @@
                 if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
                 if (typeof FormData !== 'undefined' && body instanceof FormData) {
                     const usp = new URLSearchParams();
-                    body.forEach((v,k) => usp.append(k, typeof v === 'string' ? v : ''));
+                    body.forEach((v, k) => usp.append(k, typeof v === 'string' ? v : ''));
                     return usp.toString();
                 }
                 if (typeof body === 'object') {
-                    try { return new URLSearchParams(body).toString(); }
-                    catch (e) { console.error(e); }
+                    try {
+                        return new URLSearchParams(body).toString();
+                    } catch (e) {
+                        console.error(e);
+                    }
                 }
             } catch (e) {
                 console.error(e);
@@ -1891,15 +2031,18 @@
             return '';
         }
 
-        /* ---------- Female pruning (hide, not remove) ---------- */
-        pruneNonFemale() {
-            const c = this.getContainer(); if (!c) return;
+        pruneNonFemale(el) {
+            if (!el) return;
+            const isFemale = el.getAttribute('data-gender') === this.FEMALE_CODE;
+            el.classList.toggle('ca-hidden', !isFemale);
+        }
+
+        pruneAllNonFemale() {
+            const c = this.getContainer();
+            if (!c) return;
             this.state.isPruning = true;
             try {
-                this.qsa('.user_item[data-gender]', c).forEach(n => {
-                    const female = n.getAttribute('data-gender') === this.FEMALE_CODE;
-                    n.classList.toggle('ca-hidden', !female);
-                });
+                this.qsa('.user_item[data-gender]', c).forEach((el) => this.pruneNonFemale(el));
             } finally {
                 this.state.isPruning = false;
             }
@@ -1912,10 +2055,20 @@
                 const ds = el.dataset || {};
                 let id = ds.uid || ds.userid || ds.user || ds.id;
                 if (!id) {
-                    let n = this.qs('[data-uid]', el); if (n?.dataset?.uid) id = n.dataset.uid;
-                    if (!id) { n = this.qs('[data-userid]', el); if (n?.dataset?.userid) id = n.dataset.userid; }
-                    if (!id) { n = this.qs('[data-user]', el);   if (n?.dataset?.user)   id = n.dataset.user; }
-                    if (!id) { n = this.qs('[data-id]', el);     if (n?.dataset?.id)     id = n.dataset.id; }
+                    let n = this.qs('[data-uid]', el);
+                    if (n?.dataset?.uid) id = n.dataset.uid;
+                    if (!id) {
+                        n = this.qs('[data-userid]', el);
+                        if (n?.dataset?.userid) id = n.dataset.userid;
+                    }
+                    if (!id) {
+                        n = this.qs('[data-user]', el);
+                        if (n?.dataset?.user) id = n.dataset.user;
+                    }
+                    if (!id) {
+                        n = this.qs('[data-id]', el);
+                        if (n?.dataset?.id) id = n.dataset.id;
+                    }
                 }
                 if (!id) {
                     let a = this.qs('a[href*="profile"]', el), m = a && a.href.match(/(?:\/profile\/|[?&]uid=)(\d+)/);
@@ -1927,48 +2080,69 @@
                     }
                 }
                 return id ? String(id) : null;
-            } catch (e) { console.error(e); return null; }
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
         }
 
         extractUsername(el) {
             if (!el) return '';
             try {
-                const v = el.getAttribute('data-name'); if (v) return v.trim();
-                let n = this.qs('.user_name,.username,.name', el); if (n?.textContent) return n.textContent.trim();
-                let t = el.getAttribute('title'); if (t) return t.trim();
-                const text = (el.textContent || '').trim(); if (!text) return '';
+                const v = el.getAttribute('data-name');
+                if (v) return v.trim();
+                let n = this.qs('.user_name,.username,.name', el);
+                if (n?.textContent) return n.textContent.trim();
+                let t = el.getAttribute('title');
+                if (t) return t.trim();
+                const text = (el.textContent || '').trim();
+                if (!text) return '';
                 const parts = text.split(/\s+/).filter(Boolean);
                 if (!parts.length) return '';
-                parts.sort((a,b) => a.length - b.length);
+                parts.sort((a, b) => a.length - b.length);
                 return parts[0];
-            } catch (e) { console.error(e); return ''; }
+            } catch (e) {
+                console.error(e);
+                return '';
+            }
         }
 
         extractAvatar(el) {
             try {
                 if (!el) return '';
-                const img = el.querySelector('img[src*="avatar"]') || el.querySelector('.avatar img') || el.querySelector('img');
+                const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
                 const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
                 return src ? src.trim() : '';
-            } catch (e) { console.error(e); return ''; }
+            } catch (e) {
+                console.error(e);
+                return '';
+            }
         }
 
         /* ---------- Collect female IDs ---------- */
         collectFemaleIds() {
-            const c = this.getContainer(); if (!c) return [];
+            const c = this.getContainer();
+            if (!c) return [];
             const els = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c);
-            const out = [];
+            console.log('Collecting female IDs:', els.length);
+            const femaleAccounts = [];
             for (let i = 0; i < els.length; i++) {
                 const uid = this.getUserId(els[i]);
-                if (uid) out.push({ el: els[i], uid, name: this.extractUsername(els[i]) });
+                if (uid) femaleAccounts.push({el: els[i], uid, name: this.extractUsername(els[i])});
             }
-            return out;
+            console.log('Collected female IDs:', femaleAccounts);
+            return femaleAccounts;
         }
 
         /* ---------- Token + POST helpers ---------- */
         getToken() {
-            try { if (typeof utk !== 'undefined' && utk) return utk; } catch (e) { console.error(e); }
-            const inp = this.qs('input[name="token"]'); if (inp?.value) return inp.value;
+            try {
+                if (typeof utk !== 'undefined' && utk) return utk;
+            } catch (e) {
+                console.error(e);
+            }
+            const inp = this.qs('input[name="token"]');
+            if (inp?.value) return inp.value;
             const sc = this.qsa('script');
             for (let i = 0; i < sc.length; i++) {
                 const t = sc[i].textContent || '';
@@ -1982,28 +2156,39 @@
             const ac = new AbortController();
             const t = setTimeout(() => ac.abort(), ms);
             return startFetchFn(ac.signal)
-                .catch(err => ({ ok:false, status:0, body:String((err && err.message) || 'error') }))
+                .catch(err => ({ok: false, status: 0, body: String((err && err.message) || 'error')}))
                 .finally(() => clearTimeout(t));
         }
 
         sendPrivateMessage(target, content) {
             const token = this.getToken();
-            if (!token || !target || !content) return Promise.resolve({ ok:false, status:0, body:'bad args' });
+            if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
 
-            const body = new URLSearchParams({ token, cp:'chat', target:String(target), content:String(content), quote:'0' }).toString();
+            const body = new URLSearchParams({
+                token,
+                cp: 'chat',
+                target: String(target),
+                content: String(content),
+                quote: '0'
+            }).toString();
             return this._withTimeout(signal => {
                 return fetch('/system/action/private_process.php', {
-                    method:'POST', credentials:'include', signal,
-                    headers:{
-                        'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept':'application/json, text/javascript, */*; q=0.01',
-                        'X-Requested-With':'XMLHttpRequest',
-                        'X-CA-OWN':'1'
+                    method: 'POST', credentials: 'include', signal,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json, text/javascript, */*; q=0.01',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CA-OWN': '1'
                     },
                     body
                 }).then(res => res.text().then(txt => {
-                    let parsed; try { parsed = JSON.parse(txt); } catch (e) { console.error(e); }
-                    return { ok:res.ok, status:res.status, body:parsed || txt };
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(txt);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                    return {ok: res.ok, status: res.status, body: parsed || txt};
                 }));
             }, 15000);
         }
@@ -2042,20 +2227,23 @@
         }
 
         parseUserSearchHTML(html) {
-            const tmp = document.createElement('div'); tmp.innerHTML = html;
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html;
             const nodes = tmp.querySelectorAll('.user_item[data-id]');
             const out = [];
             for (let i = 0; i < nodes.length; i++) {
                 const el = nodes[i];
                 if (el.getAttribute('data-gender') !== this.FEMALE_CODE) continue;
-                const id = el.getAttribute('data-id'); if (!id) continue;
-                let name = ''; const p = el.querySelector('.username');
+                const id = el.getAttribute('data-id');
+                if (!id) continue;
+                let name = '';
+                const p = el.querySelector('.username');
                 if (p?.textContent) name = p.textContent.trim();
                 if (!name) {
                     const dn = el.getAttribute('data-name');
                     if (dn) name = dn.trim();
                 }
-                out.push({ el: null, uid: String(id), name });
+                out.push({el: null, uid: String(id), name});
             }
             return out;
         }
@@ -2087,34 +2275,87 @@
             if (!raw) return {};
             const arr = Array.isArray(raw) ? raw : [];
             const map = {};
-            for (let i = 0; i < arr.length; i++) { const k = String(arr[i]); if (k) map[k] = 1; }
+            for (let i = 0; i < arr.length; i++) {
+                const k = String(arr[i]);
+                if (k) map[k] = 1;
+            }
             return map;
         }
+
         _saveExcluded(map) {
-            const arr = []; for (const k in map) if (Object.prototype.hasOwnProperty.call(map,k) && map[k]) arr.push(k);
+            const arr = [];
+            for (const k in map) if (Object.prototype.hasOwnProperty.call(map, k) && map[k]) arr.push(k);
             this.Store.set(this.EXC_KEY, arr);
         }
 
         /* ---------- REPLIED_CONVOS ---------- */
-        _loadRepliedConvos() { return this.Store.get(this.REPLIED_CONVOS_KEY) || {}; }
-        _saveRepliedConvos(map) { this.Store.set(this.REPLIED_CONVOS_KEY, map); }
+        _loadRepliedConvos() {
+            return this.Store.get(this.REPLIED_CONVOS_KEY) || {};
+        }
+
+        _saveRepliedConvos(map) {
+            this.Store.set(this.REPLIED_CONVOS_KEY, map);
+        }
 
         /* ---------- Last pcount map ---------- */
-        _loadLastPcountMap() { try { const raw = this.Store.get(this.LAST_PCOUNT_MAP_KEY); return raw ? (raw || {}) : {}; } catch (e) { console.error(e); return {}; } }
-        _saveLastPcountMap(map) { this.Store.set(this.LAST_PCOUNT_MAP_KEY, map || {}); }
-        getLastPcountFor(uid) { try { return (this.LAST_PCOUNT_MAP && Number(this.LAST_PCOUNT_MAP[uid])) || 0; } catch (e) { console.error(e); return 0; } }
-        setLastPcountFor(uid, pc) { try { if (!uid) return; this.LAST_PCOUNT_MAP[uid] = Number(pc) || 0; this._saveLastPcountMap(this.LAST_PCOUNT_MAP); } catch (e) { console.error(e); } }
+        _loadLastPcountMap() {
+            try {
+                const raw = this.Store.get(this.LAST_PCOUNT_MAP_KEY);
+                return raw ? (raw || {}) : {};
+            } catch (e) {
+                console.error(e);
+                return {};
+            }
+        }
+
+        _saveLastPcountMap(map) {
+            this.Store.set(this.LAST_PCOUNT_MAP_KEY, map || {});
+        }
+
+        getLastPcountFor(uid) {
+            try {
+                return (this.LAST_PCOUNT_MAP && Number(this.LAST_PCOUNT_MAP[uid])) || 0;
+            } catch (e) {
+                console.error(e);
+                return 0;
+            }
+        }
+
+        setLastPcountFor(uid, pc) {
+            try {
+                if (!uid) return;
+                this.LAST_PCOUNT_MAP[uid] = Number(pc) || 0;
+                this._saveLastPcountMap(this.LAST_PCOUNT_MAP);
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
         /* ---------- Displayed log_ids per conversation ---------- */
         _loadDisplayedLogIds() {
-            try { const raw = this.Store.get(this.DISPLAYED_LOGIDS_KEY); return raw ? (raw || {}) : {}; }
-            catch (e) { console.error(e); return {}; }
+            try {
+                const raw = this.Store.get(this.DISPLAYED_LOGIDS_KEY);
+                return raw ? (raw || {}) : {};
+            } catch (e) {
+                console.error(e);
+                return {};
+            }
         }
-        _saveDisplayedLogIds(map) { this.Store.set(this.DISPLAYED_LOGIDS_KEY, map || {}); }
+
+        _saveDisplayedLogIds(map) {
+            this.Store.set(this.DISPLAYED_LOGIDS_KEY, map || {});
+        }
+
         getDisplayedLogIdsFor(uid) {
-            try { if (!uid || !this.DISPLAYED_LOGIDS[uid]) return []; return this.DISPLAYED_LOGIDS[uid] || []; }
-            catch (e) { console.error(e); return []; }
+            try {
+                if (!uid || !this.DISPLAYED_LOGIDS[uid]) return [];
+                return this.DISPLAYED_LOGIDS[uid] || [];
+            } catch (e) {
+                console.error(e);
+                return [];
+            }
         }
+
         addDisplayedLogId(uid, logId) {
             try {
                 if (!uid || !logId) return;
@@ -2124,11 +2365,20 @@
                     this.DISPLAYED_LOGIDS[uid] = this.DISPLAYED_LOGIDS[uid].slice(-this.MAX_LOGIDS_PER_CONVERSATION);
                 }
                 this._saveDisplayedLogIds(this.DISPLAYED_LOGIDS);
-            } catch (e) { console.error(e); console.error(this.LOG, 'Add displayed log_id error:', e); }
+            } catch (e) {
+                console.error(e);
+                console.error(this.LOG, 'Add displayed log_id error:', e);
+            }
         }
+
         hasDisplayedLogId(uid, logId) {
-            try { if (!uid || !logId) return false; return this.getDisplayedLogIdsFor(uid).includes(logId); }
-            catch (e) { console.error(e); return false; }
+            try {
+                if (!uid || !logId) return false;
+                return this.getDisplayedLogIdsFor(uid).includes(logId);
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
 
         /* ---------- DOM find helper ---------- */
@@ -2136,8 +2386,10 @@
             if (!id) return null;
             try {
                 return root.querySelector(`.user_item[data-id="${id}"], .user_item[data-uid="${id}"], .user_item [data-id="${id}"], .user_item [data-uid="${id}"]`);
+            } catch (e) {
+                console.error('findUserElementById failed:', e);
+                return null;
             }
-            catch (e) { console.error('findUserElementById failed:', e); return null; }
         }
 
         /* ---------- Sent chip & badges ---------- */
@@ -2153,7 +2405,9 @@
                         chip.className = 'ca-sent-chip';
                         chip.textContent = '✓';
                         userEl.appendChild(chip);
-                        setTimeout(() => { this._isMakingOwnChanges = false; }, 10);
+                        setTimeout(() => {
+                            this._isMakingOwnChanges = false;
+                        }, 10);
                     } else {
                         chip.textContent = '✓';
                     }
@@ -2161,86 +2415,142 @@
                     if (chip?.parentNode) {
                         this._isMakingOwnChanges = true;
                         chip.parentNode.removeChild(chip);
-                        setTimeout(() => { this._isMakingOwnChanges = false; }, 10);
+                        setTimeout(() => {
+                            this._isMakingOwnChanges = false;
+                        }, 10);
                     }
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         updateSentBadges() {
             try {
-                const c = this.getContainer(); if (!c) return;
+                const c = this.getContainer();
+                if (!c) return;
                 this.qsa('.user_item', c).forEach(el => {
                     const id = this.getUserId(el);
                     this.ensureSentChip(id, !!(id && this.REPLIED_CONVOS[id]));
                 });
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
-        resortUserList() {
-            try {
-                const c = this.getContainer(); if (!c) return;
-                const items = this.qsa('.user_item', c); if (!items.length) return;
-                const unsent = [], sent = [];
-                items.forEach(el => {
-                    const id = this.getUserId(el);
-                    if (id && this.REPLIED_CONVOS[id]) sent.push(el); else unsent.push(el);
-                });
-                const frag = document.createDocumentFragment();
-                unsent.forEach(n => frag.appendChild(n));
-                sent.forEach(n => frag.appendChild(n));
-                c.appendChild(frag);
-            } catch (e) { console.error(e); }
+        // Is this row "replied" according to your truth source
+        _isRowReplied(row) {
+            const uid = this.getUserId?.(row);
+            return !!(uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]);
         }
+
+        // Find the first visible replied row (partition boundary)
+        _getFirstVisibleRepliedRow(container) {
+            // skip hidden (e.g., non-female or filtered)
+            return this.qs('.user_item:not(.ca-hidden) .ca-sent-chip', container)?.closest('.user_item') || null;
+        }
+
+        _placeRowByReplyStatus(row, replied = null) {
+            const list = this.getContainer?.();
+            if (!list || !row) return;
+
+            // if caller already knows, use it; otherwise compute
+            const isReplied = (replied != null) ? replied : this._isRowReplied(row);
+
+            if (!this._isMakingOwnChanges) this._isMakingOwnChanges = true;
+            try {
+                if (isReplied) {
+                    list.appendChild(row);
+                } else {
+                    const firstReplied = this._getFirstVisibleRepliedRow(list);
+                    list.insertBefore(row, firstReplied || list.firstChild);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setTimeout(() => {
+                    this._isMakingOwnChanges = false;
+                }, 0);
+            }
+        }
+
+        processFemaleRow(row) {
+            if (!row) return false;
+
+            // 1) prune just this row
+            this.pruneNonFemale(row);
+
+            // 2) eligibility
+            const isFemale = row.getAttribute('data-gender') === this.FEMALE_CODE;
+            if (!isFemale || row.classList.contains('ca-hidden')) return false;
+            if (!this.isUserVisible(row)) return false;
+            if (!this._isAllowedRank(row)) return false;
+
+            // 3) per-row UI
+            this.ensureBroadcastCheckbox(row);
+
+            // 4) sent chip & reply status
+            const uid = this.getUserId?.(row);
+            const replied = !!(uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]);
+            if (uid) this.ensureSentChip?.(uid, replied);
+
+            // 5) place the row based on that same status
+            this._placeRowByReplyStatus(row, replied);
+
+            return true;
+        }
+
 
         /* ---------- Rank filter & selection checkbox ---------- */
         _isAllowedRank(el) {
             try {
                 const rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
-                const roomRankIcon = el ? el.querySelector('.list_rank') : null;
+                const roomRankIcon = this.safeQuery(el, '.list_rank');
                 const roomRank = roomRankIcon ? (roomRankIcon.getAttribute('data-r') || '') : '';
                 return (rankAttr === '1' || rankAttr === '50') && (roomRank !== '4');
-            } catch (e) { console.error(e); return false; }
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
 
-        ensureCheckboxOn(el) {
+        // more descriptive and self-contained
+        ensureBroadcastCheckbox(el) {
             try {
-                if (!el || el.getAttribute('data-gender') !== this.FEMALE_CODE) return;
-                if (this.qs('.ca-ck-wrap', el)) return;
-                if (!this._isAllowedRank(el)) return;
-                const id = this.getUserId(el); if (!id) return;
+                if (!el || el.nodeType !== 1) return;      // skip invalid
+                if (el.getAttribute('data-gender') !== this.FEMALE_CODE) return;
+                if (this.qs('.ca-ck-wrap', el)) return;    // already has one
+                if (!this._isAllowedRank?.(el)) return;
+
+                const id = this.getUserId?.(el);
+                if (!id) return;
+
                 this._isMakingOwnChanges = true;
 
                 const wrap = document.createElement('label');
-                wrap.className = 'ca-ck-wrap'; wrap.title = 'Include in broadcast';
-                const cb = document.createElement('input');
-                cb.type = 'checkbox'; cb.className = 'ca-ck';
-                cb.checked = !this.EXCLUDED[id];
+                wrap.className = 'ca-ck-wrap';
+                wrap.title = 'Include in broadcast';
 
-                cb.addEventListener('click', e => e.stopPropagation());
-                cb.addEventListener('change', () => {
-                    if (cb.checked) { delete this.EXCLUDED[id]; } else { this.EXCLUDED[id] = 1; }
-                    this._saveExcluded(this.EXCLUDED);
-                });
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'ca-ck';
+
+                // initial state could reflect some user list / selection map if you have one
+                cb.checked = !!(this.EXCLUDED && !this.EXCLUDED[id]);
 
                 wrap.appendChild(cb);
                 el.appendChild(wrap);
-                setTimeout(() => { this._isMakingOwnChanges = false; }, 10);
-            } catch (e) { console.error(e); }
-        }
 
-        attachCheckboxes() {
-            try {
-                const c = this.getContainer(); if (!c) return;
-                const els = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c);
-                for (let i = 0; i < els.length; i++) {
-                    const el = els[i];
-                    this.ensureCheckboxOn(el);
-                    const id = this.getUserId(el);
-                    this.ensureSentChip(id, !!(id && this.REPLIED_CONVOS[id]));
-                }
-                this.resortUserList();
-            } catch (e) { console.error(e); }
+                // (optional) event hookup here if you don’t already wire at container level
+                cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, id, el));
+
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setTimeout(() => {
+                    this._isMakingOwnChanges = false;
+                }, 0);
+            }
         }
 
         /* ---------- Panel UI ---------- */
@@ -2260,7 +2570,7 @@
                   <button id="${this.getCleanSelector(this.sel.log.clear)}" class="ca-btn ca-btn-xs" type="button">Clear</button>
                 </div>
             
-                <div class="ca-section">
+                <div class="ca-section ca-section-specific">
                   <div class="ca-section-title">
                     <span>Send to specific username</span>
                     <a id="${this.getCleanSelector(this.sel.specific.reset)}" href="#" class="ca-reset-link">Reset tracking</a>
@@ -2286,7 +2596,7 @@
                 <div class="ca-section ca-section-compact">
                   <div class="ca-section-title"><span>Sent Messages</span></div>
                   <div id="${this.getCleanSelector(this.sel.log.sent)}"
-                       class="ca-log-box ca-log-box-compact"
+                       class="ca-log-box ca-log-box-compact ${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}"
                        aria-live="polite"></div>
                 </div>
             
@@ -2294,16 +2604,20 @@
             
                 <div class="ca-section ca-section-expand">
                   <div class="ca-section-title"><span>Received Messages</span></div>
-                  <div id="${this.getCleanSelector(this.sel.log.received)}"
+                  <div id="${this.getCleanSelector(this.sel.log.received)}" 
                        class="ca-log-box ca-log-box-expand"
                        aria-live="polite">
                     <div class="ca-log-subsection-unreplied-wrapper">
                       <div class="ca-log-subsection-header">Not Replied</div>
-                      <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>
+                      <div id="${this.getCleanSelector(this.sel.log.unreplied)}"
+                            class="${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}">
+                           </div>
                     </div>
                     <div class="ca-log-subsection-replied-wrapper">
                       <div class="ca-log-subsection-header">Replied</div>
-                      <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>
+                      <div id="${this.getCleanSelector(this.sel.log.replied)}"
+                            class="${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}">
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2312,7 +2626,7 @@
                   <hr class="ca-divider">
                   <div class="ca-section-title"><span>Logon/Logoff</span></div>
                   <div id="${this.getCleanSelector(this.sel.log.presence)}"
-                       class="ca-log-box"
+                       class="ca-log-box ${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}"
                        aria-live="polite"></div>
                 </div>
               </div>`;
@@ -2330,39 +2644,151 @@
             pop.id = 'ca-bc-pop';
             pop.className = 'ca-pop';
             pop.innerHTML =
-                '<div id="ca-bc-pop-header" class="ca-pop-header">'+
-                '  <span>Broadcast</span>'+
-                '  <button id="ca-bc-pop-close" class="ca-pop-close" type="button">✕</button>'+
-                '</div>'+
-                '<div class="ca-pop-body">'+
-                '  <textarea id="ca-bc-msg" class="ca-8" rows="5" placeholder="Type the broadcast message..."></textarea>'+
-                '  <div class="ca-controls" style="margin-top:4px;">'+
-                '    <span id="ca-bc-status" class="ca-status"></span>'+
-                '    <a id="ca-bc-reset" href="#" class="ca-reset-link" style="margin-left:auto">Reset tracking</a>'+
-                '  </div>'+
-                '  <div class="ca-pop-actions">'+
-                '    <button id="ca-bc-send" class="ca-btn ca-btn-slim" type="button">Send</button>'+
-                '  </div>'+
+                '<div id="ca-bc-pop-header" class="ca-pop-header">' +
+                '  <span>Broadcast</span>' +
+                '  <button id="ca-bc-pop-close" class="ca-pop-close" type="button">✕</button>' +
+                '</div>' +
+                '<div class="ca-pop-body">' +
+                '  <textarea id="ca-bc-msg" class="ca-8" rows="5" placeholder="Type the broadcast message..."></textarea>' +
+                '  <div class="ca-controls" style="margin-top:4px;">' +
+                '    <span id="ca-bc-status" class="ca-status"></span>' +
+                '    <a id="ca-bc-reset" href="#" class="ca-reset-link" style="margin-left:auto">Reset tracking</a>' +
+                '  </div>' +
+                '  <div class="ca-pop-actions">' +
+                '    <button id="ca-bc-send" class="ca-btn ca-btn-slim" type="button">Send</button>' +
+                '  </div>' +
                 '</div>';
             document.body.appendChild(pop);
 
             const closeBtn = pop.querySelector('#ca-bc-pop-close');
-            if (closeBtn) closeBtn.addEventListener('click', () => { pop.style.display = 'none'; });
+            if (closeBtn) closeBtn.addEventListener('click', () => {
+                pop.style.display = 'none';
+            });
 
             // drag
-            const hdr = pop.querySelector('#ca-bc-pop-header'); let ox=0, oy=0, sx=0, sy=0;
-            const mm = (e) => { const dx=e.clientX-sx, dy=e.clientY-sy; pop.style.left=(ox+dx)+'px'; pop.style.top=(oy+dy)+'px'; pop.style.transform='none'; };
-            const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
-            if (hdr) hdr.addEventListener('mousedown', (e) => { sx=e.clientX; sy=e.clientY; const r=pop.getBoundingClientRect(); ox=r.left; oy=r.top; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); });
+            const hdr = pop.querySelector('#ca-bc-pop-header');
+            let ox = 0, oy = 0, sx = 0, sy = 0;
+            const mm = (e) => {
+                const dx = e.clientX - sx, dy = e.clientY - sy;
+                pop.style.left = (ox + dx) + 'px';
+                pop.style.top = (oy + dy) + 'px';
+                pop.style.transform = 'none';
+            };
+            const mu = () => {
+                document.removeEventListener('mousemove', mm);
+                document.removeEventListener('mouseup', mu);
+            };
+            if (hdr) hdr.addEventListener('mousedown', (e) => {
+                sx = e.clientX;
+                sy = e.clientY;
+                const r = pop.getBoundingClientRect();
+                ox = r.left;
+                oy = r.top;
+                document.addEventListener('mousemove', mm);
+                document.addEventListener('mouseup', mu);
+            });
 
             return pop;
         }
+
+        createSpecificPopup() {
+            let pop = document.getElementById('ca-specific-pop');
+            if (pop) return pop;
+
+            pop = document.createElement('div');
+            pop.id = 'ca-specific-pop';
+            pop.className = 'ca-pop';
+            pop.innerHTML =
+                '<div id="ca-specific-pop-header" class="ca-pop-header">' +
+                '  <span>Send to specific user</span>' +
+                '  <button id="ca-specific-pop-close" class="ca-pop-close" type="button">✕</button>' +
+                '</div>' +
+                '<div class="ca-pop-body">' +
+                '  <div class="ca-row">' +
+                '    <input id="ca-specific-username" class="ca-input-slim" type="text" placeholder="Enter username (case-insensitive)">' +
+                '    <button id="ca-specific-send" class="ca-btn ca-btn-slim" type="button">Send</button>' +
+                '  </div>' +
+                '  <div id="ca-specific-status" class="ca-status"></div>' +
+                '  <textarea id="ca-specific-msg" class="ca-8" rows="5" placeholder="Type the message..."></textarea>' +
+                '  <div class="ca-pop-actions">' +
+                '    <a id="ca-specific-reset" href="#" class="ca-reset-link">Reset tracking</a>' +
+                '  </div>' +
+                '</div>';
+            document.body.appendChild(pop);
+
+            const closeBtn = pop.querySelector('#ca-specific-pop-close');
+            if (closeBtn) closeBtn.addEventListener('click', () => {
+                pop.style.display = 'none';
+            });
+
+            // draggable header
+            const hdr = pop.querySelector('#ca-specific-pop-header');
+            let ox = 0, oy = 0, sx = 0, sy = 0;
+            const mm = (e) => {
+                const dx = e.clientX - sx, dy = e.clientY - sy;
+                pop.style.left = (ox + dx) + 'px';
+                pop.style.top = (oy + dy) + 'px';
+                pop.style.transform = 'none';
+            };
+            const mu = () => {
+                document.removeEventListener('mousemove', mm);
+                document.removeEventListener('mouseup', mu);
+            };
+            if (hdr) hdr.addEventListener('mousedown', (e) => {
+                sx = e.clientX;
+                sy = e.clientY;
+                const r = pop.getBoundingClientRect();
+                ox = r.left;
+                oy = r.top;
+                document.addEventListener('mousemove', mm);
+                document.addEventListener('mouseup', mu);
+            });
+
+            return pop;
+        }
+
+        openSpecific() {
+            const pop = this.createSpecificPopup();
+            if (pop) {
+                pop.style.display = 'block';
+                if (!this.openSpecific._wired) {
+                    this.wireSpecificControls();
+                    this.openSpecific._wired = true;
+                }
+            } else {
+                console.error('Failed to create specific popup');
+            }
+        }
+
+        wireSpecificControls() {
+            // Rebind specific refs to popup controls
+            this.ui.sUser = this.qs(this.sel.specificPop.username);
+            this.ui.sMsg = this.qs(this.sel.specificPop.msg);
+            this.ui.sSend = this.qs(this.sel.specificPop.send);
+            this.ui.sStat = this.qs(this.sel.specificPop.status);
+            this.ui.sReset = this.qs(this.sel.specificPop.reset);
+
+            if (this.ui.sReset && !this.ui.sReset._wired) {
+                this.ui.sReset._wired = true;
+                this.ui.sReset.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.resetForText(this.ui.sStat);
+                });
+            }
+
+            // Reuse existing logic that wires the send button
+            this.wireSpecificSendButton && this.wireSpecificSendButton();
+        }
+
 
         openBroadcast() {
             const pop = this.createBroadcastPopup();
             if (pop) {
                 pop.style.display = 'block';
-                if (!this.openBroadcast._wired) { this.wireBroadcastControls(); this.openBroadcast._wired = true; }
+                if (!this.openBroadcast._wired) {
+                    this.wireBroadcastControls();
+                    this.openBroadcast._wired = true;
+                }
             }
         }
 
@@ -2388,46 +2814,60 @@
                     const $bSend = this.ui.bSend, $bMsg = this.ui.bMsg, $bStat = this.ui.bStat;
 
                     const text = (this.trim ? this.trim($bMsg?.value || '') : String($bMsg?.value || '').trim());
-                    if (!text) { if ($bStat) $bStat.textContent = 'Type the message first.'; return; }
+                    if (!text) {
+                        if ($bStat) $bStat.textContent = 'Type the message first.';
+                        return;
+                    }
 
                     const list = this.buildBroadcastList();
-                    const sent = this._loadSentAll();
+                    const sent = this._loadRepliedConvos();
                     const to = [];
-                    for (let i = 0; i < list.length; i++) { if (!sent[list[i].uid]) to.push(list[i]); }
-                    if (!to.length) { if ($bStat) $bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).'; return; }
+                    for (let i = 0; i < list.length; i++) {
+                        if (!sent[list[i].uid]) to.push(list[i]);
+                    }
+                    if (!to.length) {
+                        if ($bStat) $bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).';
+                        return;
+                    }
 
                     $bSend.disabled = true;
                     let ok = 0, fail = 0, B = 10, T = Math.ceil(to.length / B);
 
                     const runBatch = (bi) => {
-                        if (bi >= T) { if ($bStat) $bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`; $bSend.disabled = false; return; }
-                        const start = bi * B, batch = to.slice(start, start + B); let idx = 0;
-                        if ($bStat) $bStat.textContent = `Batch ${bi+1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`;
+                        if (bi >= T) {
+                            if ($bStat) $bStat.textContent = `Done. Success: ${ok}, Failed: ${fail}.`;
+                            $bSend.disabled = false;
+                            return;
+                        }
+                        const start = bi * B, batch = to.slice(start, start + B);
+                        let idx = 0;
+                        if ($bStat) $bStat.textContent = `Batch ${bi + 1}/${T} — sending ${batch.length}... (OK:${ok} Fail:${fail})`;
 
                         const one = () => {
                             if (idx >= batch.length) {
                                 if (bi < T - 1) {
-                                    const wait = this.randBetween ? this.randBetween(10000,20000) : (10000 + Math.floor(Math.random()*10000));
-                                    if ($bStat) $bStat.textContent = `Batch ${bi+1}/${T} done — waiting ${Math.round(wait/1000)}s...`;
-                                    (this.sleep ? this.sleep(wait) : new Promise(r=>setTimeout(r, wait))).then(() => runBatch(bi+1));
+                                    const wait = this.randBetween ? this.randBetween(10000, 20000) : (10000 + Math.floor(Math.random() * 10000));
+                                    if ($bStat) $bStat.textContent = `Batch ${bi + 1}/${T} done — waiting ${Math.round(wait / 1000)}s...`;
+                                    (this.sleep ? this.sleep(wait) : new Promise(r => setTimeout(r, wait))).then(() => runBatch(bi + 1));
                                 } else {
-                                    runBatch(bi+1);
+                                    runBatch(bi + 1);
                                 }
                                 return;
-                                }
+                            }
 
-                                const item = batch[idx++];
-                                this.sendWithThrottle(item.uid, text).then((r) => {
+                            const item = batch[idx++];
+                            this.sendWithThrottle(item.uid, text).then((r) => {
                                 if (r && r.ok) {
-                                    ok++; sent[item.uid] = 1;
+                                    ok++;
+                                    sent[item.uid] = 1;
                                 }
                                 if ($bStat) {
-                                    $bStat.textContent = `Batch ${bi+1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`;
+                                    $bStat.textContent = `Batch ${bi + 1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`;
                                 }
-                                return (this.sleep ? this.sleep(this.randBetween ? this.randBetween(2000,5000) : 2000+Math.floor(Math.random()*3000)) : new Promise(r=>setTimeout(r, 2500)));
+                                return (this.sleep ? this.sleep(this.randBetween ? this.randBetween(2000, 5000) : 2000 + Math.floor(Math.random() * 3000)) : new Promise(r => setTimeout(r, 2500)));
                             }).then(one).catch(() => {
-                                const delay = this.randBetween ? this.randBetween(2000,5000) : 2500;
-                                return (this.sleep ? this.sleep(delay) : new Promise(r=>setTimeout(r, delay))).then(one);
+                                const delay = this.randBetween ? this.randBetween(2000, 5000) : 2500;
+                                return (this.sleep ? this.sleep(delay) : new Promise(r => setTimeout(r, delay))).then(one);
                             });
                         };
 
@@ -2438,32 +2878,58 @@
             }
         }
 
+        addSpecificNavButton() {
+            try {
+                // Find the Broadcast button and append the Specific button next to it
+                const bcBtn = this.qs(this.sel.nav.bc);
+                if (!bcBtn) return;
+                let specBtn = document.getElementById(this.getCleanSelector(this.sel.nav.spec).slice(1));
+                if (!specBtn) {
+                    specBtn = document.createElement('button');
+                    specBtn.id = this.getCleanSelector(this.sel.nav.spec).slice(1);
+                    specBtn.className = 'ca-nav-btn-secondary';
+                    specBtn.type = 'button';
+                    specBtn.textContent = 'Specific';
+                    // insert after Broadcast
+                    bcBtn.insertAdjacentElement('afterend', specBtn);
+                }
+                this.ui.navSpec = specBtn;
+                if (!specBtn._wired) {
+                    specBtn._wired = true;
+                    specBtn.addEventListener('click', () => this.openSpecific());
+                }
+            } catch (e) { /* no-op */
+            }
+        }
+
         getCleanSelector(sel) {
-            return String(sel || '').replace(/^[#.]/, '');
+            return String(sel || '').trim().substring(1);
         }
 
         _bindStaticRefs() {
             // specific send panel
-            this.ui.sUser  = this.qs(this.sel.specific.username);
-            this.ui.sMsg   = this.qs(this.sel.specific.msg);
-            this.ui.sSend  = this.qs(this.sel.specific.send);
-            this.ui.sStat  = this.qs(this.sel.specific.status);
+            this.ui.sUser = this.qs(this.sel.specific.username);
+            this.ui.sMsg = this.qs(this.sel.specific.msg);
+            this.ui.sSend = this.qs(this.sel.specific.send);
+            this.ui.sStat = this.qs(this.sel.specific.status);
             this.ui.sReset = this.qs(this.sel.specific.reset);
 
             // logs
-            this.ui.sentBox              = this.qs(this.sel.log.sent);
-            this.ui.receivedMessagesBox  = this.qs(this.sel.log.received);
-            this.ui.repliedMessageBox    = this.qs(this.sel.log.replied);
-            this.ui.unrepliedMessageBox  = this.qs(this.sel.log.unreplied);
-            this.ui.presenceBox          = this.qs(this.sel.log.presence);
-            this.ui.logClear             = this.qs(this.sel.log.clear);
+            this.ui.sentBox = this.qs(this.sel.log.sent);
+            this.ui.receivedMessagesBox = this.qs(this.sel.log.received);
+            this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
+            this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
+            this.ui.presenceBox = this.qs(this.sel.log.presence);
+            this.ui.logClear = this.qs(this.sel.log.clear);
 
             // nav
             this.ui.navBc = this.qs(this.sel.nav.bc);
+            this.ui.navSpec = this.qs(this.sel.nav.spec);
         }
 
         _wirePanelNav() {
             if (this.ui.navBc) this.ui.navBc.addEventListener('click', () => this.openBroadcast());
+            if (this.ui.navSpec) this.ui.navSpec.addEventListener('click', () => this.openSpecific());
         }
 
         _wireLogClear() {
@@ -2473,13 +2939,13 @@
                 // rebuild received with subsections
                 if (this.ui.receivedMessagesBox) {
                     this.ui.receivedMessagesBox.innerHTML =
-                        '<div class="ca-log-subsection-unreplied-wrapper">'+
-                        '  <div class="ca-log-subsection-header">Not Replied</div>'+
-                        `  <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>`+
-                        '</div>'+
-                        '<div class="ca-log-subsection-replied-wrapper">'+
-                        '  <div class="ca-log-subsection-header">Replied</div>'+
-                        `  <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>`+
+                        '<div class="ca-log-subsection-unreplied-wrapper">' +
+                        '  <div class="ca-log-subsection-header">Not Replied</div>' +
+                        `  <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>` +
+                        '</div>' +
+                        '<div class="ca-log-subsection-replied-wrapper">' +
+                        '  <div class="ca-log-subsection-header">Replied</div>' +
+                        `  <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>` +
                         '</div>';
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
@@ -2494,9 +2960,12 @@
                 const repliedAt = this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid];
                 if (!repliedAt) return false;
                 const repliedTime = this.parseLogDateToNumber(repliedAt);
-                const msgTime     = this.parseLogDateToNumber(msgTimestamp);
+                const msgTime = this.parseLogDateToNumber(msgTimestamp);
                 return !!(repliedTime && msgTime && repliedTime > msgTime);
-            } catch (e) { console.error(e); return false; }
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
         }
 
         determineTargetMessagesContainer(uid, msgTimestamp) {
@@ -2513,18 +2982,28 @@
                     badge.textContent = '✓';
                     LogEntryEl.appendChild(badge);
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         renderLogEntry(ts, kind, content, user) {
             // 1) pick target container
             let targetContainer = null;
             switch (kind) {
-                case 'dm-out':        targetContainer = this.ui.sentBox;     break;
-                case 'dm-in':         targetContainer = this.ui.receivedMessagesBox;     break;
+                case 'dm-out':
+                    targetContainer = this.ui.sentBox;
+                    break;
+                case 'dm-in':
+                    targetContainer = this.ui.receivedMessagesBox;
+                    break;
                 case 'login':
-                case 'logout':        targetContainer = this.ui.presenceBox; break;
-                default:              targetContainer = this.ui.receivedMessagesBox;     break;
+                case 'logout':
+                    targetContainer = this.ui.presenceBox;
+                    break;
+                default:
+                    targetContainer = this.ui.receivedMessagesBox;
+                    break;
             }
             if (!targetContainer) return;
             console.log(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
@@ -2590,19 +3069,30 @@
             }
 
             // 3) enforce max entries (older removed)
-            try { this.trimLogBoxToMax?.(targetContainer); } catch {}
+            try {
+                this.trimLogBoxToMax?.(targetContainer);
+            } catch {
+            }
 
             // 13) auto-scroll the box to the bottom (next frame for reliability)
             requestAnimationFrame(() => {
-                try { targetContainer.scrollTop = targetContainer.scrollHeight; } catch {}
+                try {
+                    targetContainer.scrollTop = targetContainer.scrollHeight;
+                } catch {
+                }
             });
         }
 
         saveLogEntry(ts, kind, content, uid) {
             if (kind === 'login' || kind === 'logout') return; // don’t persist presence
             let arr = [];
-            try { const raw = this.Store.get(this.ACTIVITY_LOG_KEY); if (raw) arr = raw || []; } catch (e) { console.error(e); }
-            arr.unshift({ ts, kind, uid, content });
+            try {
+                const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
+                if (raw) arr = raw || [];
+            } catch (e) {
+                console.error(e);
+            }
+            arr.unshift({ts, kind, uid, content});
             const LOG_MAX = 200;
             if (arr.length > LOG_MAX) arr = arr.slice(0, LOG_MAX);
             this.Store.set(this.ACTIVITY_LOG_KEY, arr);
@@ -2618,7 +3108,12 @@
             if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
 
             let arr = [];
-            try { const raw = this.Store.get(this.ACTIVITY_LOG_KEY); if (raw) arr = raw || []; } catch (e) { console.error(e); }
+            try {
+                const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
+                if (raw) arr = raw || [];
+            } catch (e) {
+                console.error(e);
+            }
 
             for (let i = arr.length - 1; i >= 0; i--) {
                 const e = arr[i];
@@ -2632,16 +3127,23 @@
         trimLogBoxToMax(targetBox) {
             try {
                 if (!targetBox || !targetBox.children) return;
-                const kids = Array.from(targetBox.children);
+                const boxChildren = Array.from(targetBox.children);
                 const LOG_MAX = 200;
-                if (kids.length <= LOG_MAX) return;
+                if (boxChildren.length <= LOG_MAX) return;
 
-                const toRemove = kids.length - LOG_MAX;
+                const toRemove = boxChildren.length - LOG_MAX;
                 for (let i = 0; i < toRemove; i++) {
-                    try { kids[i]?.parentNode?.removeChild(kids[i]); }
-                    catch (e) { console.error(e); console.error(this.LOG, 'Remove log entry error:', e); }
+                    try {
+                        boxChildren[i]?.parentNode?.removeChild(boxChildren[i]);
+                    } catch (e) {
+                        console.error(e);
+                        console.error(this.LOG, 'Remove log entry error:', e);
+                    }
                 }
-            } catch (e) { console.error(e); console.error(this.LOG, 'Trim log error:', e); }
+            } catch (e) {
+                console.error(e);
+                console.error(this.LOG, 'Trim log error:', e);
+            }
         }
 
         logLine(kind, content, user) {
@@ -2686,9 +3188,15 @@
                         try {
                             const res = gate.origPlay.call(audioEl);
                             if (res && typeof res.catch === 'function') {
-                                res.catch(() => { /* swallow */ });
+                                res.catch(() => { /* swallow */
+                                });
                             }
-                        } catch (e) { try { console.error(e); } catch(_){} }
+                        } catch (e) {
+                            try {
+                                console.error(e);
+                            } catch (_) {
+                            }
+                        }
                     });
                     gate.pending.clear();
 
@@ -2714,7 +3222,7 @@
 
                         const p = gate.origPlay.call(this);
                         if (p && typeof p.catch === 'function') {
-                            p.catch(function(err) {
+                            p.catch(function (err) {
                                 // If policy still blocks (rare), re-queue and swallow
                                 const name = (err && (err.name || err)) ? String(err.name || err).toLowerCase() : '';
                                 if (name.includes('notallowed')) gate.pending.add(this);
@@ -2722,14 +3230,21 @@
                         }
                         return p;
                     } catch (e) {
-                        try { return gate.origPlay.call(this); }
-                        catch (e2) { console.error(e2); return Promise.resolve(); }
+                        try {
+                            return gate.origPlay.call(this);
+                        } catch (e2) {
+                            console.error(e2);
+                            return Promise.resolve();
+                        }
                     }
                 };
 
                 gate.installed = true;
             } catch (e) {
-                try { console.error(e); } catch(_) {}
+                try {
+                    console.error(e);
+                } catch (_) {
+                }
             }
         }
 
@@ -2753,7 +3268,10 @@
                 if (gate.pending) gate.pending.clear();
 
             } catch (e) {
-                try { console.error(e); } catch(_) {}
+                try {
+                    console.error(e);
+                } catch (_) {
+                }
             } finally {
                 gate.userInteracted = false;
                 gate.pending = null;
@@ -2782,9 +3300,13 @@
                 const entry = document.createElement('div');
                 entry.className = 'ca-log-entry ' + (type === 'broadcast' ? 'ca-log-broadcast' : (type === 'reset' ? 'ca-log-reset' : ''));
 
-                const ts = document.createElement('div'); ts.className = 'ca-log-ts';  ts.textContent = this.timeHHMM();
-                const dot = document.createElement('div'); dot.className = 'ca-log-dot';
-                const msg = document.createElement('div'); msg.className = 'ca-log-text';
+                const ts = document.createElement('div');
+                ts.className = 'ca-log-ts';
+                ts.textContent = this.timeHHMM();
+                const dot = document.createElement('div');
+                dot.className = 'ca-log-dot';
+                const msg = document.createElement('div');
+                msg.className = 'ca-log-text';
 
                 const safe = this.escapeHTML(String(text || ''));
                 if (type === 'broadcast') {
@@ -2900,7 +3422,7 @@
                     console.error(e);
                 }
             });
-            observer.observe(document.body, { childList: true, subtree: true });
+            observer.observe(document.body, {childList: true, subtree: true});
 
             // keep a reference if you want to disconnect later
             this._mo = observer;
@@ -2910,7 +3432,9 @@
             let resizeTimer = null;
             this._onResize = this._onResize || (() => {
                 clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(() => { this.adjustForFooter(); }, 250);
+                resizeTimer = setTimeout(() => {
+                    this.adjustForFooter();
+                }, 250);
             });
             window.addEventListener('resize', this._onResize);
         }
@@ -2918,11 +3442,6 @@
         /* ---------- Containers / lists ---------- */
         getContainer() {
             return this.qs(this.sel.users.main) || this.qs(this.sel.users.chatRight) || this.qs(this.sel.users.online);
-        }
-
-        schedule(fn) {
-            if (this._rafId) cancelAnimationFrame(this._rafId);
-            this._rafId = requestAnimationFrame(() => { this._rafId = null; try { fn(); } catch(e){ console.error(e); } });
         }
 
         /* ---------- Global watermark helpers (uses this.Store) ---------- */
@@ -3039,9 +3558,9 @@
             } else if (this.ui.unrepliedMessageBox.contains(logEntryEl) && targetContainerEl === this.ui.repliedMessageBox) {
                 console.log('Removing unreplied message from unreplied container to recreate it in the replied container');
                 this.ui.unrepliedMessageBox.removeChild(logEntryEl);
-               // NOT NEEDED HERE I THINK: this.markConversationAsReplied(uid);
+                // NOT NEEDED HERE I THINK: this.markConversationAsReplied(uid);
             } else if (targetContainerEl === this.ui.repliedMessageBox) {
-                console.log(`Moving message from unreplied container to replied container`) ;
+                console.log(`Moving message from unreplied container to replied container`);
                 this.ui.repliedMessageBox.appendChild(logEntryEl);
             }
         }
@@ -3052,20 +3571,28 @@
             this.uninstallNetworkTaps();
             this.uninstallPrivateSendInterceptor(); // <— restore
             if (this._privBoxObserver) {
-                try { this._privBoxObserver.disconnect(); } catch {}
+                try {
+                    this._privBoxObserver.disconnect();
+                } catch {
+                }
                 this._privBoxObserver = null;
             }
 
             if (this._mo) this._mo.disconnect();
             if (this._moUsers) this._moUsers.disconnect();
-            if (this._moContainer) this._moContainer.disconnect();
 
             this.state.READY = false;
-            if (this._domUserObs) { try { this._domUserObs.disconnect(); } catch {} this._domUserObs = null; }
+            if (this._domUserObs) {
+                try {
+                    this._domUserObs.disconnect();
+                } catch {
+                }
+                this._domUserObs = null;
+            }
         }
     }
 
-    // Expose the single App instance
+// Expose the single App instance
     root.CA.App = new App();
     root.CA.App.init();
 })();

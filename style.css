@@ -184,6 +184,10 @@
     font-size:12px; line-height:1.35;
 }
 
+.ca-log-box-scrollable {
+    padding-right: 12px; /* was 4px */
+}
+
 /* Variants: compact for sent, expand for received */
 .ca-log-box-compact { max-height:120px; min-height:80px; flex: 0 0 auto; overflow-y: auto; }
 /* Replaces inline style on received box: allow it to grow and shrink within flex column */
@@ -230,6 +234,7 @@
     flex-direction: column;
     padding: 8px;
 }
+
 #ca-log-received-unreplied,
 #ca-log-received-replied {
     flex: 1 1 0;
@@ -239,7 +244,6 @@
     display: flex;
     flex-direction: column-reverse;
     gap: 6px;
-    padding-right: 4px;
 }
 /* ========================================
  * Custom Scrollbar Styling for Website
@@ -520,3 +524,9 @@
     .ca-log-controls-header .ca-log-ctl { font-size: 11px; }
     .ca-log-controls-header .ca-btn-xs { padding: 3px 7px; font-size: 11px; }
 }
+
+
+/* === Specific modal & UI tweaks (added by ChatGPT on 2025-10-26) === */
+.ca-section-specific { display: none !important; }
+.ca-nav-btn-secondary { padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e5e7eb; font-weight:600; cursor:pointer; }
+.ca-nav-btn-secondary:hover { background:#111827; }
