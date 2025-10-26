@@ -1653,81 +1653,94 @@ Private send interception
         }
 
         startObserver() {
-            const c = this.getContainer();
-
-            const mo = new MutationObserver((recs) => {
-                try {
-                    if (this._isMakingOwnChanges || this.state?.isPruning) return;
-
-                    let hasRelevant = false;
-                    const processed = new Set();
-
-                    recs.forEach((r) => {
-                        if (r.target?.closest?.('#ca-panel')) return;
-
-                        if (r.addedNodes?.length) {
-                            for (let i = 0; i < r.addedNodes.length; i++) {
-                                const node = r.addedNodes[i];
-                                if (node.nodeType === 1) {
-                                    if (node.closest?.('#ca-panel')) continue;
-                                    if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
-                                }
-                                if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
-                                    this._handleAddedNode(node);
-                                    hasRelevant = true;
-                                }
-                            }
-                        }
-
-                        if (r.removedNodes?.length) {
-                            for (let j = 0; j < r.removedNodes.length; j++) {
-                                const node = r.removedNodes[j];
-                                if (node.nodeType === 1) {
-                                    if (node.closest?.('#ca-panel')) continue;
-                                    if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
-                                }
-                                if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
-                                    this._handleRemovedNode(node);
-                                    hasRelevant = true;
-                                }
-                            }
-                        }
-
-                        if (r.type === 'attributes' && r.target) {
-                            // Find the profile row: either `.user_item` or any node carrying data-uid
-                            const row = r.target.closest?.('.user_item, [data-uid]') || r.target;
-                            if (row && (row.matches?.('.user_item') || row.hasAttribute?.('data-uid'))) {
-                                const uid = this.getUserId(row);
-                                if (uid && !processed.has(uid)) {
-                                    processed.add(uid);
-                                    // Re-check gender + visibility whenever classes/styles/status flip
-                                    this._handleVisibilityOrGenderChange(row);
-                                    hasRelevant = true;
-                                }
-                            }
-                        }
-                    });
-
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Observer error:', e);
+            const attach = () => {
+                const c = this.getContainer();
+                // Wait until the user list container exists and is an Element/Node
+                if (!c || !(c.nodeType === 1 || c.nodeType === 9)) {
+                    // try again shortly (layout is still loading / tab not opened yet)
+                    setTimeout(attach, 300);
+                    return;
                 }
-            });
 
-            mo.observe(c, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeOldValue: true,
-                // include class/style because presence is toggled via CSS
-                attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
-            });
+                // avoid double-wiring
+                if (this._domUserObserver) {
+                    try {
+                        this._domUserObserver.disconnect();
+                    } catch {
+                    }
+                    this._domUserObserver = null;
+                }
 
-            this._domUserObserver = mo;
+                const mo = new MutationObserver((recs) => {
+                    try {
+                        if (this._isMakingOwnChanges || this.state?.isPruning) return;
+                        let hasRelevant = false;
+                        const processed = new Set();
 
-            // initial pass
-            this._runInitialLogWhenReady();
+                        recs.forEach((r) => {
+                            if (r.target?.closest?.('#ca-panel')) return;
+
+                            if (r.addedNodes?.length) {
+                                for (let i = 0; i < r.addedNodes.length; i++) {
+                                    const node = r.addedNodes[i];
+                                    if (node.nodeType === 1) {
+                                        if (node.closest?.('#ca-panel')) continue;
+                                        if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
+                                    }
+                                    if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
+                                        this._handleAddedNode(node);
+                                        hasRelevant = true;
+                                    }
+                                }
+                            }
+
+                            if (r.removedNodes?.length) {
+                                for (let j = 0; j < r.removedNodes.length; j++) {
+                                    const node = r.removedNodes[j];
+                                    if (node.nodeType === 1) {
+                                        if (node.closest?.('#ca-panel')) continue;
+                                        if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
+                                    }
+                                    if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
+                                        this._handleRemovedNode(node);
+                                        hasRelevant = true;
+                                    }
+                                }
+                            }
+
+                            if (r.type === 'attributes' && r.target) {
+                                const row = r.target.closest?.('.user_item, [data-uid]') || r.target;
+                                if (row && (row.matches?.('.user_item') || row.hasAttribute?.('data-uid'))) {
+                                    const uid = this.getUserId(row);
+                                    if (uid && !processed.has(uid)) {
+                                        processed.add(uid);
+                                        this._handleVisibilityOrGenderChange(row);
+                                        hasRelevant = true;
+                                    }
+                                }
+                            }
+                        });
+                    } catch (e) {
+                        console.error(e);
+                        console.error(this.LOG, 'Observer error:', e);
+                    }
+                });
+
+                mo.observe(c, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeOldValue: true,
+                    attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
+                });
+
+                this._domUserObserver = mo;
+                this._runInitialLogWhenReady?.();
+            };
+
+            attach();
         }
+
 
         _handleVisibilityOrGenderChange(el) {
             try {
