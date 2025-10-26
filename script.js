@@ -5,7 +5,7 @@
    - UsersStore (example of another store)
    - App composes them and exposes CA.App
    ========================================== */
-(function () {
+(async function () {
     const root = (typeof window !== "undefined" ? window : globalThis);
     root.CA = root.CA || {};
 
@@ -170,8 +170,8 @@
             this._cp_PN_INTERVAL = 10_000;     // 10s
 
             /* ========= Observers & Listeners (refs only) ========= */
-            this._privBoxObserver = null;
-            this._domUserObs = null;
+            this._domUserObserver = null;
+            this._mo = null;
             this._onDocClick = null;
             this._onResize = null;
 
@@ -430,78 +430,6 @@
             const h = String(d.getHours()).padStart(2, '0');
             const m = String(d.getMinutes()).padStart(2, '0');
             return `${h}:${m}`;
-        }
-
-        _attachDomUserObserver() {
-            const container = this.getContainer();
-
-            const mo = new MutationObserver((mutations) => {
-                try {
-                    let hasRelevant = false;
-
-                    for (const record of mutations) {
-                        // CHILD ADDED
-                        if (record.addedNodes?.length) {
-                            record.addedNodes.forEach(node => {
-                                if (node.nodeType === 1 && node.matches?.('.user_item, [data-uid]')) {
-                                    this._handleVisibilityOrGenderChange(node);
-                                    hasRelevant = true;
-                                }
-                            });
-                        }
-
-                        // CHILD REMOVED
-                        if (record.removedNodes?.length) {
-                            record.removedNodes.forEach(node => {
-                                if (node.nodeType === 1 && node.matches?.('.user_item, [data-uid]')) {
-                                    const uid = this.getUserId(node);
-                                    if (uid && this._currentFemales?.has(uid)) {
-                                        const name = this._currentFemales.get(uid) || uid;
-                                        this._currentFemales.delete(uid);
-                                        if (this._didInitialLog && this._presenceArmed) {
-                                            this.logLogout({uid, name, avatar: ''});
-                                        }
-                                    }
-                                    hasRelevant = true;
-                                }
-                            });
-                        }
-
-                        // ATTRIBUTE CHANGES (this is what you care about for `ca-hidden`)
-                        if (record.type === 'attributes' && record.target) {
-                            const row = record.target.closest?.('.user_item, [data-uid], [data-userid], [data-id]') || record.target;
-                            if (!row) continue;
-
-                            const uid = this.getUserId(row);
-                            if (!uid) continue;
-
-                            // React to class/style/visibility flips
-                            this._handleVisibilityOrGenderChange(row);
-                            hasRelevant = true;
-                        }
-                    }
-                } catch (err) {
-                    console.error('Observer error:', err);
-                }
-            });
-
-            // Observe relevant mutations
-            mo.observe(container, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeOldValue: true,
-                attributeFilter: [
-                    'class',
-                    'style',
-                    'data-status',
-                    'data-online',
-                    'data-gender',
-                    'data-rank'
-                ],
-            });
-
-            this._domUserObserver = mo;
         }
 
         /* =========================
@@ -1794,7 +1722,8 @@ Private send interception
                 // include class/style because presence is toggled via CSS
                 attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
             });
-            this._moUsers = mo;
+
+            this._domUserObserver = mo;
 
             // initial pass
             this._runInitialLogWhenReady();
@@ -3566,33 +3495,29 @@ Private send interception
         }
 
         destroy() {
-            // optional teardown
-            this._uninstallAudioAutoplayGate(); // <— add this for clean restore
+            this._uninstallAudioAutoplayGate();
             this.uninstallNetworkTaps();
-            this.uninstallPrivateSendInterceptor(); // <— restore
-            if (this._privBoxObserver) {
+            this.uninstallPrivateSendInterceptor();
+
+            if (this._mo) {
                 try {
-                    this._privBoxObserver.disconnect();
+                    this._mo.disconnect();
                 } catch {
                 }
-                this._privBoxObserver = null;
+                this._mo = null;
             }
 
-            if (this._mo) this._mo.disconnect();
-            if (this._moUsers) this._moUsers.disconnect();
-
-            this.state.READY = false;
-            if (this._domUserObs) {
+            if (this._domUserObserver) {
                 try {
-                    this._domUserObs.disconnect();
+                    this._domUserObserver.disconnect();
                 } catch {
                 }
-                this._domUserObs = null;
+                this._domUserObserver = null;
             }
         }
     }
 
 // Expose the single App instance
     root.CA.App = new App();
-    root.CA.App.init();
+    await root.CA.App.init();
 })();
