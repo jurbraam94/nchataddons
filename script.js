@@ -109,10 +109,8 @@
             this.GLOBAL_WATERMARK_KEY   = '321chataddons.global.watermark';
             this.ACTIVITY_LOG_KEY       = '321chataddons.activityLog';
             this.STORAGE_PREFIX         = '321chataddons.pm.';              // drafts, per-message hash
-            this.LAST_HASH_KEY          = this.STORAGE_PREFIX + 'lastMessageHash';
             this.USERS_KEY              = '321chataddons.users';
             this.EXC_KEY                = '321chataddons.excluded';
-            this.SENT_ALL_KEY           = '321chataddons.sent.all';
             this.REPLIED_CONVOS_KEY     = '321chataddons.repliedConversations';
             this.LAST_PCOUNT_MAP_KEY    = '321chataddons.lastPcountPerConversation';
             this.DISPLAYED_LOGIDS_KEY   = '321chataddons.displayedLogIds';
@@ -130,7 +128,6 @@
 
             // runtime maps (populated in init from storage)
             this.EXCLUDED = {};          // { [uid]: 1 }
-            this.SENT_ALL = {};          // { [uid]: 1 }
             this.REPLIED_CONVOS = {};    // { [uid]: 'DD/MM HH:MM' }
             this.LAST_PCOUNT_MAP = {};   // { [uid]: number }
             this.DISPLAYED_LOGIDS = {};  // { [uid]: string[] }
@@ -139,9 +136,9 @@
             this.ui = {
                 sUser: null, sMsg: null, sSend: null, sStat: null, sReset: null,
                 bMsg: null, bSend: null, bStat: null, bReset: null,
-                sentBox: null, recvBox: null, presenceBox: null, logClear: null,
-                navBc: null
-            };
+                sentBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
+                repliedMessageBox: null, unrepliedMessageBox: null,
+                navBc: null   };
 
             /* ========= Flags / Scheduling ========= */
             this._isMakingOwnChanges = false;     // avoid reacting to our own DOM edits
@@ -196,6 +193,48 @@
             /* ========= Misc ========= */
             this.debug = this.debug || (() => {});   // noop if you don’t provide one
             this._escapeMap = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+
+            this.sel = {
+                panel: '#ca-panel',
+                // specific send section
+                specific: {
+                    username: '#ca-specific-username',
+                    msg:      '#ca-specific-msg',
+                    send:     '#ca-specific-send',
+                    status:   '#ca-specific-status',
+                    reset:    '#ca-specific-reset',
+                },
+                // logs
+                log: {
+                    sent:      '#ca-log-box-sent',
+                    received:  '#ca-log-box-received',
+                    replied:   '#ca-log-received-replied',
+                    unreplied: '#ca-log-received-unreplied',
+                    presence:  '#ca-log-box-presence',
+                    clear:     '#ca-log-clear',
+                },
+                // nav
+                nav: {
+                    bc: '#ca-nav-bc',
+                },
+                // broadcast popup
+                bcPop: {
+                    container: '#ca-bc-pop',
+                    header:    '#ca-bc-pop-header',
+                    close:     '#ca-bc-pop-close',
+                    msg:       '#ca-bc-msg',
+                    send:      '#ca-bc-send',
+                    reset:     '#ca-bc-reset',
+                    status:    '#ca-bc-status',
+                },
+                // user list containers (first existing wins)
+                users: {
+                    main:        '#container_user',
+                    online:      '.online_user',
+                    chatRight:   '#chat_right_data',
+                    combined:    '#container_user, .online_user, #chat_right_data', // still handy if you want a fast query
+                },
+            };
         }
 
         async init(options = {}) {
@@ -251,11 +290,8 @@
                 };
             }
 
-            // if you use CA.App.Store, be sure it exists before watermark calls
-            // e.g., this.Store = new KeyValueStore({ namespace: 'CA' });
-
             this._installAudioAutoplayGate();
-            // Run layout & observers (replace with a feature flag if you want)
+
             if (document.body) {
                 // small delay to let layout settle
                 setTimeout(() => { this.applyInline(); this.removeAds(document); }, 0);
@@ -270,7 +306,6 @@
             this.initializeGlobalWatermark();
 
             this.EXCLUDED = this._loadExcluded();
-            this.SENT_ALL = this._loadSentAll();
             this.REPLIED_CONVOS = this._loadRepliedConvos();
             this.LAST_PCOUNT_MAP = this._loadLastPcountMap();
             this.DISPLAYED_LOGIDS = this._loadDisplayedLogIds();
@@ -471,114 +506,6 @@
                  }, { once: true });
              }
         }
-        //
-        //
-        // /* ---------- Monitor private chat box for user info ---------- */
-        // _extractPrivateBoxUserInfo() {
-        //     try {
-        //         const privateBox = document.getElementById('private_box');
-        //         if (!privateBox) return;
-        //
-        //         let userId = null;
-        //         let userName = null;
-        //         let userAvatar = null;
-        //
-        //         // 1) ID from #private_av[data]
-        //         const privateAv = document.getElementById('private_av');
-        //         if (privateAv) {
-        //             userId = (privateAv.getAttribute('data') || '').trim() || null;
-        //         }
-        //
-        //         // 2) name from #private_name
-        //         const privateNameEl = document.getElementById('private_name');
-        //         if (privateNameEl) {
-        //             userName = (privateNameEl.textContent || '').trim() || null;
-        //         }
-        //
-        //         // 3) avatar from #private_av[src]
-        //         if (privateAv) {
-        //             userAvatar = (privateAv.getAttribute('src') || '').trim() || null;
-        //         }
-        //
-        //         // Fallbacks on container attrs
-        //         if (!userId) {
-        //             userId =
-        //                 privateBox.getAttribute('data-uid') ||
-        //                 privateBox.getAttribute('data-user') ||
-        //                 privateBox.getAttribute('data-id') ||
-        //                 null;
-        //         }
-        //
-        //         // Fallbacks on hidden inputs
-        //         if (!userId) {
-        //             const uidInput = privateBox.querySelector('input[name="uid"], input[name="user_id"], input[name="target"]');
-        //             if (uidInput) userId = uidInput.value || null;
-        //         }
-        //
-        //         if (userId && userName) {
-        //             // store in your users map
-        //             this.Users?.set?.(String(userId), String(userName), userAvatar || '');
-        //         }
-        //     } catch (e) {
-        //         console.error(e);
-        //         console.error(this.LOG, 'Extract private box user info error:', e);
-        //     }
-        // }
-        //
-        // observePrivateChatBox() {
-        //     try {
-        //         const tryStart = () => {
-        //             // Initial pass (give the page a beat)
-        //             setTimeout(() => this._extractPrivateBoxUserInfo(), 500);
-        //
-        //             const privateBox = document.getElementById('private_box');
-        //             if (!privateBox) {
-        //                 // not mounted yet — retry in a bit
-        //                 setTimeout(() => this.observePrivateChatBox(), 1000);
-        //                 return;
-        //             }
-        //
-        //             // Avoid double-wiring
-        //             if (this._privBoxObserver) {
-        //                 try { this._privBoxObserver.disconnect(); } catch {}
-        //                 this._privBoxObserver = null;
-        //             }
-        //
-        //             // Watch for relevant changes
-        //             this._privBoxObserver = new MutationObserver((mutations) => {
-        //                 try {
-        //                     let shouldExtract = false;
-        //                     for (const mut of mutations) {
-        //                         if (mut.type === 'childList' && mut.addedNodes?.length) { shouldExtract = true; break; }
-        //                         if (mut.type === 'attributes' &&
-        //                             (mut.attributeName === 'data-uid' ||
-        //                                 mut.attributeName === 'data-user' ||
-        //                                 mut.attributeName === 'data-name' ||
-        //                                 mut.attributeName === 'data-id' ||
-        //                                 mut.attributeName === 'data')) { shouldExtract = true; break; }
-        //                     }
-        //                     if (shouldExtract) this._extractPrivateBoxUserInfo();
-        //                 } catch (e) {
-        //                     console.error(e);
-        //                     console.error(this.LOG, 'Private box observer error:', e);
-        //                 }
-        //             });
-        //
-        //             this._privBoxObserver.observe(privateBox, {
-        //                 childList: true,
-        //                 subtree: true,
-        //                 attributes: true,
-        //                 attributeFilter: ['data-uid', 'data-user', 'data-name', 'data-id', 'data']
-        //             });
-        //         };
-        //
-        //         // kick off
-        //         tryStart();
-        //     } catch (e) {
-        //         console.error(e);
-        //         console.error(this.LOG, 'Private chat box observer setup error:', e);
-        //     }
-        // }
 
         /* =========================
    Private send interception
@@ -624,12 +551,6 @@
 
                 // Look up user
                 const userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : { uid: targetId, name: String(targetId), avatar: '' };
-                // persist SENT_ALL
-                this.SENT_ALL = this.SENT_ALL || this._loadSentAll?.() || {};
-                this.SENT_ALL[targetId] = 1;
-                this._saveSentAll?.(this.SENT_ALL);
-
-                this.markSent?.(targetId);
 
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
@@ -637,7 +558,7 @@
                 this.logLine('dm-out', content, userInfo);
 
                 // Mark conversation as replied
-                this.markConversationAsReplied?.(targetId);
+                this.addOrUpdateLastRepliedDateTimeForConversation?.(targetId);
             } catch (err) {
                 console.error(err);
                 console.error(this.LOG, 'Process private send error:', err);
@@ -1171,23 +1092,23 @@
         }
 
         buildLogHTML(kind, user = {}, content) {
-            const link = this.userLinkHTML(user);
             const text = typeof content === 'object' ? content?.text : content;
             const status = typeof content === 'object' ? content?.status : null;
             console.log(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
+
             switch (kind) {
                 case 'dm-in':
-                    return `⬅️ ${link} — “${this.escapeHTML(text || '')}”`;
+                    return `“${this.escapeHTML(text || '')}”`;
                 case 'dm-out':
-                    return `➡️ ${link} — “${this.escapeHTML(text || '')}”`;
+                    return `“${this.escapeHTML(text || '')}”`;
                 case 'send-fail': // keep if you still log failures
-                    return `${link} — failed (${String(status || 0)}) — “${this.escapeHTML(text || '')}”`;
+                    return `failed (${String(status || 0)}) — “${this.escapeHTML(text || '')}”`;
                 case 'login':
-                    return `${link} logged on`;
+                    return `logged on`;
                 case 'logout':
-                    return `${link} logged off`;
+                    return `logged off`;
                 default:
-                    return `${link} — ${this.escapeHTML(text || '')}`;
+                    return `${this.escapeHTML(text || '')}`;
             }
         }
 
@@ -1222,69 +1143,117 @@
             } catch (e) { console.error(e); return ''; }
         }
 
-        _attachLogClickHandlers(selectorList) {
-            document.querySelectorAll(selectorList).forEach(box => {
-                if (!box || box._caClickWired) return;
-                box._caClickWired = true;
-
-                box.addEventListener('click', async (e) => {
-                    // 1) find the .ca-log-entry ancestor (manual walk, no closest())
-                    let node = e.target;
-                    let entry = null;
-                    while (node && node !== box) {
-                        if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
-                        node = node.parentNode;
-                    }
-                    if (!entry) return; // clicked outside an entry
-
-                    // 2) find the actionable element with [data-action] inside that entry (manual walk up to entry)
-                    let ptr = e.target;
-                    let actionEl = null;
-                    while (ptr && ptr !== entry) {
-                        if (ptr.getAttribute && ptr.hasAttribute('data-action')) { actionEl = ptr; break; }
-                        ptr = ptr.parentNode;
-                    }
-
-                    // 3) resolve uid (prefer entry's data-uid; allow override on the action element if you want)
-                    const uid = entry.getAttribute('data-uid');
-                    if (!uid) {
-                        console.error(`Provided user id was empty while trying to open profile or dm from a log line.`);
-                        return;
-                    }
-                    const user = await this.Users.getOrFetch(uid);
-
-                    // sanity check: we know this user?
-                    if (!user) {
-                        console.warn('[321ChatAddons] unknown uid:', uid);
-                        return;
-                    }
-
-                    // 4) decide the action
-                    const action = actionEl ? String(actionEl.getAttribute('data-action') || '').toLowerCase() : '';
-
-                    if (action === 'open-profile') {
-                        e.preventDefault();
-                        this.openProfileOnHost(uid);
-                        return;
-                    }
-
-                    if (action === 'open-dm') {
-                        e.preventDefault();
-                        this.applyLegacyAndOpenDm(user);
-                        return;
-                    }
-
-                    // 5) fallback: clicking empty area of the entry opens profile
-                    //    (remove this block if you want "no action" on background clicks)
-                    e.preventDefault();
-                    this.openProfileOnHost(uid);
-                });
+        // Wires generic click handling on sent/received/presence logs,
+        _attachLogClickHandlers() {
+            [this.ui.sentBox, this.ui.receivedMessagesBox, this.ui.presenceBox].forEach(box => {
+                if (!box || box._caGenericWired) return;
+                box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
+                box._caGenericWired = true;
             });
+
+            const logSentEl = this.ui.sentBox;
+            if (logSentEl && !logSentEl._caSentWired) {
+                logSentEl.addEventListener('click', (e) => this._onSentCollapseClick(e, logSentEl));
+                this.ui.sentBox._caSentWired = true;
+            }
         }
 
-        openDmOnHost({ uid, name, avatar, entryEl }) {
-            console.log(`Open profile on host for uid=${uid}`, { uid, name, avatar, entryEl });
+        /** Generic handler for log clicks (profile/DM actions). */
+        async _onLogClickGeneric(e, box) {
+            try {
+                // 1) find the .ca-log-entry ancestor (manual walk, no closest())
+                let node = e.target;
+                let entry = null;
+                while (node && node !== box) {
+                    if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
+                    node = node.parentNode;
+                }
+                if (!entry) return;
 
+                // 2) find actionable element with [data-action] inside that entry (manual walk)
+                let ptr = e.target;
+                let actionEl = null;
+                while (ptr && ptr !== entry) {
+                    if (ptr.getAttribute && ptr.hasAttribute('data-action')) { actionEl = ptr; break; }
+                    ptr = ptr.parentNode;
+                }
+
+                // 3) resolve uid
+                const uid = entry.getAttribute('data-uid');
+                if (!uid) {
+                    console.error('Empty uid while trying to open profile/dm from a log line.');
+                    return;
+                }
+                const user = await this.Users.getOrFetch(uid);
+                if (!user) {
+                    console.warn('[321ChatAddons] unknown uid:', uid);
+                    return;
+                }
+
+                // 4) explicit actions
+                const action = actionEl ? String(actionEl.getAttribute('data-action') || '').toLowerCase() : '';
+
+                if (action === 'open-profile') {
+                    e.preventDefault();
+                    this.openProfileOnHost(uid);
+                    return;
+                }
+                if (action === 'open-dm') {
+                    e.preventDefault();
+                    this.applyLegacyAndOpenDm(user);
+                    return;
+                }
+
+                // 5) fallback: background click opens profile
+                e.preventDefault();
+                this.openProfileOnHost(uid);
+            } catch (err) {
+                console.error('Log click handler error:', err);
+            }
+        }
+
+        /** Sent-only handler: collapse/expand when clicking chevron or message text. */
+        _onSentCollapseClick(e, box) {
+            try {
+                // find .ca-log-entry (manual walk)
+                let node = e.target, entry = null;
+                while (node && node !== box) {
+                    if (node.classList && node.classList.contains('ca-log-entry')) { entry = node; break; }
+                    node = node.parentNode;
+                }
+                if (!entry) return;
+
+                // only for sent entries (ok/fail)
+                const isSentEntry =
+                    entry.classList &&
+                    (entry.classList.contains('ca-log-send-ok') || entry.classList.contains('ca-log-send-fail'));
+                if (!isSentEntry) return;
+
+                // only toggle when clicking the expand indicator or the message text
+                const tgt = e.target;
+                const isExpandBtn  = !!(tgt && tgt.classList && tgt.classList.contains('ca-expand-indicator'));
+                const isMessageTxt = !!(tgt && tgt.classList && tgt.classList.contains('ca-log-text'));
+                if (!isExpandBtn && !isMessageTxt) return;
+
+                // Stop the generic handler from also firing
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                e.preventDefault();
+
+                // toggle expanded state
+                const expanded = entry.classList.toggle('ca-expanded');
+
+                // update indicator arrow
+                let child = entry.firstChild, indicator = null;
+                while (child) {
+                    if (child.classList && child.classList.contains('ca-expand-indicator')) { indicator = child; break; }
+                    child = child.nextSibling;
+                }
+                indicator = indicator || entry.querySelector('.ca-expand-indicator');
+                if (indicator) indicator.textContent = expanded ? '▴' : '▾';
+            } catch (err) {
+                console.error('Sent collapse handler error:', err);
+            }
         }
 
         resolveHostFn(name) {
@@ -1378,7 +1347,7 @@
             for (let i = 0; i < list.length; i++) {
                 const el = list[i].el, uid = list[i].uid;
                 if (!this._isAllowedRank?.(el)) continue;
-                if (this.SENT_ALL && this.SENT_ALL[uid]) continue; // skip already messaged
+                if (this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]) continue; // skip already messaged
                 const cb = el ? el.querySelector('.ca-ck') : null;
                 const include = cb ? cb.checked : !this.EXCLUDED[uid];
                 if (include) out.push(list[i]);
@@ -1534,7 +1503,7 @@
         }
 
         /* ===================== PRESENCE TRACKING / OBSERVER ===================== */
-        _scanCurrentFemales() {
+        _scanOnlineFemaleAccounts() {
             this._currentFemales.clear();
             this.collectFemaleIds().forEach(it => {
                 this._currentFemales.set(it.uid, it.name || '');
@@ -1547,7 +1516,7 @@
             const ready = !!c && this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c).length > 0;
 
             if (ready) {
-                this._scanCurrentFemales();
+                this._scanOnlineFemaleAccounts();
                 this.pruneNonFemale(); this.attachCheckboxes(); this.wireUserClickSelection();
                 this._didInitialLog = true;
                 setTimeout(() => { this._presenceArmed = true; }, 4000);
@@ -1584,7 +1553,7 @@
                     this._currentFemales.set(uid, nm);
                 }
 
-                this.ensureSentChip(uid, !!(this.SENT_ALL && this.SENT_ALL[uid]));
+                this.ensureSentChip(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
             });
         }
 
@@ -1710,7 +1679,7 @@
                 const nc = this.getContainer();
                 if (nc && nc !== c) {
                     mo.disconnect(); ro.disconnect();
-                    this._scanCurrentFemales();
+                    this._scanOnlineFemaleAccounts();
                     this.pruneNonFemale(); this.attachCheckboxes(); this.wireUserClickSelection();
                     this.startObserver();
                 }
@@ -1740,7 +1709,7 @@
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogin({ uid, name, avatar });
                     }
-                    this.ensureSentChip?.(uid, !!(this.SENT_ALL && this.SENT_ALL[uid]));
+                    this.ensureSentChip?.(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
                 } else if ((!isFemale || !visible) && wasPresent) {
                     const prevName = this._currentFemales.get(uid) || name;
                     this._currentFemales.delete(uid);
@@ -2091,27 +2060,25 @@
             return out;
         }
 
-        /* ---------- Message tracking (new-only) ---------- */
-        _hashMessage(s) {
-            let h = 5381; s = String(s);
-            for (let i = 0; i < s.length; i++) h = ((h << 5) + h) + s.charCodeAt(i);
-            return (h >>> 0).toString(36);
-        }
-        _keyForHash(h) { return this.STORAGE_PREFIX + (location.host + (window.curPage || '') + ':') + h; }
-        _setLast(h) { this.Store.set(this.LAST_HASH_KEY, h); }
-        _getLast() { try { return this.Store.get(this.LAST_HASH_KEY) || ''; } catch (e) { console.error(e); return ''; } }
-
         /* ---------- Mark sent + chips/sorting ---------- */
         markSent(uid) {
             try {
                 const userEl = this.findUserElementById(uid);
                 if (!userEl) return;
-                userEl.classList.add('chataddons-sent');
-                userEl.style.setProperty('outline','2px solid #8bc34a66','important');
-                userEl.style.setProperty('border-radius','8px','important');
-                this.ensureSentChip(uid, !!this.SENT_ALL[uid]);
+
+                // only apply if not already marked
+                if (!userEl.classList.contains('chataddons-sent')) {
+                    userEl.classList.add('chataddons-sent');
+                    userEl.style.setProperty('outline', '2px solid #8bc34a66', 'important');
+                    userEl.style.setProperty('border-radius', '8px', 'important');
+                }
+
+                // update chip + sorting regardless (safe to call repeatedly)
+                this.ensureSentChip(uid, !!this.REPLIED_CONVOS[uid]);
                 this.resortUserList();
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         /* ---------- EXCLUDED (persisted checkboxes) ---------- */
@@ -2127,10 +2094,6 @@
             const arr = []; for (const k in map) if (Object.prototype.hasOwnProperty.call(map,k) && map[k]) arr.push(k);
             this.Store.set(this.EXC_KEY, arr);
         }
-
-        /* ---------- SENT_ALL ---------- */
-        _loadSentAll() { return this.Store.get(this.SENT_ALL_KEY) || {}; }
-        _saveSentAll(map) { this.Store.set(this.SENT_ALL_KEY, map); }
 
         /* ---------- REPLIED_CONVOS ---------- */
         _loadRepliedConvos() { return this.Store.get(this.REPLIED_CONVOS_KEY) || {}; }
@@ -2209,7 +2172,7 @@
                 const c = this.getContainer(); if (!c) return;
                 this.qsa('.user_item', c).forEach(el => {
                     const id = this.getUserId(el);
-                    this.ensureSentChip(id, !!(id && this.SENT_ALL[id]));
+                    this.ensureSentChip(id, !!(id && this.REPLIED_CONVOS[id]));
                 });
             } catch (e) { console.error(e); }
         }
@@ -2221,7 +2184,7 @@
                 const unsent = [], sent = [];
                 items.forEach(el => {
                     const id = this.getUserId(el);
-                    if (id && this.SENT_ALL[id]) sent.push(el); else unsent.push(el);
+                    if (id && this.REPLIED_CONVOS[id]) sent.push(el); else unsent.push(el);
                 });
                 const frag = document.createDocumentFragment();
                 unsent.forEach(n => frag.appendChild(n));
@@ -2274,7 +2237,7 @@
                     const el = els[i];
                     this.ensureCheckboxOn(el);
                     const id = this.getUserId(el);
-                    this.ensureSentChip(id, !!(id && this.SENT_ALL[id]));
+                    this.ensureSentChip(id, !!(id && this.REPLIED_CONVOS[id]));
                 }
                 this.resortUserList();
             } catch (e) { console.error(e); }
@@ -2288,53 +2251,75 @@
 
         buildPanel() {
             const h = document.createElement('section');
-            h.id = 'ca-panel';
+            h.id = this.getCleanSelector(this.sel.panel);
             h.className = 'ca-panel';
-            h.innerHTML =
-                '<div class="ca-body">'+
-                '  <div class="ca-nav">'+
-                '    <button id="ca-nav-bc" class="ca-nav-btn" type="button">Broadcast</button>'+
-                '    <button id="ca-log-clear" class="ca-btn ca-btn-xs" type="button">Clear</button>'+
-                '  </div>'+
-                '  <div class="ca-section">'+
-                '    <div class="ca-section-title">'+
-                '      <span>Send to specific username</span>'+
-                '      <a id="ca-specific-reset" href="#" class="ca-reset-link">Reset tracking</a>'+
-                '    </div>'+
-                '    <div class="ca-row">'+
-                '      <input id="ca-specific-username" class="ca-input-slim" type="text" placeholder="Enter username (case-insensitive)">'+
-                '      <button id="ca-specific-send" class="ca-btn ca-btn-slim" type="button">Send</button>'+
-                '    </div>'+
-                '    <div id="ca-specific-status" class="ca-status" style="min-height:18px"></div>'+
-                '    <textarea id="ca-specific-msg" class="ca-8" rows="3" placeholder="Type the message..."></textarea>'+
-                '  </div>'+
-                '  <hr class="ca-divider">'+
-                '  <div class="ca-section ca-section-compact">'+
-                '    <div class="ca-section-title"><span>Sent Messages</span></div>'+
-                '    <div id="ca-log-box-sent" class="ca-log-box ca-log-box-compact" aria-live="polite" style="min-height:80px;max-height:120px;"></div>'+
-                '  </div>'+
-                '  <hr class="ca-divider">'+
-                '  <div class="ca-section ca-section-expand" style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
-                '    <div class="ca-section-title"><span>Received Messages</span></div>'+
-                '    <div id="ca-log-box-received" class="ca-log-box ca-log-box-expand" aria-live="polite" style="flex:1;min-height:0;">'+
-                '      <div class="ca-log-subsection-unreplied-wrapper">'+
-                '        <div class="ca-log-subsection-header">Not Replied</div>'+
-                '        <div id="ca-log-received-unreplied"></div>'+
-                '      </div>'+
-                '      <div class="ca-log-subsection-replied-wrapper">'+
-                '        <div class="ca-log-subsection-header">Replied</div>'+
-                '        <div id="ca-log-received-replied"></div>'+
-                '      </div>'+
-                '    </div>'+
-                '  </div>'+
-                '  <div class="ca-section ca-log-section">'+
-                '    <hr class="ca-divider">'+
-                '    <div class="ca-section-title"><span>Logon/Logoff</span></div>'+
-                '    <div id="ca-log-box-presence" class="ca-log-box" aria-live="polite"></div>'+
-                '  </div>'+
-                '</div>';
+            h.innerHTML = `
+              <div class="ca-body">
+                <div class="ca-nav">
+                  <button id="${this.getCleanSelector(this.sel.nav.bc)}" class="ca-nav-btn" type="button">Broadcast</button>
+                  <button id="${this.getCleanSelector(this.sel.log.clear)}" class="ca-btn ca-btn-xs" type="button">Clear</button>
+                </div>
+            
+                <div class="ca-section">
+                  <div class="ca-section-title">
+                    <span>Send to specific username</span>
+                    <a id="${this.getCleanSelector(this.sel.specific.reset)}" href="#" class="ca-reset-link">Reset tracking</a>
+                  </div>
+                  <div class="ca-row">
+                    <input id="${this.getCleanSelector(this.sel.specific.username)}"
+                           class="ca-input-slim"
+                           type="text"
+                           placeholder="Enter username (case-insensitive)">
+                    <button id="${this.getCleanSelector(this.sel.specific.send)}"
+                            class="ca-btn ca-btn-slim"
+                            type="button">Send</button>
+                  </div>
+                  <div id="${this.getCleanSelector(this.sel.specific.status)}" class="ca-status"></div>
+                  <textarea id="${this.getCleanSelector(this.sel.specific.msg)}"
+                            class="ca-8"
+                            rows="3"
+                            placeholder="Type the message..."></textarea>
+                </div>
+            
+                <hr class="ca-divider">
+            
+                <div class="ca-section ca-section-compact">
+                  <div class="ca-section-title"><span>Sent Messages</span></div>
+                  <div id="${this.getCleanSelector(this.sel.log.sent)}"
+                       class="ca-log-box ca-log-box-compact"
+                       aria-live="polite"></div>
+                </div>
+            
+                <hr class="ca-divider">
+            
+                <div class="ca-section ca-section-expand">
+                  <div class="ca-section-title"><span>Received Messages</span></div>
+                  <div id="${this.getCleanSelector(this.sel.log.received)}"
+                       class="ca-log-box ca-log-box-expand"
+                       aria-live="polite">
+                    <div class="ca-log-subsection-unreplied-wrapper">
+                      <div class="ca-log-subsection-header">Not Replied</div>
+                      <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>
+                    </div>
+                    <div class="ca-log-subsection-replied-wrapper">
+                      <div class="ca-log-subsection-header">Replied</div>
+                      <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>
+                    </div>
+                  </div>
+                </div>
+            
+                <div class="ca-section ca-log-section">
+                  <hr class="ca-divider">
+                  <div class="ca-section-title"><span>Logon/Logoff</span></div>
+                  <div id="${this.getCleanSelector(this.sel.log.presence)}"
+                       class="ca-log-box"
+                       aria-live="polite"></div>
+                </div>
+              </div>`;
+
+
             this.appendAfterMain(h);
-            this._attachLogClickHandlers('#ca-log-box-sent, #ca-log-box-received, #ca-log-box-presence');
+            this._attachLogClickHandlers();
         }
 
         createBroadcastPopup() {
@@ -2453,19 +2438,28 @@
             }
         }
 
+        getCleanSelector(sel) {
+            return String(sel || '').replace(/^[#.]/, '');
+        }
+
         _bindStaticRefs() {
-            this.ui.sUser = this.qs('#ca-specific-username');
-            this.ui.sMsg = this.qs('#ca-specific-msg');
-            this.ui.sSend = this.qs('#ca-specific-send');
-            this.ui.sStat = this.qs('#ca-specific-status');
-            this.ui.sReset = this.qs('#ca-specific-reset');
+            // specific send panel
+            this.ui.sUser  = this.qs(this.sel.specific.username);
+            this.ui.sMsg   = this.qs(this.sel.specific.msg);
+            this.ui.sSend  = this.qs(this.sel.specific.send);
+            this.ui.sStat  = this.qs(this.sel.specific.status);
+            this.ui.sReset = this.qs(this.sel.specific.reset);
 
-            this.ui.sentBox = this.qs('#ca-log-box-sent');
-            this.ui.recvBox = this.qs('#ca-log-box-received');
-            this.ui.presenceBox = this.qs('#ca-log-box-presence');
-            this.ui.logClear = this.qs('#ca-log-clear');
+            // logs
+            this.ui.sentBox              = this.qs(this.sel.log.sent);
+            this.ui.receivedMessagesBox  = this.qs(this.sel.log.received);
+            this.ui.repliedMessageBox    = this.qs(this.sel.log.replied);
+            this.ui.unrepliedMessageBox  = this.qs(this.sel.log.unreplied);
+            this.ui.presenceBox          = this.qs(this.sel.log.presence);
+            this.ui.logClear             = this.qs(this.sel.log.clear);
 
-            this.ui.navBc = this.qs('#ca-nav-bc');
+            // nav
+            this.ui.navBc = this.qs(this.sel.nav.bc);
         }
 
         _wirePanelNav() {
@@ -2477,15 +2471,15 @@
             this.ui.logClear.addEventListener('click', () => {
                 if (this.ui.sentBox) this.ui.sentBox.innerHTML = '';
                 // rebuild received with subsections
-                if (this.ui.recvBox) {
-                    this.ui.recvBox.innerHTML =
+                if (this.ui.receivedMessagesBox) {
+                    this.ui.receivedMessagesBox.innerHTML =
                         '<div class="ca-log-subsection-unreplied-wrapper">'+
                         '  <div class="ca-log-subsection-header">Not Replied</div>'+
-                        '  <div id="ca-log-received-unreplied"></div>'+
+                        `  <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>`+
                         '</div>'+
                         '<div class="ca-log-subsection-replied-wrapper">'+
                         '  <div class="ca-log-subsection-header">Replied</div>'+
-                        '  <div id="ca-log-received-replied"></div>'+
+                        `  <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>`+
                         '</div>';
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
@@ -2507,25 +2501,19 @@
 
         determineTargetMessagesContainer(uid, msgTimestamp) {
             const replied = this.hasRepliedSince(uid, msgTimestamp);
-            return document.getElementById(replied ? 'ca-log-received-replied' : 'ca-log-received-unreplied');
+            return replied ? this.ui.repliedMessageBox : this.ui.unrepliedMessageBox;
         }
 
-        appendSentBadgeToLogEntry(wrapper, uid) {
+        AppendIfNotYetMarkedReplied(LogEntryEl, uid) {
             try {
-                if (typeof this.SENT_ALL === 'object' && this.SENT_ALL && this.SENT_ALL[uid]) {
+                if (typeof this.REPLIED_CONVOS === 'object' && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]) {
                     const badge = document.createElement('span');
-                    badge.className = 'ca-badge-sent';
-                    badge.title = 'Already messaged';
+                    badge.className = 'ca-badge-replied';
+                    badge.title = 'Already replied';
                     badge.textContent = '✓';
-                    wrapper.appendChild(badge);
+                    LogEntryEl.appendChild(badge);
                 }
             } catch (e) { console.error(e); }
-        }
-
-        recordReplyNow(uid) {
-            if (!uid) return;
-            this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat();
-            this._saveRepliedConvos(this.REPLIED_CONVOS);
         }
 
         renderLogEntry(ts, kind, content, user) {
@@ -2533,36 +2521,23 @@
             let targetContainer = null;
             switch (kind) {
                 case 'dm-out':        targetContainer = this.ui.sentBox;     break;
-                case 'dm-in':         targetContainer = this.ui.recvBox;     break;
+                case 'dm-in':         targetContainer = this.ui.receivedMessagesBox;     break;
                 case 'login':
                 case 'logout':        targetContainer = this.ui.presenceBox; break;
-                default:              targetContainer = this.ui.recvBox;     break;
+                default:              targetContainer = this.ui.receivedMessagesBox;     break;
             }
             if (!targetContainer) return;
+            console.log(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
 
-            // 2) incoming DMs: send to "Not Replied" vs "Replied" section
-            //    (do this before DOM creation to choose the real container)
-            if (kind === 'dm-in' && targetContainer.id === 'ca-log-box-received') {
-                // target becomes either #ca-log-received-unreplied or #ca-log-received-replied
-                targetContainer = this.determineTargetMessagesContainer(user?.uid, ts) || targetContainer;
-            }
-
-            // 3) enforce max entries (older removed)
-            try { this.trimLogBoxToMax?.(targetContainer); } catch {}
+            // 5) entry root
+            const entry = document.createElement('div');
+            entry.className = 'ca-log-entry ' + ('ca-log-' + kind);
 
             // 4) build details HTML (safe decode → build)
             const html = this.buildLogHTML(kind, user || {}, content);
             const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
 
-            // 5) entry root
-            const entry = document.createElement('div');
-            entry.className = 'ca-log-entry ' + ('ca-log-' + kind);
             if (user && user.uid != null) entry.setAttribute('data-uid', String(user.uid));
-
-            // 6) optional: add a ✓ badge for users you already messaged (useful for dm-in)
-            if (kind === 'dm-in') {
-                try { this.appendSentBadgeToLogEntry?.(entry, user?.uid); } catch {}
-            }
 
             // 7) timestamp (HH:MM or right part of "DD/MM HH:MM")
             const tsEl = document.createElement('span');
@@ -2576,14 +2551,19 @@
             entry.appendChild(dot);
 
             // 9) expand indicator for outgoing (optional – keep if you collapse long items)
-            const isSentMessage = (kind === 'dm-out');
-            if (isSentMessage) {
+            if (kind === 'dm-out') {
                 const exp = document.createElement('span');
                 exp.className = 'ca-expand-indicator';
                 exp.title = 'Click to expand/collapse';
                 exp.textContent = '▾';
                 entry.appendChild(exp);
             }
+
+            // 👉 NEW: username as its own flex item using your helper
+            const userEl = document.createElement('span');
+            userEl.className = 'ca-log-user';
+            userEl.innerHTML = this.userLinkHTML(user);  // <a href="#">Name</a> etc.
+            entry.appendChild(userEl);
 
             // 10) message text (trusted via buildLogHTML → innerHTML)
             const text = document.createElement('span');
@@ -2599,8 +2579,18 @@
             dm.textContent = 'dm';
             entry.appendChild(dm);
 
-            // 12) insert entry (newest at bottom)
-            targetContainer.appendChild(entry);
+            // 2) incoming DMs: send to "Not Replied" vs "Replied" section
+            //    (do this before DOM creation to choose the real container)
+            if (kind === 'dm-in' && targetContainer === this.ui.receivedMessagesBox) {
+                console.log(`Start calling method to decide which message box incoming message should be rendered depending on replied status.`);
+                this.MarkAndRenderOrMoveRepliedMessage(entry, user.uid, ts);
+            } else {
+                // 12) insert entry (newest at bottom)
+                targetContainer.appendChild(entry);
+            }
+
+            // 3) enforce max entries (older removed)
+            try { this.trimLogBoxToMax?.(targetContainer); } catch {}
 
             // 13) auto-scroll the box to the bottom (next frame for reliability)
             requestAnimationFrame(() => {
@@ -2618,27 +2608,23 @@
             this.Store.set(this.ACTIVITY_LOG_KEY, arr);
         }
 
+        clearNode(el) {
+            if (!el) return;
+            // Fast and safe: clears children without replacing the node
+            el.textContent = '';
+        }
+
         async restoreLog() {
-            if (!this.ui.sentBox || !this.ui.recvBox || !this.ui.presenceBox) return;
+            if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
 
             let arr = [];
             try { const raw = this.Store.get(this.ACTIVITY_LOG_KEY); if (raw) arr = raw || []; } catch (e) { console.error(e); }
 
-            this.ui.sentBox.innerHTML = '';
-            this.ui.recvBox.innerHTML =
-                '<div class="ca-log-subsection-unreplied-wrapper">'+
-                '  <div class="ca-log-subsection-header">Not Replied</div>'+
-                '  <div id="ca-log-received-unreplied"></div>'+
-                '</div>'+
-                '<div class="ca-log-subsection-replied-wrapper">'+
-                '  <div class="ca-log-subsection-header">Replied</div>'+
-                '  <div id="ca-log-received-replied"></div>';
-
             for (let i = arr.length - 1; i >= 0; i--) {
                 const e = arr[i];
+                console.log('Restoring log', e);
                 // If you have a Users store/fetcher, adapt here; else build a minimal user object:
-                const user = (this.Users && this.Users.getOrFetch) ? await this.Users.getOrFetch(e.uid)
-                    : { uid: e.uid, name: String(e.uid), avatar: '' };
+                const user = await this.Users.getOrFetch(e.uid);
                 this.renderLogEntry(e.ts, e.kind, e.content, user);
             }
         }
@@ -2931,7 +2917,7 @@
 
         /* ---------- Containers / lists ---------- */
         getContainer() {
-            return this.qs('#container_user') || this.qs('#chat_right_data') || this.qs('.online_user');
+            return this.qs(this.sel.users.main) || this.qs(this.sel.users.chatRight) || this.qs(this.sel.users.online);
         }
 
         schedule(fn) {
@@ -3018,54 +3004,47 @@
             }
         }
 
-        // Put this inside your class
-        markConversationAsReplied(uid) {
-            try {
-                if (!uid) return;
-
-                // persist replied timestamp
-                this.REPLIED_CONVOS = this.REPLIED_CONVOS || {};
-                this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
-                // save via your Store helper if available
-                if (this.Store && typeof this.Store.set === 'function') {
-                    this.Store.set('321chataddons.repliedConversations', this.REPLIED_CONVOS);
-                } else if (typeof this._saveRepliedConvos === 'function') {
-                    // fallback if you still keep the old helper
-                    this._saveRepliedConvos(this.REPLIED_CONVOS);
-                }
-
-                // move UI from "Not Replied" to "Replied"
-                const unrepliedBox = document.getElementById('ca-log-received-unreplied');
-                const repliedBox   = document.getElementById('ca-log-received-replied');
-
-                if (!unrepliedBox || !repliedBox) {
-                    console.error(this.LOG || '[321ChatAddons]', 'Unreplied/Replied containers not found');
-                    return;
-                }
-
-                // your entries are rendered with class "ca-log-entry" and data-uid
-                const logEntryEl = document.querySelector(`.ca-log-entry[data-uid="${uid}"]`);
-                if (!logEntryEl) return;
-
-                // add ✓ badge if missing
-                let badge = logEntryEl.querySelector('.ca-badge-sent');
-                if (!badge) {
-                    badge = document.createElement('a');
-                    badge.className = 'ca-badge-sent';
-                    badge.title = 'Replied - Click to open chat';
-                    badge.textContent = '✓';
-                    badge.href = '#';
-                    logEntryEl.appendChild(badge);
-                }
-
-                // append to "Replied" list (uncomment if you want to actually move it)
-                // repliedBox.appendChild(logEntryEl);
-
-            } catch (e) {
-                console.error(e);
-            }
+        addOrUpdateLastRepliedDateTimeForConversation(uid) {
+            // persist replied timestamp
+            this.REPLIED_CONVOS = this.REPLIED_CONVOS || {};
+            this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
+            this._saveRepliedConvos(this.REPLIED_CONVOS);
+            this.AppendIfNotYetMarkedReplied(this.getLogEntryByUid(uid));
+            // lso mark the regular profile picture as replied in the menu
+            this.markSent?.(uid);
         }
 
+        getLogEntryByUid(uid) {
+            // find the log entry
+            if (!uid) return;
+            const el = document.querySelector(`.ca-log-entry[data-uid="${uid}"]`);
+            if (!el) {
+                console.error(`.ca-log-entry[data-uid="${uid}"] not found`);
+            }
+            return el;
+        }
+
+        MarkAndRenderOrMoveRepliedMessage(logEntryEl, uid, timestamp) {
+            const targetContainerEl = this.determineTargetMessagesContainer(uid, timestamp);
+            if (!targetContainerEl) {
+                console.error(this.LOG || '[321ChatAddons]', 'Unreplied/Replied containers not found');
+                return;
+            }
+
+            console.log(`Marking and rendering/moving replied message for ${uid} at ${timestamp} an logEntryElL`, logEntryEl);
+
+            if (targetContainerEl === this.ui.unrepliedMessageBox) {
+                console.log('Message is new and unreplied. Appending it to the unreplied box.', this.ui.unrepliedMessageBox);
+                this.ui.unrepliedMessageBox.appendChild(logEntryEl);
+            } else if (this.ui.unrepliedMessageBox.contains(logEntryEl) && targetContainerEl === this.ui.repliedMessageBox) {
+                console.log('Removing unreplied message from unreplied container to recreate it in the replied container');
+                this.ui.unrepliedMessageBox.removeChild(logEntryEl);
+               // NOT NEEDED HERE I THINK: this.markConversationAsReplied(uid);
+            } else if (targetContainerEl === this.ui.repliedMessageBox) {
+                console.log(`Moving message from unreplied container to replied container`) ;
+                this.ui.repliedMessageBox.appendChild(logEntryEl);
+            }
+        }
 
         destroy() {
             // optional teardown

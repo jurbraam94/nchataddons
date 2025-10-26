@@ -1,7 +1,7 @@
 /* ===== Unified 321ChatAddons panel ===== */
 .ca-panel {
     display: flex; flex-direction: column;
-    width: 520px; max-width: 96vw;
+    width: 700px; max-width: 96vw;
     border: 2px solid #2b90ff; border-radius: 12px;
     background: #0b1220; box-shadow: 0 8px 28px rgba(0,0,0,.5);
     margin: 0 auto; z-index: 2147483647;
@@ -22,6 +22,7 @@
 /* Section layout variants */
 .ca-section { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; min-height: 0; }
 .ca-section-compact { flex: 0 0 auto; }
+/* Used for the “Received Messages” section wrapper (replaces inline flex + min-height:0) */
 .ca-section-expand { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 
 /* Top nav for tools */
@@ -122,11 +123,9 @@
 .ca-btn-slim { padding: 6px 12px; font-weight: 600; }
 /* Extra small button for compact actions like Clear */
 .ca-btn-xs { padding: 4px 8px; font-weight: 600; font-size: 12px; border-radius: 8px; }
-.ca-status { font-size: 12px; color: #cbd5e1; }
+.ca-status { font-size: 12px; color: #cbd5e1; min-height: 18px; } /* moved from inline */
 .ca-reset { margin-left: auto; background: transparent; border: none; padding: 6px 8px; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
 /* Anchor look for Reset tracking in headers */
-.ca-reset-link { margin-left: auto; background: transparent; border: none; padding: 0; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
-/* Anchor variant for reset tracking links in headers */
 .ca-reset-link { margin-left: auto; background: transparent; border: none; padding: 0; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
 .ca-reset-link:hover { color: #ffffff; }
 
@@ -187,7 +186,8 @@
 
 /* Variants: compact for sent, expand for received */
 .ca-log-box-compact { max-height:120px; min-height:80px; flex: 0 0 auto; overflow-y: auto; }
-.ca-log-box-expand { flex: 1 1 0; min-height: 100px; max-height: none; overflow-y: auto; }
+/* Replaces inline style on received box: allow it to grow and shrink within flex column */
+.ca-log-box-expand { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; }
 
 /* Subsection styling within received messages box */
 .ca-log-subsection-header {
@@ -311,6 +311,7 @@
 .ca-log-dot { width:6px; height:6px; border-radius:50%; background:#64748b; }
 /* Hide dot for received messages */
 .ca-log-pv .ca-log-dot { display: none; }
+.ca-log-user { flex: 0 0 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ca-log-text { color:#e5e7eb; flex:1; word-break: break-word; }
 .ca-log-entry strong { font-weight:700; }
 /* Collapsible sent message text - one line by default */
@@ -414,7 +415,7 @@
 .ca-user-link:hover { text-decoration: none; color: inherit; }
 .ca-dm-link { text-decoration: none; border: 0; cursor: pointer; color: inherit; }
 .ca-dm-link:hover { text-decoration: none; color: inherit; }
-.ca-badge-sent { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#14532d; color:#bbf7d0; font-size:11px; font-weight:700; }
+.ca-badge-replied { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#14532d; color:#bbf7d0; font-size:11px; font-weight:700; }
 
 /* Color coding */
 .ca-log-send-ok .ca-log-dot { background:#22c55e; }     /* green */
