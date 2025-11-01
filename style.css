@@ -1,187 +1,523 @@
 /* ===== Unified 321ChatAddons panel ===== */
 .ca-panel {
-    display: flex; flex-direction: column;
-    width: 700px; max-width: 96vw;
-    border: 2px solid #2b90ff; border-radius: 12px;
-    background: #0b1220; box-shadow: 0 8px 28px rgba(0,0,0,.5);
-    margin: 0 auto; z-index: 2147483647;
+    display: flex;
+    flex-direction: column;
+    width: 700px;
+    max-width: 96vw;
+    border: 2px solid #2b90ff;
+    border-radius: 12px;
+    background: #0b1220;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .5);
+    margin: 0 auto;
+    z-index: 2147483647;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     color: #e5e7eb;
     /* Height set by JavaScript based on chat_right */
 }
+
 .ca-header {
-    display: flex; align-items: center;
+    display: flex;
+    align-items: center;
     padding: 10px 12px;
-    background: #f7fbff; border-bottom: 1px solid #dbeafe;
-    font-weight: 700; font-size: 14px;
+    background: #f7fbff;
+    border-bottom: 1px solid #dbeafe;
+    font-weight: 700;
+    font-size: 14px;
 }
-.ca-body { padding: 12px; display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.ca-section-title { display:flex; align-items:center; gap:8px; justify-content:space-between; font-weight: 700; font-size: 13px; color: #ffffff; }
-.ca-row { display: flex; gap: 8px; align-items: center; }
+
+.ca-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.ca-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 13px;
+    color: #ffffff;
+}
+
+.ca-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
 
 /* Section layout variants */
-.ca-section { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; min-height: 0; }
-.ca-section-compact { flex: 0 0 auto; }
+.ca-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.ca-section-compact {
+    flex: 0 0 auto;
+}
+
 /* Used for the “Received Messages” section wrapper (replaces inline flex + min-height:0) */
-.ca-section-expand { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ca-section-expand {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
 
 /* Top nav for tools */
-.ca-nav { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:6px; }
-.ca-nav-btn { padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e5e7eb; font-weight:600; cursor:pointer; }
-.ca-nav-btn:hover { background:#111827; }
+.ca-nav {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.ca-nav-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ca-nav-btn:hover {
+    background: #111827;
+}
 
 /* Draggable popup */
-.ca-pop { position:fixed; top:18vh; left:50%; transform:translateX(-50%); width:520px; max-width:96vw; background:#0b1220; border:2px solid #2b90ff; border-radius:12px; box-shadow:0 12px 40px rgba(8,30,70,.6); z-index:2147483647; }
-.ca-pop-header { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:move; background:#0f172a; border-bottom:1px solid #334155; font-weight:700; color:#ffffff; border-top-left-radius:10px; border-top-right-radius:10px; }
-.ca-pop-close { appearance:none; border:0; background:transparent; font-size:16px; line-height:1; padding:4px 6px; cursor:pointer; color:#93c5fd; }
-.ca-pop-body { padding:10px; display:flex; flex-direction:column; gap:10px; }
-.ca-pop-actions { margin-top:6px; display:flex; align-items:center; justify-content:flex-end; gap:10px; }
+.ca-pop {
+    position: fixed;
+    top: 18vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 520px;
+    max-width: 96vw;
+    background: #0b1220;
+    border: 2px solid #2b90ff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(8, 30, 70, .6);
+    z-index: 2147483647;
+}
+
+.ca-pop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    cursor: move;
+    background: #0f172a;
+    border-bottom: 1px solid #334155;
+    font-weight: 700;
+    color: #ffffff;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+.ca-pop-close {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    color: #93c5fd;
+}
+
+.ca-pop-body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ca-pop-actions {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 /* Popup-specific widgets: ensure consistent colors and rounded inputs */
 .ca-pop input[type="text"], .ca-pop textarea {
-    font-size: 14px; line-height: 1.3;
-    border: 1px solid #334155; border-radius: 10px;
-    background: #0f172a; color: #e5e7eb;
+    font-size: 14px;
+    line-height: 1.3;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #e5e7eb;
 }
-.ca-pop input[type="text"] { padding: 8px 10px; width: 100%; }
-.ca-pop textarea { padding: 10px; width: 100%; resize: vertical; }
-.ca-pop textarea.ca-8 { min-height: calc(5 * 1.3em + 20px); }
+
+.ca-pop input[type="text"] {
+    padding: 8px 10px;
+    width: 100%;
+}
+
+.ca-pop textarea {
+    padding: 10px;
+    width: 100%;
+    resize: vertical;
+}
+
+.ca-pop textarea.ca-8 {
+    min-height: calc(5 * 1.3em + 20px);
+}
+
 /* Accent button in popup: match standard .ca-btn styling */
 .ca-pop .ca-btn {
     border: 1px solid #334155;
     background: linear-gradient(#1f2937, #111827);
     color: #e5e7eb;
 }
-.ca-pop .ca-btn:hover { background: linear-gradient(#192231,#0e1420); }
+
+.ca-pop .ca-btn:hover {
+    background: linear-gradient(#192231, #0e1420);
+}
 
 /* Ensure popup action buttons (send, broadcast, etc.) match .ca-btn styling; keep reset as anchor */
 .ca-pop button:not(.ca-pop-close),
 .ca-pop input[type="button"],
 .ca-pop input[type="submit"],
 .ca-pop .ca-pop-actions a {
-    appearance: button; -webkit-appearance: button;
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 10px 16px; border-radius: 10px;
-    border: 1px solid #334155; background: linear-gradient(#1f2937, #111827);
-    color:#e5e7eb;
-    font-weight: 600; cursor: pointer; text-decoration: none;
+    appearance: button;
+    -webkit-appearance: button;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: linear-gradient(#1f2937, #111827);
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
 }
+
 .ca-pop button:not(.ca-pop-close):hover,
 .ca-pop input[type="button"]:hover,
 .ca-pop input[type="submit"]:hover,
 .ca-pop .ca-pop-actions a:hover {
-    background: linear-gradient(#192231,#0e1420);
-    color:#e5e7eb;
+    background: linear-gradient(#192231, #0e1420);
+    color: #e5e7eb;
 }
+
 .ca-pop button[disabled],
 .ca-pop input[type="button"][disabled],
 .ca-pop input[type="submit"][disabled] {
-    opacity: .6; cursor: not-allowed;
+    opacity: .6;
+    cursor: not-allowed;
 }
 
 /* Popup Reset tracking stays an anchor: bold + white, inline with Send */
 .ca-pop .ca-reset-link,
 .ca-pop .ca-reset {
-    background: transparent; border: none; padding: 0; margin-left: 0;
-    color: #ffffff; font-weight: 700; text-decoration: underline;
-    display: inline; cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-left: 0;
+    color: #ffffff;
+    font-weight: 700;
+    text-decoration: underline;
+    display: inline;
+    cursor: pointer;
 }
+
 .ca-pop .ca-reset-link:hover,
 .ca-pop .ca-reset:hover {
-    color: #ffffff; text-decoration: underline;
+    color: #ffffff;
+    text-decoration: underline;
 }
 
 /* Inputs/buttons */
 .ca-panel input[type="text"], .ca-panel textarea {
-    font-size: 14px; line-height: 1.3;
-    border: 1px solid #334155; border-radius: 10px;
-    background: #0f172a; color: #e5e7eb;
+    font-size: 14px;
+    line-height: 1.3;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #e5e7eb;
 }
-.ca-panel input[type="text"] { padding: 8px 10px; flex: 1; }
-.ca-panel textarea { padding: 10px; width: 100%; resize: vertical; }
-.ca-panel textarea.ca-8 { min-height: calc(3 * 1.3em + 20px); }
-/* Slim input helper for compact fields (e.g., username) */
-.ca-panel .ca-input-slim { font-size: 13px; padding: 6px 8px; }
-/* Ensure a little space between username input and Send button */
-#ca-specific-username { margin-right: 8px; }
-/* Row spacing */
-.ca-section .ca-row + textarea { margin-top: 8px; }
-.ca-row + .ca-row { margin-top: 8px; }
-/* Float Send buttons to the right */
-#ca-specific-send, #ca-bc-send { margin-left: auto; }
 
-.ca-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.ca-btn {
-    appearance: button; -webkit-appearance: button;
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 10px 16px; border-radius: 10px;
-    border: 1px solid #334155; background: linear-gradient(#1f2937, #111827);
-    color:#e5e7eb;
-    font-weight: 600; cursor: pointer; text-decoration: none;
+.ca-panel input[type="text"] {
+    padding: 8px 10px;
+    flex: 1;
 }
-.ca-btn:hover { background: linear-gradient(#192231,#0e1420); }
-.ca-btn[disabled] { opacity: .6; cursor: not-allowed; }
-.ca-btn-slim { padding: 6px 12px; font-weight: 600; }
+
+.ca-panel textarea {
+    padding: 10px;
+    width: 100%;
+    resize: vertical;
+}
+
+.ca-panel textarea.ca-8 {
+    min-height: calc(3 * 1.3em + 20px);
+}
+
+/* Slim input helper for compact fields (e.g., username) */
+.ca-panel .ca-input-slim {
+    font-size: 13px;
+    padding: 6px 8px;
+}
+
+/* Ensure a little space between username input and Send button */
+#ca-specific-username {
+    margin-right: 8px;
+}
+
+/* Row spacing */
+.ca-section .ca-row + textarea {
+    margin-top: 8px;
+}
+
+.ca-row + .ca-row {
+    margin-top: 8px;
+}
+
+/* Float Send buttons to the right */
+#ca-specific-send, #ca-bc-send {
+    margin-left: auto;
+}
+
+.ca-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.ca-btn {
+    appearance: button;
+    -webkit-appearance: button;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: linear-gradient(#1f2937, #111827);
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.ca-btn:hover {
+    background: linear-gradient(#192231, #0e1420);
+}
+
+.ca-btn[disabled] {
+    opacity: .6;
+    cursor: not-allowed;
+}
+
+.ca-btn-slim {
+    padding: 6px 12px;
+    font-weight: 600;
+}
+
 /* Extra small button for compact actions like Clear */
-.ca-btn-xs { padding: 4px 8px; font-weight: 600; font-size: 12px; border-radius: 8px; }
-.ca-status { font-size: 12px; color: #cbd5e1; min-height: 18px; } /* moved from inline */
-.ca-reset { margin-left: auto; background: transparent; border: none; padding: 6px 8px; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
+.ca-btn-xs {
+    padding: 4px 8px;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 8px;
+}
+
+.ca-status {
+    font-size: 12px;
+    color: #cbd5e1;
+    min-height: 18px;
+}
+
+/* moved from inline */
+.ca-reset {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    color: #ffffff;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 12px;
+}
+
 /* Anchor look for Reset tracking in headers */
-.ca-reset-link { margin-left: auto; background: transparent; border: none; padding: 0; color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 12px; }
-.ca-reset-link:hover { color: #ffffff; }
+.ca-reset-link {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #ffffff;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.ca-reset-link:hover {
+    color: #ffffff;
+}
 
 /* Divider */
-.ca-divider { height: 1px; background: #e6eefc; margin: 4px 0 2px 0; border: 0; }
+.ca-divider {
+    height: 1px;
+    background: #e6eefc;
+    margin: 4px 0 2px 0;
+    border: 0;
+}
 
 /* ===== Checkboxes on user list (right side) ===== */
-.user_item { position: relative; padding-right: 36px; }
-.ca-ck-wrap{
-    position:absolute; top:6px; right:8px; z-index:2;
-    display:inline-flex; align-items:center; gap:4px; padding:0;
-    background:transparent;
-    backdrop-filter:none;
-    pointer-events:none; /* don't block profile/item clicks; checkbox re-enables its own */
+.user_item {
+    position: relative;
+    padding-right: 36px;
 }
-.ca-ck-wrap .ca-ck{ width:14px; height:14px; cursor:pointer; pointer-events:auto; accent-color:#93c5fd; }
+
+.ca-ck-wrap {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
+    pointer-events: none; /* don't block profile/item clicks; checkbox re-enables its own */
+}
+
+.ca-ck-wrap .ca-ck {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    pointer-events: auto;
+    accent-color: #93c5fd;
+}
+
 /* Already messaged checkmark (non-interactive) */
-.user_item .ca-sent-chip{
-    position:absolute; bottom:6px; left:8px; z-index:2;
-    display:inline-flex; align-items:center; justify-content:center;
-    width:16px; height:16px; border-radius:4px; background:#22c55e; color:#073b16;
-    font-size:12px; font-weight:900; line-height:1;
-    pointer-events:none; /* never intercept clicks */
+.user_item .ca-sent-chip {
+    position: absolute;
+    bottom: 6px;
+    left: 8px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: #22c55e;
+    color: #073b16;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    pointer-events: none; /* never intercept clicks */
 }
 
 /* Hide non-females (JS toggles this class) */
-.user_item.ca-hidden { display:none !important; }
+.user_item.ca-hidden {
+    display: none !important;
+}
 
 /* Sent highlight */
-.chataddons-sent { outline: 2px solid #8bc34a66 !important; border-radius: 8px !important; }
+.chataddons-sent {
+    outline: 2px solid #8bc34a66 !important;
+    border-radius: 8px !important;
+}
 
 /* ===== Activity Log ===== */
-.ca-log-section { display:flex; flex-direction:column; gap:8px; flex: 0 0 auto; }
-.ca-logs { display:flex; flex-direction:column; gap:8px; }
-/* Presence log section stays at bottom with fixed height */
-.ca-section.ca-log-section { margin-top: 0; flex: 0 0 auto; min-height: 180px; max-height: 180px; }
-.ca-hidden { display:none !important; }
-.ca-log-title { display:flex; align-items:center; gap:8px; justify-content:space-between; }
-.ca-log-controls {
-    display:flex; gap:10px; align-items:center; justify-content:flex-end;
+.ca-log-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
 }
-/* Bottom placement variant to prevent layout jumps */
-.ca-log-controls-bottom { margin-top:4px; display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap; }
 
-.ca-log-controls input[type="checkbox"]{ accent-color:#93c5fd; }
-.ca-log-ctl { font-size:12px; color:#e5e7eb; display:inline-flex; gap:6px; align-items:center; }
+.ca-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Presence log section stays at bottom with fixed height */
+.ca-section.ca-log-section {
+    margin-top: 0;
+    flex: 0 0 auto;
+    min-height: 180px;
+    max-height: 180px;
+}
+
+.ca-hidden {
+    display: none !important;
+}
+
+.ca-log-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+}
+
+.ca-log-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* Bottom placement variant to prevent layout jumps */
+.ca-log-controls-bottom {
+    margin-top: 4px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
+.ca-log-controls input[type="checkbox"] {
+    accent-color: #93c5fd;
+}
+
+.ca-log-ctl {
+    font-size: 12px;
+    color: #e5e7eb;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
 
 .ca-log-box {
-    border:1px solid #334155; border-radius:10px;
-    background:#0f172a;
-    color:#e5e7eb;
-    max-height:110px; min-height:60px; overflow-y:auto;
-    padding:8px;
-    display:flex; flex-direction:column-reverse; /* normal flow, newest at bottom */
-    gap:6px;
-    font-size:12px; line-height:1.35;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #e5e7eb;
+    max-height: 110px;
+    min-height: 60px;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column-reverse; /* normal flow, newest at bottom */
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.35;
 }
 
 .ca-log-box-scrollable {
@@ -189,9 +525,20 @@
 }
 
 /* Variants: compact for sent, expand for received */
-.ca-log-box-compact { max-height:120px; min-height:80px; flex: 0 0 auto; overflow-y: auto; }
+.ca-log-box-compact {
+    max-height: 120px;
+    min-height: 80px;
+    flex: 0 0 auto;
+    overflow-y: auto;
+}
+
 /* Replaces inline style on received box: allow it to grow and shrink within flex column */
-.ca-log-box-expand { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; }
+.ca-log-box-expand {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+}
 
 /* Subsection styling within received messages box */
 .ca-log-subsection-header {
@@ -204,6 +551,7 @@
     margin-top: 0;
     flex-shrink: 0;
 }
+
 .ca-log-divider {
     height: 1px;
     background: #334155;
@@ -211,12 +559,14 @@
     border: 0;
     flex-shrink: 0;
 }
+
 /* Fixed layout for subsections - unreplied at top, replied at bottom */
 #ca-log-box-received {
     display: flex !important;
     flex-direction: column-reverse !important;
     padding: 0 !important;
 }
+
 /* Not replied section - top half */
 .ca-log-subsection-unreplied-wrapper {
     flex: 1 1 50%;
@@ -226,6 +576,7 @@
     padding: 8px;
     border-bottom: 1px solid #334155;
 }
+
 /* Replied section - bottom half */
 .ca-log-subsection-replied-wrapper {
     flex: 1 1 50%;
@@ -245,6 +596,7 @@
     flex-direction: column-reverse;
     gap: 6px;
 }
+
 /* ========================================
  * Custom Scrollbar Styling for Website
  * ======================================== */
@@ -295,6 +647,7 @@
     overflow-y: auto !important;
     overflow-x: hidden !important;
 }
+
 /* Presence log box within fixed-height section - show exactly 5 lines */
 .ca-log-section .ca-log-box {
     /* Line height 1.35 * font size 12px = 16.2px per line
@@ -307,17 +660,48 @@
     overflow-x: hidden !important;
 }
 
-.ca-log-entry { display:flex; align-items:center; gap:8px; }
+.ca-log-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .ca-log-ts {
     font-variant-numeric: tabular-nums;
-    font-weight:600; color:#93c5fd; min-width:38px;
+    font-weight: 600;
+    color: #93c5fd;
+    min-width: 38px;
 }
-.ca-log-dot { width:6px; height:6px; border-radius:50%; background:#64748b; }
+
+.ca-log-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
 /* Hide dot for received messages */
-.ca-log-pv .ca-log-dot { display: none; }
-.ca-log-user { flex: 0 0 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ca-log-text { color:#e5e7eb; flex:1; word-break: break-word; }
-.ca-log-entry strong { font-weight:700; }
+.ca-log-pv .ca-log-dot {
+    display: none;
+}
+
+.ca-log-user {
+    flex: 0 0 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ca-log-text {
+    color: #e5e7eb;
+    flex: 1;
+    word-break: break-word;
+}
+
+.ca-log-entry strong {
+    font-weight: 700;
+}
+
 /* Collapsible sent message text - one line by default */
 .ca-log-send-ok .ca-log-text,
 .ca-log-send-fail .ca-log-text {
@@ -329,12 +713,14 @@
     cursor: pointer;
     transition: all 0.2s;
 }
+
 /* Expanded state - show full message */
 .ca-log-send-ok.ca-expanded .ca-log-text,
 .ca-log-send-fail.ca-expanded .ca-log-text {
     -webkit-line-clamp: unset;
     overflow: visible;
 }
+
 /* Expand/collapse indicator */
 .ca-expand-indicator {
     flex-shrink: 0;
@@ -352,13 +738,16 @@
     transition: all 0.2s;
     user-select: none;
 }
+
 .ca-expand-indicator:hover {
     background: rgba(147, 197, 253, 0.4);
     color: #ffffff;
 }
+
 .ca-expanded .ca-expand-indicator {
     background: rgba(147, 197, 253, 0.3);
 }
+
 /* Style images (emoticons) in log entries */
 .ca-log-text img {
     max-height: 20px;
@@ -366,6 +755,7 @@
     vertical-align: middle;
     display: inline-block;
 }
+
 /* Reply icon for received messages - positioned where dot was */
 .ca-reply-icon {
     display: inline-flex;
@@ -383,11 +773,13 @@
     transition: all 0.2s;
     flex-shrink: 0;
 }
+
 .ca-reply-icon:hover {
     background: rgba(59, 130, 246, 0.4);
     color: #ffffff;
     text-decoration: none;
 }
+
 /* Replied indicator for received messages - clickable to open chat */
 .ca-replied-mark {
     display: inline-flex;
@@ -405,39 +797,117 @@
     text-decoration: none;
     transition: all 0.2s;
 }
+
 .ca-replied-mark:hover {
     background: rgba(34, 197, 94, 0.4);
     color: #ffffff;
     text-decoration: none;
 }
+
 /* Right-aligned <dm> action */
-.ca-dm-right { margin-left:auto; color:inherit; text-decoration:none; cursor:pointer; font-weight:700; }
-.ca-dm-right:hover { text-decoration:none; }
+.ca-dm-right {
+    margin-left: auto;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.ca-dm-right:hover {
+    text-decoration: none;
+}
 
 /* Action links in logs */
-.ca-user-link { font-weight: bold; text-decoration: none; color: inherit; cursor: pointer; }
-.ca-user-link:hover { text-decoration: none; color: inherit; }
-.ca-dm-link { text-decoration: none; border: 0; cursor: pointer; color: inherit; }
-.ca-dm-link:hover { text-decoration: none; color: inherit; }
-.ca-badge-replied { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#14532d; color:#bbf7d0; font-size:11px; font-weight:700; }
+.ca-user-link {
+    font-weight: bold;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.ca-user-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.ca-dm-link {
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+}
+
+.ca-dm-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.ca-badge-replied {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    background: #14532d;
+    color: #bbf7d0;
+    font-size: 11px;
+    font-weight: 700;
+}
 
 /* Color coding */
-.ca-log-send-ok .ca-log-dot { background:#22c55e; }     /* green */
-.ca-log-send-fail .ca-log-dot { background:#ef4444; }   /* red */
-.ca-log-login .ca-log-dot { background:#3b82f6; }       /* blue */
-.ca-log-logout .ca-log-dot { background:#a855f7; }      /* purple */
+.ca-log-send-ok .ca-log-dot {
+    background: #22c55e;
+}
+
+/* green */
+.ca-log-send-fail .ca-log-dot {
+    background: #ef4444;
+}
+
+/* red */
+.ca-log-login .ca-log-dot {
+    background: #3b82f6;
+}
+
+/* blue */
+.ca-log-logout .ca-log-dot {
+    background: #a855f7;
+}
+
+/* purple */
 /* New: reset and broadcast markers */
-.ca-log-reset .ca-log-dot { background:#f59e0b; }       /* amber */
-.ca-log-broadcast .ca-log-dot { background:#3b82f6; }   /* blue */
+.ca-log-reset .ca-log-dot {
+    background: #f59e0b;
+}
+
+/* amber */
+.ca-log-broadcast .ca-log-dot {
+    background: #3b82f6;
+}
+
+/* blue */
 
 /* Badge for broadcast entries */
-.ca-badge-bc { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9999px; background:#1e3a8a; color:#bfdbfe; font-size:11px; font-weight:700; }
+.ca-badge-bc {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    background: #1e3a8a;
+    color: #bfdbfe;
+    font-size: 11px;
+    font-weight: 700;
+}
 
 /* Visibility toggles */
 .ca-log-box.ca-hide-presence .ca-log-login,
-.ca-log-box.ca-hide-presence .ca-log-logout { display:none !important; }
+.ca-log-box.ca-hide-presence .ca-log-logout {
+    display: none !important;
+}
+
 .ca-log-box.ca-hide-messages .ca-log-send-ok,
-.ca-log-box.ca-hide-messages .ca-log-send-fail { display:none !important; }
+.ca-log-box.ca-hide-messages .ca-log-send-fail {
+    display: none !important;
+}
 
 /* === End of existing styles === */
 
@@ -519,14 +989,41 @@
 }
 
 /* Header placement for log controls */
-.ca-log-controls-header { margin-left:auto; display:flex; gap:10px; align-items:center; }
-@media (max-width: 640px){
-    .ca-log-controls-header .ca-log-ctl { font-size: 11px; }
-    .ca-log-controls-header .ca-btn-xs { padding: 3px 7px; font-size: 11px; }
+.ca-log-controls-header {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+@media (max-width: 640px) {
+    .ca-log-controls-header .ca-log-ctl {
+        font-size: 11px;
+    }
+
+    .ca-log-controls-header .ca-btn-xs {
+        padding: 3px 7px;
+        font-size: 11px;
+    }
 }
 
 
 /* === Specific modal & UI tweaks (added by ChatGPT on 2025-10-26) === */
-.ca-section-specific { display: none !important; }
-.ca-nav-btn-secondary { padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e5e7eb; font-weight:600; cursor:pointer; }
-.ca-nav-btn-secondary:hover { background:#111827; }
+.ca-nav-btn-secondary {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ca-nav-btn-secondary:hover {
+    background: #111827;
+}
+
+/* Ensure popups are hidden by default but show when JS sets display:block */
+.ca-pop {
+    display: none;
+}

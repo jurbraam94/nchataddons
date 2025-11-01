@@ -2537,36 +2537,13 @@ Private send interception
             h.innerHTML = `
               <div class="ca-body">
                 <div class="ca-nav">
-                  <button id="${this.getCleanSelector(this.sel.nav.bc)}" class="ca-nav-btn" type="button">Broadcast</button>
+                  <button id="ca-nav-bc" class="ca-nav-btn" type="button">Broadcast</button>
                   <button id="${this.getCleanSelector(this.sel.log.clear)}" class="ca-btn ca-btn-xs" type="button">Clear</button>
                   <label class="ca-debug-toggle" title="Enable debug logging">
                     <input type="checkbox" id="ca-debug-checkbox">
                     <span>Debug</span>
                   </label>
                 </div>
-            
-                <div class="ca-section ca-section-specific">
-                  <div class="ca-section-title">
-                    <span>Send to specific username</span>
-                    <a id="${this.getCleanSelector(this.sel.specific.reset)}" href="#" class="ca-reset-link">Reset tracking</a>
-                  </div>
-                  <div class="ca-row">
-                    <input id="${this.getCleanSelector(this.sel.specific.username)}"
-                           class="ca-input-slim"
-                           type="text"
-                           placeholder="Enter username (case-insensitive)">
-                    <button id="${this.getCleanSelector(this.sel.specific.send)}"
-                            class="ca-btn ca-btn-slim"
-                            type="button">Send</button>
-                  </div>
-                  <div id="${this.getCleanSelector(this.sel.specific.status)}" class="ca-status"></div>
-                  <textarea id="${this.getCleanSelector(this.sel.specific.msg)}"
-                            class="ca-8"
-                            rows="3"
-                            placeholder="Type the message..."></textarea>
-                </div>
-            
-                <hr class="ca-divider">
             
                 <div class="ca-section ca-section-compact">
                   <div class="ca-section-title"><span>Sent Messages</span></div>
@@ -2723,15 +2700,21 @@ Private send interception
         }
 
         openSpecific() {
+            console.log(this.LOG, 'openSpecific() called');
             const pop = this.createSpecificPopup();
+            console.log(this.LOG, 'Specific popup element:', pop);
             if (pop) {
+                // Ensure it's visible and styled as modal
                 pop.style.display = 'block';
+                pop.style.position = 'fixed';
+                pop.style.zIndex = '2147483647';
+                console.log(this.LOG, 'Set popup display to block, current display:', pop.style.display);
                 if (!this.openSpecific._wired) {
                     this.wireSpecificControls();
                     this.openSpecific._wired = true;
                 }
             } else {
-                console.error('Failed to create specific popup');
+                console.error(this.LOG, 'Failed to create specific popup');
             }
         }
 
@@ -2757,13 +2740,21 @@ Private send interception
 
 
         openBroadcast() {
+            console.log(this.LOG, 'openBroadcast() called');
             const pop = this.createBroadcastPopup();
+            console.log(this.LOG, 'Broadcast popup element:', pop);
             if (pop) {
+                // Ensure it's visible and styled as modal
                 pop.style.display = 'block';
+                pop.style.position = 'fixed';
+                pop.style.zIndex = '2147483647';
+                console.log(this.LOG, 'Set popup display to block, current display:', pop.style.display);
                 if (!this.openBroadcast._wired) {
                     this.wireBroadcastControls();
                     this.openBroadcast._wired = true;
                 }
+            } else {
+                console.error(this.LOG, 'Failed to create broadcast popup');
             }
         }
 
@@ -2857,23 +2848,34 @@ Private send interception
             try {
                 // Find the Broadcast button and append the Specific button next to it
                 const bcBtn = this.qs(this.sel.nav.bc);
+                console.log(this.LOG, 'Broadcast button found:', bcBtn);
                 if (!bcBtn) return;
-                let specBtn = document.getElementById(this.getCleanSelector(this.sel.nav.spec).slice(1));
+
+                // The ID should be 'ca-nav-specific' not 'a-nav-specific'
+                let specBtn = document.getElementById('ca-nav-specific');
+                console.log(this.LOG, 'Looking for specific button, found:', specBtn);
+
                 if (!specBtn) {
                     specBtn = document.createElement('button');
-                    specBtn.id = this.getCleanSelector(this.sel.nav.spec).slice(1);
+                    specBtn.id = 'ca-nav-specific';
                     specBtn.className = 'ca-nav-btn-secondary';
                     specBtn.type = 'button';
                     specBtn.textContent = 'Specific';
                     // insert after Broadcast
                     bcBtn.insertAdjacentElement('afterend', specBtn);
+                    console.log(this.LOG, 'Created specific button:', specBtn);
                 }
                 this.ui.navSpec = specBtn;
                 if (!specBtn._wired) {
                     specBtn._wired = true;
-                    specBtn.addEventListener('click', () => this.openSpecific());
+                    specBtn.addEventListener('click', () => {
+                        console.log(this.LOG, 'Specific button clicked');
+                        this.openSpecific();
+                    });
+                    console.log(this.LOG, 'Wired specific button');
                 }
-            } catch (e) { /* no-op */
+            } catch (e) {
+                console.error(this.LOG, 'Error in addSpecificNavButton:', e);
             }
         }
 
@@ -2882,12 +2884,8 @@ Private send interception
         }
 
         _bindStaticRefs() {
-            // specific send panel
-            this.ui.sUser = this.qs(this.sel.specific.username);
-            this.ui.sMsg = this.qs(this.sel.specific.msg);
-            this.ui.sSend = this.qs(this.sel.specific.send);
-            this.ui.sStat = this.qs(this.sel.specific.status);
-            this.ui.sReset = this.qs(this.sel.specific.reset);
+            // specific send controls are now only in the modal popup, not in the panel
+            // They will be bound when the modal is opened via wireSpecificControls()
 
             // logs
             this.ui.sentBox = this.qs(this.sel.log.sent);
@@ -2906,8 +2904,20 @@ Private send interception
         }
 
         _wirePanelNav() {
-            if (this.ui.navBc) this.ui.navBc.addEventListener('click', () => this.openBroadcast());
-            if (this.ui.navSpec) this.ui.navSpec.addEventListener('click', () => this.openSpecific());
+            if (this.ui.navBc && !this.ui.navBc._wired) {
+                this.ui.navBc._wired = true;
+                this.ui.navBc.addEventListener('click', () => {
+                    console.log(this.LOG, 'Broadcast button clicked');
+                    this.openBroadcast();
+                });
+            }
+            if (this.ui.navSpec && !this.ui.navSpec._wired) {
+                this.ui.navSpec._wired = true;
+                this.ui.navSpec.addEventListener('click', () => {
+                    console.log(this.LOG, 'Specific button clicked');
+                    this.openSpecific();
+                });
+            }
         }
 
         _wireDebugCheckbox() {
