@@ -170,8 +170,7 @@
             this._cp_PN_INTERVAL = 10_000;     // 10s
 
             /* ========= Observers & Listeners (refs only) ========= */
-            this._domUserObserver = null;
-            this._mo = null;
+            this._domObserver = null;
             this._onDocClick = null;
             this._onResize = null;
 
@@ -330,7 +329,6 @@
                     this.adjustForFooter();
                 }, 500);
 
-                this._wireMutations();
                 this._wireResize();
                 this._wireLogClicks();
             }
@@ -1652,6 +1650,16 @@ Private send interception
             });
         }
 
+        disConnectObserver(observer) {
+            if (observer) {
+                try {
+                    observer.disconnect();
+                } catch {
+                }
+                observer = null;
+            }
+        }
+
         startObserver() {
             const attach = () => {
                 const c = this.getContainer();
@@ -1663,15 +1671,9 @@ Private send interception
                 }
 
                 // avoid double-wiring
-                if (this._domUserObserver) {
-                    try {
-                        this._domUserObserver.disconnect();
-                    } catch {
-                    }
-                    this._domUserObserver = null;
-                }
+                this.disConnectObserver(this._domObserver);
 
-                const mo = new MutationObserver((recs) => {
+                const domObserver = new MutationObserver((recs) => {
                     try {
                         if (this._isMakingOwnChanges || this.state?.isPruning) return;
                         let hasRelevant = false;
@@ -1726,7 +1728,7 @@ Private send interception
                     }
                 });
 
-                mo.observe(c, {
+                domObserver.observe(c, {
                     childList: true,
                     subtree: true,
                     attributes: true,
@@ -1734,7 +1736,7 @@ Private send interception
                     attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
                 });
 
-                this._domUserObserver = mo;
+                this._domObserver = domObserver;
                 this._runInitialLogWhenReady?.();
             };
 
@@ -3349,27 +3351,6 @@ Private send interception
             }
         }
 
-        _wireMutations() {
-            let lastAdjust = 0;
-            const observer = new MutationObserver(() => {
-                try {
-                    this.applyInline();
-                    this.removeAds(document);
-                    const now = Date.now();
-                    if (now - lastAdjust > 1000) {
-                        this.adjustForFooter();
-                        lastAdjust = now;
-                    }
-                } catch (e) {
-                    console.error(e);
-                }
-            });
-            observer.observe(document.body, {childList: true, subtree: true});
-
-            // keep a reference if you want to disconnect later
-            this._mo = observer;
-        }
-
         _wireResize() {
             let resizeTimer = null;
             this._onResize = this._onResize || (() => {
@@ -3511,22 +3492,7 @@ Private send interception
             this._uninstallAudioAutoplayGate();
             this.uninstallNetworkTaps();
             this.uninstallPrivateSendInterceptor();
-
-            if (this._mo) {
-                try {
-                    this._mo.disconnect();
-                } catch {
-                }
-                this._mo = null;
-            }
-
-            if (this._domUserObserver) {
-                try {
-                    this._domUserObserver.disconnect();
-                } catch {
-                }
-                this._domUserObserver = null;
-            }
+            this.disConnectObserver(this._domObserver);
         }
     }
 
