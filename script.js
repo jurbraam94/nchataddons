@@ -100,7 +100,9 @@
                 arr.push({
                     uid: String(user.uid),
                     name: String(user.name || user.uid),
-                    avatar: String(user.avatar || '')
+                    avatar: String(user.avatar || ''),
+                    loggedIn: user.loggedIn || false,
+                    isFemale: user.isFemale || false
                 });
             }
             this.kv.set(this.cacheKey, arr);
@@ -161,7 +163,6 @@
             this._lastPresenceLog = Object.create(null); // { key: ts }
 
             // presence helpers
-            this._currentFemales = new Map();     // id -> name
             this._didInitialLog = false;
             this._presenceArmed = false;
 
@@ -310,21 +311,67 @@
                     (this.UserStore.list() || []).map(u => [String(u.uid), {
                         uid: String(u.uid),
                         name: u.name || String(u.uid),
-                        avatar: u.avatar || ''
+                        avatar: u.avatar || '',
+                        loggedIn: u.loggedIn || false,
+                        isFemale: u.isFemale || false
                     }])
                 );
 
                 this.Users = {
-                    set: (id, name, avatar = '') => {
-                        const rec = {uid: String(id), name: String(name || id), avatar: String(avatar || '')};
+                    set: (id, name, avatar = '', isFemale = false) => {
+                        const existing = _index.get(String(id));
+                        const rec = {
+                            uid: String(id),
+                            name: String(name || id),
+                            avatar: String(avatar || ''),
+                            loggedIn: existing ? existing.loggedIn : false,
+                            isFemale: isFemale
+                        };
                         _index.set(rec.uid, rec);
-                        this.UserStore.upsert({uid: rec.uid, name: rec.name, avatar: rec.avatar});
+                        this.UserStore.upsert({
+                            uid: rec.uid,
+                            name: rec.name,
+                            avatar: rec.avatar,
+                            loggedIn: rec.loggedIn,
+                            isFemale: rec.isFemale
+                        });
                         return rec;
                     },
                     has: (id) => _index.has(String(id)),
                     get: (id) => _index.get(String(id)) || null,
+                    isLoggedIn: (id) => {
+                        const user = _index.get(String(id));
+                        return user?.loggedIn === true;
+                    },
+                    setLoggedIn: (id, status) => {
+                        const user = _index.get(String(id));
+                        if (user) {
+                            user.loggedIn = !!status;
+                            _index.set(String(id), user);
+                            // Persist to storage
+                            this.UserStore.upsert({
+                                uid: user.uid,
+                                name: user.name,
+                                avatar: user.avatar,
+                                loggedIn: user.loggedIn,
+                                isFemale: user.isFemale
+                            });
+                        }
+                    },
+                    getAllLoggedIn: () => {
+                        return Array.from(_index.values()).filter(u => u.loggedIn);
+                    },
+                    getFemalesLoggedIn: () => {
+                        return Array.from(_index.values()).filter(u => u.loggedIn && u.isFemale);
+                    },
                     async getOrFetch(id) {
-                        return this.get(id) || {uid: String(id), name: String(id), avatar: ''};
+                        return this.get(id) || {
+                            uid: String(id),
+                            name: String(id),
+                            avatar: '',
+                            loggedIn: false,
+                            isFemale: false
+                        };
                     },
                     async getOrFetchByName(q) {
                         const needle = String(q || '').toLowerCase();
@@ -500,12 +547,22 @@ Private send interception
 
                 if (!content || !targetId) return;
 
-                // Look up user
-                const userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : {
-                    uid: targetId,
-                    name: String(targetId),
-                    avatar: ''
-                };
+                // Look up user - ensure we always have a valid user object
+                let userInfo = null;
+                try {
+                    userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : null;
+                } catch (e) {
+                    console.error(e);
+                }
+
+                // Fallback to minimal user object if not found
+                if (!userInfo || !userInfo.uid) {
+                    userInfo = {
+                        uid: String(targetId),
+                        name: String(targetId),
+                        avatar: ''
+                    };
+                }
 
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
@@ -1209,7 +1266,9 @@ Private send interception
         // Wires generic click handling on sent/received/presence logs,
         _attachLogClickHandlers() {
             [this.ui.sentBox, this.ui.receivedMessagesBox, this.ui.presenceBox].forEach(box => {
-                if (!box || box._caGenericWired) return;
+                if (!box) return;
+                // Remove old listener if it exists to avoid duplicates
+                if (box._caGenericWired) return;
                 box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
                 box._caGenericWired = true;
             });
@@ -1621,53 +1680,121 @@ Private send interception
 
             const c = this.getContainer();
             if (c) {
-                for (const row of this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c)) {
-                    this.processFemaleRow(row);
+                // First, hide all non-female accounts
+                this.pruneAllNonFemale();
+
+                // Then process female rows and call _handleVisibilityOrGenderChange for each
+                for (const row of this.qsa(`.user_item[data-gender]`, c)) {
+                    // Call for every account at startup
+                    this._handleVisibilityOrGenderChange(row);
+
+                    // Then process female rows normally
+                    if (row.getAttribute('data-gender') === this.FEMALE_CODE) {
+                        this.processFemaleRow(row);
+                    }
+                }
+
+                // NOW start observing - initial setup is complete
+                if (this._domObserver && this._domObserverContainer) {
+                    setTimeout(() => {
+                        this._domObserver.observe(this._domObserverContainer, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,  // Watch for attribute changes (gender, visibility)
+                            attributeFilter: ['data-gender', 'style', 'class']  // Only these attributes
+                        });
+                        console.log(this.LOG, 'Observer started after initial setup complete');
+                    }, 100);
                 }
             }
         }
 
         _handleAddedNode(n) {
-            let items;
-            if (this.safeMatches(n, '.user_item[data-gender="' + this.FEMALE_CODE + '"]')) items = [n];
-            else items = this.qsa('.user_item[data-gender="' + this.FEMALE_CODE + '"]', n);
-            if (!items.length) return;
-            console.log('Found new female users and processing them:', items);
+            // Set flag FIRST before any processing
+            const wasChanging = this._isMakingOwnChanges;
+            this._isMakingOwnChanges = true;
 
-            items.forEach((el) => {
-                const uid = this.getUserId(el);
-                if (!uid) return;
-                const wasPresent = this._currentFemales.has(uid);
-                const nm = this.extractUsername(el) || uid;
-                const av = this.extractAvatar(el);
-                console.log('Processing new female user:', uid, nm, av);
+            try {
+                // Only process the actual added node - don't search for all items
+                let itemsToProcess = [];
 
-                this.Users?.set?.(uid, nm, av);
-
-                if (!wasPresent) {
-                    this._currentFemales.set(uid, nm);
+                if (this.safeMatches(n, '.user_item[data-gender]')) {
+                    // The added node itself is a user item
+                    itemsToProcess = [n];
+                } else if (this.safeMatches(n, '.user_item')) {
+                    // It's a user_item but without data-gender yet
+                    const gender = n.getAttribute('data-gender');
+                    if (gender) {
+                        itemsToProcess = [n];
+                    }
+                } else {
+                    // The added node is a container, search only its direct children
+                    const children = n.children;
+                    if (children) {
+                        for (let i = 0; i < children.length; i++) {
+                            const child = children[i];
+                            if (this.safeMatches(child, '.user_item[data-gender]')) {
+                                itemsToProcess.push(child);
+                            }
+                        }
+                    }
                 }
-                if (this._didInitialLog && this._presenceArmed) {
-                    this.logLogin({uid, name: nm, avatar: av});
-                }
 
-                this.ensureSentChip(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
-            });
+                if (itemsToProcess.length === 0) return;
+
+                // Call _handleVisibilityOrGenderChange for each item
+                itemsToProcess.forEach(el => this._handleVisibilityOrGenderChange(el));
+
+                // Hide non-females immediately
+                itemsToProcess.forEach(el => this.pruneNonFemale(el));
+
+                // Now process only female users from the items we already identified
+                const femaleItems = itemsToProcess.filter(el =>
+                    el.getAttribute('data-gender') === this.FEMALE_CODE
+                );
+
+                if (!femaleItems.length) return;
+
+                femaleItems.forEach((el) => {
+                    const uid = this.getUserId(el);
+                    if (!uid) return;
+                    const wasLoggedIn = this.Users.isLoggedIn(uid);
+                    const nm = this.extractUsername(el) || uid;
+                    const av = this.extractAvatar(el);
+
+                    this.Users?.set?.(uid, nm, av, true);
+
+                    if (!wasLoggedIn) {
+                        this.Users.setLoggedIn(uid, true);
+                    }
+                    if (this._didInitialLog && this._presenceArmed && !wasLoggedIn) {
+                        this.logLogin({uid, name: nm, avatar: av});
+                    }
+
+                    this.ensureSentChip(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
+                });
+            } finally {
+                // Clear flag synchronously - no setTimeout
+                if (!wasChanging) {
+                    this._isMakingOwnChanges = false;
+                }
+            }
         }
 
         _handleRemovedNode(n) {
             let items;
             if (this.safeMatches(n, '.user_item')) items = [n];
-            else items = qsa('.user_item', n);
+            else items = this.qsa('.user_item', n);
             if (!items.length) return;
 
             items.forEach((el) => {
                 const id = this.getUserId(el);
                 if (!id) return;
                 const isFemale = (el.getAttribute && el.getAttribute('data-gender') === this.FEMALE_CODE);
-                if (isFemale && this._currentFemales.has(id)) {
-                    const nm = this._currentFemales.get(id) || id;
-                    this._currentFemales.delete(id);
+                if (isFemale && this.Users.isLoggedIn(id)) {
+                    const user = this.Users.get(id);
+                    const nm = user?.name || id;
+                    this.Users.setLoggedIn(id, false);
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogout({uid: id, name: nm, avatar: this.extractAvatar(el)});
                     }
@@ -1698,25 +1825,53 @@ Private send interception
                 // avoid double-wiring
                 this.disConnectObserver(this._domObserver);
 
-                const domObserver = new MutationObserver((recs) => {
+                // Safety: track observer call count to detect infinite loops
+                let observerCallCount = 0;
+                let lastResetTime = Date.now();
+
+                this._domObserver = new MutationObserver((recs) => {
                     try {
-                        if (this._isMakingOwnChanges || this.state?.isPruning) return;
-                        let hasRelevant = false;
-                        const processed = new Set();
+                        // Reset counter every second
+                        const now = Date.now();
+                        if (now - lastResetTime > 1000) {
+                            observerCallCount = 0;
+                            lastResetTime = now;
+                        }
+
+                        observerCallCount++;
+
+                        // Safety: if observer fires too many times, something is wrong
+                        if (observerCallCount > 100) {
+                            console.error(this.LOG, 'Observer firing too frequently, pausing to prevent freeze');
+                            return;
+                        }
+
+                        // Early return if we're making changes
+                        if (this._isMakingOwnChanges || this.state?.isPruning) {
+                            return;
+                        }
 
                         recs.forEach((r) => {
                             if (r.target?.closest?.('#ca-panel')) return;
 
+                            // Handle attribute changes (gender, visibility)
+                            if (r.type === 'attributes') {
+                                const target = r.target;
+                                if (this.safeMatches(target, '.user_item')) {
+                                    this._handleVisibilityOrGenderChange(target);
+                                }
+                                return;
+                            }
+
                             if (r.addedNodes?.length) {
                                 for (let i = 0; i < r.addedNodes.length; i++) {
                                     const node = r.addedNodes[i];
-                                    if (node.nodeType === 1) {
-                                        if (node.closest?.('#ca-panel')) continue;
-                                        if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
-                                    }
+                                    if (node.nodeType !== 1) continue;
+                                    if (node.closest?.('#ca-panel')) continue;
+                                    if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap') || node.classList?.contains('ca-hidden')) continue;
+
                                     if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
                                         this._handleAddedNode(node);
-                                        hasRelevant = true;
                                     }
                                 }
                             }
@@ -1724,25 +1879,12 @@ Private send interception
                             if (r.removedNodes?.length) {
                                 for (let j = 0; j < r.removedNodes.length; j++) {
                                     const node = r.removedNodes[j];
-                                    if (node.nodeType === 1) {
-                                        if (node.closest?.('#ca-panel')) continue;
-                                        if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
-                                    }
+                                    if (node.nodeType !== 1) continue;
+                                    if (node.closest?.('#ca-panel')) continue;
+                                    if (node.classList?.contains('ca-sent-chip') || node.classList?.contains('ca-ck-wrap')) continue;
+
                                     if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
                                         this._handleRemovedNode(node);
-                                        hasRelevant = true;
-                                    }
-                                }
-                            }
-
-                            if (r.type === 'attributes' && r.target) {
-                                const row = r.target.closest?.('.user_item, [data-uid]') || r.target;
-                                if (row && (row.matches?.('.user_item') || row.hasAttribute?.('data-uid'))) {
-                                    const uid = this.getUserId(row);
-                                    if (uid && !processed.has(uid)) {
-                                        processed.add(uid);
-                                        this._handleVisibilityOrGenderChange(row);
-                                        hasRelevant = true;
                                     }
                                 }
                             }
@@ -1753,15 +1895,11 @@ Private send interception
                     }
                 });
 
-                domObserver.observe(c, {
-                    childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeOldValue: true,
-                    attributeFilter: ['class', 'style', 'data-status', 'data-online', 'data-gender', 'data-rank']
-                });
+                // Store observer but DON'T start observing yet
+                // Will be started after initial setup in _runInitialLogWhenReady
+                this._domObserverContainer = c;  // Store container for later
 
-                this._domObserver = domObserver;
+                // Run initial setup WITHOUT observer active
                 this._runInitialLogWhenReady?.();
             };
 
@@ -1781,21 +1919,25 @@ Private send interception
                 const name = this.extractUsername(row) || uid;
                 const avatar = this.extractAvatar(row);
 
-                if (uid && name && this.Users?.set) this.Users.set(uid, name, avatar);
+                if (uid && name && this.Users?.set) this.Users.set(uid, name, avatar, isFemale);
 
-                const wasPresent = this._currentFemales.has(uid);
+                const wasLoggedIn = this.Users.isLoggedIn(uid);
 
                 this.debug('Handling visibility change:', uid, name, avatar, isFemale, visible);
 
-                if (isFemale && visible && !wasPresent) {
-                    this._currentFemales.set(uid, name);
+                // Always apply gender-based hiding/showing
+                this.pruneNonFemale(row);
+
+                if (isFemale && visible && !wasLoggedIn) {
+                    this.Users.setLoggedIn(uid, true);
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogin({uid, name, avatar});
                     }
                     this.ensureSentChip?.(uid, !!(this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]));
-                } else if ((!isFemale || !visible) && wasPresent) {
-                    const prevName = this._currentFemales.get(uid) || name;
-                    this._currentFemales.delete(uid);
+                } else if ((!isFemale || !visible) && wasLoggedIn) {
+                    const user = this.Users.get(uid);
+                    const prevName = user?.name || name;
+                    this.Users.setLoggedIn(uid, false);
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogout({uid, name: prevName, avatar});
                     }
@@ -2003,17 +2145,32 @@ Private send interception
         pruneNonFemale(el) {
             if (!el) return;
             const isFemale = el.getAttribute('data-gender') === this.FEMALE_CODE;
-            el.classList.toggle('ca-hidden', !isFemale);
+
+            if (!isFemale) {
+                // Force hide non-female accounts
+                el.classList.add('ca-hidden');
+                // Also set display:none as a backup
+                el.style.setProperty('display', 'none', 'important');
+            } else {
+                // Ensure female accounts are visible
+                el.classList.remove('ca-hidden');
+                el.style.removeProperty('display');
+            }
         }
 
         pruneAllNonFemale() {
             const c = this.getContainer();
             if (!c) return;
+
+            this._isMakingOwnChanges = true;
             this.state.isPruning = true;
             try {
                 this.qsa('.user_item[data-gender]', c).forEach((el) => this.pruneNonFemale(el));
             } finally {
                 this.state.isPruning = false;
+                setTimeout(() => {
+                    this._isMakingOwnChanges = false;
+                }, 0);
             }
         }
 
@@ -2232,9 +2389,13 @@ Private send interception
                     userEl.style.setProperty('border-radius', '8px', 'important');
                 }
 
-                // update chip + sorting regardless (safe to call repeatedly)
+                // update chip (sorting is handled by _placeRowByReplyStatus via observer)
                 this.ensureSentChip(uid, !!this.REPLIED_CONVOS[uid]);
-                this.resortUserList();
+
+                // Trigger re-positioning of the row since reply status changed
+                if (userEl) {
+                    this._placeRowByReplyStatus(userEl, true); // true = now replied
+                }
             } catch (e) {
                 console.error(e);
             }
@@ -2734,8 +2895,11 @@ Private send interception
                 });
             }
 
-            // Reuse existing logic that wires the send button
-            this.wireSpecificSendButton && this.wireSpecificSendButton();
+            // Wire the send button - reset the flag since we're binding to new modal elements
+            if (this.ui.sSend) {
+                this.ui.sSend._wired = false; // Reset flag for modal button
+                this.wireSpecificSendButton();
+            }
         }
 
 
@@ -2956,15 +3120,22 @@ Private send interception
                     this.ui.receivedMessagesBox.innerHTML =
                         '<div class="ca-log-subsection-unreplied-wrapper">' +
                         '  <div class="ca-log-subsection-header">Not Replied</div>' +
-                        `  <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>` +
+                        `  <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>` +
                         '</div>' +
                         '<div class="ca-log-subsection-replied-wrapper">' +
                         '  <div class="ca-log-subsection-header">Replied</div>' +
-                        `  <div id="${this.getCleanSelector(this.sel.log.unreplied)}"></div>` +
+                        `  <div id="${this.getCleanSelector(this.sel.log.replied)}"></div>` +
                         '</div>';
+
+                    // Re-bind refs to the new subsection containers
+                    this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
+                    this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
                 this.Store.set(this.ACTIVITY_LOG_KEY, []); // clear persisted log
+
+                // Re-attach event handlers since we replaced the HTML
+                this._attachLogClickHandlers?.();
             });
         }
 
@@ -3003,6 +3174,12 @@ Private send interception
         }
 
         renderLogEntry(ts, kind, content, user) {
+            // Ensure user object is valid
+            if (!user || !user.uid) {
+                console.error(this.LOG, 'renderLogEntry: Invalid user object', user);
+                return;
+            }
+
             // 1) pick target container
             let targetContainer = null;
             switch (kind) {
