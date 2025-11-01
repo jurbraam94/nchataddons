@@ -116,6 +116,7 @@
             this.FEMALE_CODE = '2';
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
+            this.DEBUG_MODE_KEY = '321chataddons.debugMode';
             this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
@@ -148,7 +149,8 @@
                 bMsg: null, bSend: null, bStat: null, bReset: null,
                 sentBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
                 repliedMessageBox: null, unrepliedMessageBox: null,
-                navBc: null
+                navBc: null,
+                debugCheckbox: null
             };
 
             /* ========= Flags / Scheduling ========= */
@@ -204,6 +206,13 @@
             this.debug = this.debug || (() => {
             });   // noop if you don’t provide one
             this._escapeMap = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+
+            // Dynamic debug method
+            this.debug = (...args) => {
+                if (this.debugMode) {
+                    console.log(this.LOG, '[DEBUG]', ...args);
+                }
+            };
 
             this.sel = {
                 panel: '#ca-panel',
@@ -275,6 +284,17 @@
             // --- Wire up stores so they’re actually used ---
             // Key/value store used all over the App (watermark, tracking, etc.)
             this.Store = this.Store || new KeyValueStore();
+
+            // Load debug mode from storage
+            try {
+                const storedDebugMode = localStorage.getItem(this.DEBUG_MODE_KEY);
+                this.debugMode = storedDebugMode === 'true';
+            } catch (err) {
+                console.error('Failed to load debug mode:', err);
+                this.debugMode = false;
+            }
+
+            this.debug('Initializing app with options:', options);
 
             // Persist message drafts
             this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
@@ -354,6 +374,7 @@
 
             this.wireSpecificSendButton();   // enable the “Send” button in the panel
             this._wirePanelNav();
+            this._wireDebugCheckbox();
             this._wireLogClear();
 
             await this.restoreLog?.();
@@ -769,6 +790,8 @@ Private send interception
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, response) {
             try {
+                this.debug('Processing private log response for user:', uid);
+
                 if (!response || typeof response !== 'string' || response.trim() === '') {
                     console.warn(this.LOG, 'Empty response for conversation', uid);
                     return;
@@ -896,6 +919,7 @@ Private send interception
                 }
 
                 const now = Date.now();
+                this.debug('Processing chat payload, length:', txt.length);
 
                 // tolerant parse & shape
                 let data;
@@ -987,6 +1011,7 @@ Private send interception
 
         /* ============ Fetch/XHR interceptors ============ */
         installNetworkTaps() {
+            this.debug('Installing network taps (fetch/XHR interceptors)');
             // fetch
             try {
                 if (!this._origFetch && typeof window.fetch === 'function') {
@@ -1129,7 +1154,7 @@ Private send interception
         buildLogHTML(kind, user = {}, content) {
             const text = typeof content === 'object' ? content?.text : content;
             const status = typeof content === 'object' ? content?.status : null;
-            console.log(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
+            this.debug(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
 
             switch (kind) {
                 case 'dm-in':
@@ -1760,7 +1785,7 @@ Private send interception
 
                 const wasPresent = this._currentFemales.has(uid);
 
-                console.log('Handling visibility change:', uid, name, avatar, isFemale, visible);
+                this.debug('Handling visibility change:', uid, name, avatar, isFemale, visible);
 
                 if (isFemale && visible && !wasPresent) {
                     this._currentFemales.set(uid, name);
@@ -2107,6 +2132,8 @@ Private send interception
         sendPrivateMessage(target, content) {
             const token = this.getToken();
             if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
+
+            this.debug('Sending private message to:', target, 'content length:', content.length);
 
             const body = new URLSearchParams({
                 token,
@@ -2512,6 +2539,10 @@ Private send interception
                 <div class="ca-nav">
                   <button id="${this.getCleanSelector(this.sel.nav.bc)}" class="ca-nav-btn" type="button">Broadcast</button>
                   <button id="${this.getCleanSelector(this.sel.log.clear)}" class="ca-btn ca-btn-xs" type="button">Clear</button>
+                  <label class="ca-debug-toggle" title="Enable debug logging">
+                    <input type="checkbox" id="ca-debug-checkbox">
+                    <span>Debug</span>
+                  </label>
                 </div>
             
                 <div class="ca-section ca-section-specific">
@@ -2869,11 +2900,41 @@ Private send interception
             // nav
             this.ui.navBc = this.qs(this.sel.nav.bc);
             this.ui.navSpec = this.qs(this.sel.nav.spec);
+
+            // debug checkbox
+            this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
         }
 
         _wirePanelNav() {
             if (this.ui.navBc) this.ui.navBc.addEventListener('click', () => this.openBroadcast());
             if (this.ui.navSpec) this.ui.navSpec.addEventListener('click', () => this.openSpecific());
+        }
+
+        _wireDebugCheckbox() {
+            if (!this.ui.debugCheckbox) return;
+
+            // Set initial state from loaded debugMode
+            this.ui.debugCheckbox.checked = this.debugMode;
+
+            this.ui.debugCheckbox.addEventListener('change', (e) => {
+                this.debugMode = e.target.checked;
+
+                // Save to both Store and raw localStorage for immediate availability on reload
+                try {
+                    localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
+                    if (this.Store) {
+                        this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
+                    }
+                } catch (err) {
+                    console.error('Failed to save debug mode:', err);
+                }
+
+                if (this.debugMode) {
+                    console.log(this.LOG, '[DEBUG] Debug mode enabled');
+                } else {
+                    console.log(this.LOG, 'Debug mode disabled');
+                }
+            });
         }
 
         _wireLogClear() {
@@ -2950,7 +3011,7 @@ Private send interception
                     break;
             }
             if (!targetContainer) return;
-            console.log(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
+            this.debug(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
 
             // 5) entry root
             const entry = document.createElement('div');
@@ -3061,7 +3122,7 @@ Private send interception
 
             for (let i = arr.length - 1; i >= 0; i--) {
                 const e = arr[i];
-                console.log('Restoring log', e);
+                this.debug('Restoring log', e);
                 // If you have a Users store/fetcher, adapt here; else build a minimal user object:
                 const user = await this.Users.getOrFetch(e.uid);
                 this.renderLogEntry(e.ts, e.kind, e.content, user);
@@ -3398,20 +3459,20 @@ Private send interception
         initializeGlobalWatermark() {
             try {
                 const current = this.getGlobalWatermark();
-                console.log(this.LOG, 'Checking watermark... current value:', current || '(not set)');
+                this.debug(this.LOG, 'Checking watermark... current value:', current || '(not set)');
 
                 if (current && current.length > 0) {
-                    console.log(this.LOG, 'Watermark already set:', current);
+                    this.debug(this.LOG, 'Watermark already set:', current);
                     return;
                 }
 
                 const timestamp = this.getTimeStampInWebsiteFormat();
-                console.log(this.LOG, 'Setting initial watermark to:', timestamp);
+                this.debug(this.LOG, 'Setting initial watermark to:', timestamp);
                 this.setGlobalWatermark(timestamp);
 
                 const verify = this.getGlobalWatermark();
                 if (verify === timestamp) {
-                    console.log(this.LOG, 'Watermark successfully initialized:', timestamp);
+                    this.debug(this.LOG, 'Watermark successfully initialized:', timestamp);
                 } else {
                     console.warn(this.LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
                 }
@@ -3450,6 +3511,7 @@ Private send interception
             // persist replied timestamp
             this.REPLIED_CONVOS = this.REPLIED_CONVOS || {};
             this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
+            this.debug('Marking conversation as replied:', uid, 'timestamp:', this.REPLIED_CONVOS[uid]);
             this._saveRepliedConvos(this.REPLIED_CONVOS);
             this.AppendIfNotYetMarkedReplied(this.getLogEntryByUid(uid));
             // lso mark the regular profile picture as replied in the menu
@@ -3473,17 +3535,17 @@ Private send interception
                 return;
             }
 
-            console.log(`Marking and rendering/moving replied message for ${uid} at ${timestamp} an logEntryElL`, logEntryEl);
+            this.debug(`Marking and rendering/moving replied message for ${uid} at ${timestamp} an logEntryElL`, logEntryEl);
 
             if (targetContainerEl === this.ui.unrepliedMessageBox) {
-                console.log('Message is new and unreplied. Appending it to the unreplied box.', this.ui.unrepliedMessageBox);
+                this.debug('Message is new and unreplied. Appending it to the unreplied box.', this.ui.unrepliedMessageBox);
                 this.ui.unrepliedMessageBox.appendChild(logEntryEl);
             } else if (this.ui.unrepliedMessageBox.contains(logEntryEl) && targetContainerEl === this.ui.repliedMessageBox) {
-                console.log('Removing unreplied message from unreplied container to recreate it in the replied container');
+                this.debug('Removing unreplied message from unreplied container to recreate it in the replied container');
                 this.ui.unrepliedMessageBox.removeChild(logEntryEl);
                 // NOT NEEDED HERE I THINK: this.markConversationAsReplied(uid);
             } else if (targetContainerEl === this.ui.repliedMessageBox) {
-                console.log(`Moving message from unreplied container to replied container`);
+                this.debug(`Moving message from unreplied container to replied container`);
                 this.ui.repliedMessageBox.appendChild(logEntryEl);
             }
         }
