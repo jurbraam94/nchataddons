@@ -95,13 +95,29 @@
             return Array.isArray(raw) ? raw : [];
         }
 
-        _saveAll(list) {
-            // keep newest first, enforce max
-            const sorted = [...(Array.isArray(list) ? list : [])].sort(
-                (a, b) => this.parseLogDateToNumber(b?.ts) - this.parseLogDateToNumber(a?.ts)
-            );
-            this.kv.set(this.cacheKey, sorted.slice(0, this.max));
-            return true;
+        _save(changedLog) {
+            this._saveAll([changedLog])
+            return changedLog;
+        }
+
+        _saveAll(changedLogs) {
+            if (!Array.isArray(changedLogs)) {
+                throw new Error('changedLogs expects an array');
+            }
+
+            const existing = this._getAll();
+
+            // Make a Set of all GUIDs we’re about to replace
+            const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
+
+            // Keep only logs whose GUID isn’t being replaced
+            const filtered = existing.filter(log => !incomingIds.has(String(log.guid)));
+
+            // Append the new ones
+            const next = filtered.concat(changedLogs);
+
+            this.kv.set(this.cacheKey, next);
+            return changedLogs;
         }
 
         // ---- util: your parser unchanged ----
@@ -114,11 +130,11 @@
                 if ([day, month, hours, minutes].some(isNaN)) return 0;
                 return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
             } catch {
+                console.error(`Failed to parse log date: ${logDateStr}`);
                 return 0;
             }
         }
 
-        // ---- API (array) ----
         list({order = 'desc'} = {}) {
             const arr = [...this._getAll()];
             arr.sort((a, b) => {
@@ -133,9 +149,12 @@
             return this._getAll().find(log => String(log.guid) === String(guid)) || null;
         }
 
-        getAllByUserUid(uid) {
-            const u = String(uid);
-            return this._getAll().filter(log => String(log.uid) === u);
+        getAllByUserUid(uid, onlyUnread = false) {
+            const result = this._getAll().filter(
+                log => String(log.uid) === String(uid) && (!onlyUnread || log.unread)
+            );
+            console.log(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+            return result;
         }
 
         has({guid, uid}) {
@@ -143,79 +162,73 @@
             return !!(e && (!uid || String(e.uid) === String(uid)));
         }
 
+        // Merge a single patch with existing (NO SAVE)
+        _mergeLog(changedLog) {
+            if (!changedLog || !changedLog.guid) {
+                throw new Error('_mergeOne requires changedLog.guid');
+            }
+            const existing = this.get(changedLog.guid);
+            return existing ? {...existing, ...changedLog} : changedLog;
+        }
+
+        _MergeLogs(changedLogs) {
+            if (!Array.isArray(changedLogs)) {
+                throw new Error('_mergeMany expects an array');
+            }
+
+            const mergedLogsResult = [];
+
+            for (const changedLog of changedLogs) {
+                mergedLogsResult.push(this._mergeLog(changedLog));
+            }
+
+            return mergedLogsResult;
+        }
+
         set(changedLog) {
             if (!changedLog || !changedLog.guid) {
                 throw new Error('set() requires changedLog.guid');
             }
-            const list = this._getAll();
-            const i = list.findIndex(l => String(l.guid) === String(changedLog.guid));
-            let next;
-            if (i >= 0) {
-                next = [...list];
-                next[i] = {...next[i], ...changedLog};
-            } else {
-                next = [...list, changedLog];
-            }
-            this._saveAll(next);
-            return i >= 0 ? next[i] : changedLog;
+            const mergedLogResult = this._mergeLog(changedLog);
+            // keep your existing save here:
+            this._save(mergedLogResult);
+            return mergedLogResult;
         }
 
-        _upsertLogs(changedLogs) {
-            if (!changedLogs) return changedLogs;
-            const incoming = Array.isArray(changedLogs) ? changedLogs : Object.values(changedLogs);
-            const list = this._getAll();
-            const byId = new Map(list.map(l => [String(l.guid), l]));
-            for (const e of incoming) {
-                if (!e || !e.guid) continue;
-                const id = String(e.guid);
-                byId.set(id, {...(byId.get(id) || {}), ...e});
+        setAll(changedLogs) {
+            if (!Array.isArray(changedLogs)) {
+                console.error(`ChangedLogs needs to be an array, got ${typeof changedLogs}`);
+                return null;
             }
-            const next = Array.from(byId.values());
-            this._saveAll(next);
-            return changedLogs;
+            const mergedList = this._MergeLogs(changedLogs);
+            // keep your existing saveAll here:
+            this._saveAll(mergedList);
+            return mergedList;
         }
 
         markRead(guid) {
-            const list = this._getAll();
-            const i = list.findIndex(l => String(l.guid) === String(guid));
-            if (i < 0) return false;
-            const next = [...list];
-            next[i] = {...next[i], unread: false};
-            this._saveAll(next);
-            return next[i];
+            const log = this.get(guid);
+            log.unread = false;
+            return this.set(log);
         }
 
         markReadFromDate(uid, fromDateStr) {
-            if (!uid || !fromDateStr) return [];
-            const cutoff = this.parseLogDateToNumber(fromDateStr);
-            const list = this._getAll();
-            const next = [];
-            const touched = [];
-
-            for (const log of list) {
-                if (String(log.uid) === String(uid) && log.unread && this.parseLogDateToNumber(log.ts) >= cutoff) {
-                    const updated = {...log, unread: false};
-                    next.push(updated);
-                    touched.push(updated.guid);
-                    this.app?.debug?.(`Marking message ${updated.guid} as read from ${fromDateStr}`, updated);
-                } else {
-                    next.push(log);
-                }
+            if (!uid || !fromDateStr) {
+                console.error(`Uid ${uid} or fromDateStr ${fromDateStr} is invalid`);
+                return [];
             }
-            this._saveAll(next);
-            return touched;
-        }
 
-        trim() {
-            // _saveAll enforces max & sorting
-            this._saveAll(this._getAll());
+            const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
+                .filter(log => this.parseLogDateToNumber(log.ts) <= this.parseLogDateToNumber(fromDateStr))
+                .map(log => ({...log, unread: false}))
+            console.log(allUnreadMessagesForUid);
+            return this.setAll(allUnreadMessagesForUid);
         }
 
         clear() {
             this.kv.set(this.cacheKey, []);
         }
     }
-
 
     /** Example Users store */
     /** Users store (direct-to-store, like ActivityLogStore) */
@@ -319,6 +332,10 @@
             if (local.length) return local;
             // (Optional) if you later add a remote-by-name endpoint, call it here.
             return [];
+        }
+
+        clear() {
+            this.kv.set(this.cacheKey, {});
         }
     }
 
@@ -843,7 +860,7 @@ Private send interception
 
                 try {
                     const repliedAt = this.getTimeStampInWebsiteFormat();
-                    const affectedGuids = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
+                    const affectedGuids = this.ActivityLogStore.markReadFromDate(targetId, repliedAt).map(log => log.guid);
                     this._moveUnreadDomToRepliedByGuid(affectedGuids);
                 } catch (e) {
                     console.error(this.LOG, 'Post-send mark/move error:', e);
@@ -1450,7 +1467,6 @@ Private send interception
 
                             qs = new URLSearchParams(sendArgs[0]);
                             self.caUpdateChatCtxFromBody(qs);
-                            console.log(qs, targetUrl);
                         }
 
                         this.addEventListener('readystatechange', function () {
@@ -2387,7 +2403,7 @@ Private send interception
                 (typeof o.pico === 'string' ? (Number(o.pico) || 0) : 0);
             const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
             const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
-            console.log(`pload:`, pload, `plogs:`, plogs);
+            this.verbose(`pload:`, pload, `plogs:`, plogs);
             return {
                 last: typeof o.last === 'string' ? o.last : '',
                 pico: picoNum,
@@ -3548,7 +3564,12 @@ Private send interception
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
                 this.ActivityLogStore?.clear();
-
+                this.UserStore?.clear();
+                this.LAST_PCOUNT_MAP = {};
+                this._saveLastPcountMap(this.LAST_PCOUNT_MAP);
+                const timestamp = this.getTimeStampInWebsiteFormat();
+                this.verbose('Resetting watermark to:', timestamp);
+                this.setGlobalWatermark(timestamp);
 
                 // Re-attach event handlers since we replaced the HTML
                 this._attachLogClickHandlers?.();
@@ -3581,14 +3602,13 @@ Private send interception
                 console.error('Failed to find log entry for:', guid);
                 return;
             }
-            try {
+
+            if (!logEl.querySelector('.ca-log-entry-replied')) {
                 const badge = document.createElement('span');
                 badge.className = 'ca-badge-replied';
                 badge.title = 'Already replied';
                 badge.textContent = '✓';
                 logEl.appendChild(badge);
-            } catch (e) {
-                console.error(e);
             }
         }
 
