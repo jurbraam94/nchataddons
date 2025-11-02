@@ -119,6 +119,7 @@
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
             this.DEBUG_MODE_KEY = '321chataddons.debugMode';
+            this.VERBOSE_MODE_KEY = '321chataddons.verboseMode';
             this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
@@ -156,7 +157,6 @@
             };
 
             /* ========= Flags / Scheduling ========= */
-            this._isMakingOwnChanges = false;     // avoid reacting to our own DOM edits
             this._rafId = null;                   // requestAnimationFrame id
             this._lastSendAt = 0;                 // throttle PM sending
             this.PRESENCE_LOG_THROTTLE = 5000;    // ms
@@ -212,6 +212,13 @@
             this.debug = (...args) => {
                 if (this.debugMode) {
                     console.log(this.LOG, '[DEBUG]', ...args);
+                }
+            };
+
+            // Dynamic verbose method (more detailed than debug)
+            this.verbose = (...args) => {
+                if (this.verboseMode) {
+                    console.log(this.LOG, '[VERBOSE]', ...args);
                 }
             };
 
@@ -293,6 +300,15 @@
             } catch (err) {
                 console.error('Failed to load debug mode:', err);
                 this.debugMode = false;
+            }
+
+            // Load verbose mode from storage
+            try {
+                const storedVerboseMode = localStorage.getItem(this.VERBOSE_MODE_KEY);
+                this.verboseMode = storedVerboseMode === 'true';
+            } catch (err) {
+                console.error('Failed to load verbose mode:', err);
+                this.verboseMode = false;
             }
 
             this.debug('Initializing app with options:', options);
@@ -423,6 +439,7 @@
             this.wireSpecificSendButton();   // enable the “Send” button in the panel
             this._wirePanelNav();
             this._wireDebugCheckbox();
+            this._wireVerboseCheckbox();
             this._wireLogClear();
 
             await this.restoreLog?.();
@@ -458,8 +475,7 @@
                     if (visibleMales.length > 0) {
                         console.warn(this.LOG, `Found ${visibleMales.length} visible male users, re-hiding...`);
                         visibleMales.forEach(el => {
-                            el.classList.add('ca-hidden');
-                            el.style.setProperty('display', 'none', 'important');
+                            el.setAttribute('data-ca-addon-hidden', 'true');
                         });
                     }
                 } catch (e) {
@@ -1007,7 +1023,7 @@ Private send interception
                 }
 
                 const now = Date.now();
-                this.debug('Processing chat payload, length:', txt.length);
+                this.verbose('Processing chat payload, length:', txt.length);
 
                 // tolerant parse & shape
                 let data;
@@ -1242,7 +1258,7 @@ Private send interception
         buildLogHTML(kind, user = {}, content) {
             const text = typeof content === 'object' ? content?.text : content;
             const status = typeof content === 'object' ? content?.status : null;
-            this.debug(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
+            this.verbose(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
 
             switch (kind) {
                 case 'dm-in':
@@ -1300,7 +1316,7 @@ Private send interception
                 if (!box) return;
                 // Remove old listener if it exists to avoid duplicates
                 if (box._caGenericWired) return;
-                console.log('Added on click handler to', box);
+                this.verbose('Added on click handler to', box);
                 box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
                 box._caGenericWired = true;
             });
@@ -1309,7 +1325,7 @@ Private send interception
             [this.ui.sentBox, this.ui.receivedMessagesBox, this.ui.presenceBox].forEach(box => {
                 if (!box) return;
                 if (box._caCollapseWired) return;
-                console.log('Added on click handler to', box);
+                this.verbose('Added on click handler to', box);
                 box.addEventListener('click', (e) => this._onLogEntryClick(e, box));
                 box._caCollapseWired = true;
             });
@@ -1318,7 +1334,7 @@ Private send interception
         /** Generic handler for log clicks (profile/DM actions). */
         async _onLogClickGeneric(e, box) {
             try {
-                this.debug('_onLogClickGeneric: Click detected', {
+                this.verbose('_onLogClickGeneric: Click detected', {
                     target: e.target,
                     targetClass: e.target.className,
                     targetTag: e.target.tagName
@@ -1338,7 +1354,7 @@ Private send interception
                     console.error(`No entry was found to call the handler for click on ${e.target}`)
                     return;
                 }
-                this.debug('_onLogClickGeneric: Found log entry', entry);
+                this.verbose('_onLogClickGeneric: Found log entry', entry);
 
                 // 2) find actionable element with [data-action] inside that entry (manual walk)
                 let ptr = e.target;
@@ -1350,17 +1366,17 @@ Private send interception
                     }
                     ptr = ptr.parentNode;
                 }
-                this.debug('_onLogClickGeneric: Actionable element:', actionEl, 'data-action:', actionEl?.getAttribute('data-action'));
+                this.verbose('_onLogClickGeneric: Actionable element:', actionEl, 'data-action:', actionEl?.getAttribute('data-action'));
 
                 // 3) resolve uid
                 const uid = entry.getAttribute('data-uid');
-                this.debug('_onLogClickGeneric: Resolved uid:', uid);
+                this.verbose('_onLogClickGeneric: Resolved uid:', uid);
                 if (!uid) {
                     console.error('Empty uid while trying to open profile/dm from a log line.');
                     return;
                 }
                 const user = await this.Users.getOrFetch(uid);
-                this.debug('_onLogClickGeneric: Resolved user:', user);
+                this.verbose('_onLogClickGeneric: Resolved user:', user);
                 if (!user) {
                     console.warn('[321ChatAddons] unknown uid:', uid);
                     return;
@@ -1368,23 +1384,23 @@ Private send interception
 
                 // 4) explicit actions
                 const action = actionEl ? String(actionEl.getAttribute('data-action') || '').toLowerCase() : '';
-                this.debug('_onLogClickGeneric: Action to execute:', action);
+                this.verbose('_onLogClickGeneric: Action to execute:', action);
 
                 if (action === 'open-profile') {
-                    this.debug('_onLogClickGeneric: Opening profile for uid:', uid);
+                    this.verbose('_onLogClickGeneric: Opening profile for uid:', uid);
                     e.preventDefault();
                     this.openProfileOnHost(uid);
                     return;
                 }
                 if (action === 'open-dm') {
-                    this.debug('_onLogClickGeneric: Opening DM for user:', user);
+                    this.verbose('_onLogClickGeneric: Opening DM for user:', user);
                     e.preventDefault();
                     this.applyLegacyAndOpenDm(user);
                     return;
                 }
 
                 // 5) fallback: background click opens profile
-                this.debug('_onLogClickGeneric: No explicit action, falling back to profile');
+                this.verbose('_onLogClickGeneric: No explicit action, falling back to profile');
                 e.preventDefault();
                 this.openProfileOnHost(uid);
             } catch (err) {
@@ -1395,7 +1411,7 @@ Private send interception
         /** Handler for all log entries: collapse/expand when clicking chevron or message text. */
         _onLogEntryClick(e, box) {
             try {
-                this.debug('_onLogEntryClick: Click on log box', {
+                this.verbose('_onLogEntryClick: Click on log box', {
                     target: e.target,
                     targetClass: e.target.className,
                     targetTag: e.target.tagName
@@ -1411,7 +1427,7 @@ Private send interception
                     node = node.parentNode;
                 }
                 if (!entry) {
-                    this.debug('_onLogEntryClick: No entry found, returning');
+                    this.verbose('_onLogEntryClick: No entry found, returning');
                     return;
                 }
 
@@ -1421,12 +1437,12 @@ Private send interception
                 while (ptr && ptr !== entry) {
                     if (ptr.getAttribute && ptr.hasAttribute('data-action')) {
                         // This is an actionable element - return early, let it bubble
-                        this.debug('_onLogEntryClick: Clicked actionable element with data-action:', ptr.getAttribute('data-action'), '- letting event bubble');
+                        this.verbose('_onLogEntryClick: Clicked actionable element with data-action:', ptr.getAttribute('data-action'), '- letting event bubble');
                         return;
                     }
                     if (ptr.classList && (ptr.classList.contains('ca-user-link') || ptr.classList.contains('ca-dm-link'))) {
                         // This is a link - return early, let it bubble
-                        this.debug('_onLogEntryClick: Clicked user/dm link - letting event bubble');
+                        this.verbose('_onLogEntryClick: Clicked user/dm link - letting event bubble');
                         return;
                     }
                     ptr = ptr.parentNode;
@@ -1436,11 +1452,11 @@ Private send interception
                 const isExpandBtn = !!(tgt && tgt.classList && tgt.classList.contains('ca-expand-indicator'));
                 const isMessageTxt = !!(tgt && tgt.classList && tgt.classList.contains('ca-log-text'));
                 if (!isExpandBtn && !isMessageTxt) {
-                    this.debug('_onLogEntryClick: Not expand button or message text, returning');
+                    this.verbose('_onLogEntryClick: Not expand button or message text, returning');
                     return;
                 }
 
-                this.debug('_onLogEntryClick: Toggling expand/collapse');
+                this.verbose('_onLogEntryClick: Toggling expand/collapse');
 
                 // ONLY NOW stop propagation (only for expand/collapse actions on indicator or message text)
                 e.stopPropagation();
@@ -1475,43 +1491,37 @@ Private send interception
         applyLegacyAndOpenDm({uid, name, avatar}) {
             this.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
 
-            // Set flag to prevent observer from reacting to native DM UI changes
-            this._isMakingOwnChanges = true;
+            // Legacy toggles
+            this.debug('applyLegacyAndOpenDm: Setting legacy toggles');
+            if (!this.safeSet(window, 'morePriv', 0)) return false;
+            if (!this.safeSet(window, 'privReload', 1)) return false;
+            if (!this.safeSet(window, 'lastPriv', 0)) return false;
 
-            try {
-                // Legacy toggles
-                this.debug('applyLegacyAndOpenDm: Setting legacy toggles');
-                if (!this.safeSet(window, 'morePriv', 0)) return false;
-                if (!this.safeSet(window, 'privReload', 1)) return false;
-                if (!this.safeSet(window, 'lastPriv', 0)) return false;
+            // Legacy UI calls
+            this.debug('applyLegacyAndOpenDm: Calling legacy UI functions');
+            if (!this.safeCall(window, 'closeList')) return false;
+            if (!this.safeCall(window, 'hideModal')) return false;
+            if (!this.safeCall(window, 'hideOver')) return false;
 
-                // Legacy UI calls
-                this.debug('applyLegacyAndOpenDm: Calling legacy UI functions');
-                if (!this.safeCall(window, 'closeList')) return false;
-                if (!this.safeCall(window, 'hideModal')) return false;
-                if (!this.safeCall(window, 'hideOver')) return false;
-
-                // Host hook
-                const openDm = this.resolveHostFn('openPrivate');
-                this.debug('applyLegacyAndOpenDm: openPrivate function found:', !!openDm);
-                if (!openDm) {
-                    console.warn('[321ChatAddons] openPrivate() not available on host');
-                    return false;
-                }
-
-                // Call openPrivate via safeCall by wrapping it in an object
-                this.debug('applyLegacyAndOpenDm: Calling openPrivate with:', uid, name, avatar);
-                const result = this.safeCall({openPrivate: openDm}, 'openPrivate', uid, name, avatar);
-                this.debug('applyLegacyAndOpenDm: openPrivate call result:', result);
-                return result;
-            } finally {
-                // Clear flag after a delay to let native code finish DOM changes
-                setTimeout(() => {
-                    this._isMakingOwnChanges = false;
-                    // Re-apply hiding to fix any mess the native code made
-                    this.pruneAllNonFemale();
-                }, 100);
+            // Host hook
+            const openDm = this.resolveHostFn('openPrivate');
+            this.debug('applyLegacyAndOpenDm: openPrivate function found:', !!openDm);
+            if (!openDm) {
+                console.warn('[321ChatAddons] openPrivate() not available on host');
+                return false;
             }
+
+            // Call openPrivate via safeCall by wrapping it in an object
+            this.debug('applyLegacyAndOpenDm: Calling openPrivate with:', uid, name, avatar);
+            const result = this.safeCall({openPrivate: openDm}, 'openPrivate', uid, name, avatar);
+            this.debug('applyLegacyAndOpenDm: openPrivate call result:', result);
+
+            // Re-apply hiding to fix any mess the native code made
+            setTimeout(() => {
+                this.pruneAllNonFemale();
+            }, 100);
+
+            return result;
         }
 
         safeSet(obj, key, value) {
@@ -1774,15 +1784,22 @@ Private send interception
         }
 
         _runInitialLogWhenReady() {
+            this.debug('[INIT] Starting initial user processing...');
+
             // 0) arm container-level click delegation once (idempotent)
             this.wireUserClickSelection?.();
 
             const c = this.getContainer();
             if (c) {
-                // Process all user items using the unified handler
-                for (const row of this.qsa(`.user_item[data-gender]`, c)) {
-                    this._handleVisibilityOrGenderChange(row);
-                }
+                // Process all user items using the common handler
+                this.debug('[INIT] Processing all user items in container...');
+                this._processUserItems(c);
+
+                // Mark initial log as done and arm presence tracking
+                this._didInitialLog = true;
+                this._presenceArmed = true;
+                console.log(this.LOG, '[INIT] ✅ Initial processing complete - presence tracking is now ARMED');
+                console.log(this.LOG, `[INIT] Logged in females: ${this.Users.getFemalesLoggedIn?.().length || 0}`);
 
                 // NOW start observing - initial setup is complete
                 if (this._domObserver && this._domObserverContainer) {
@@ -1793,7 +1810,7 @@ Private send interception
                             attributes: true,  // Watch for attribute changes (gender, visibility)
                             attributeFilter: ['data-gender', 'style', 'class']  // Only these attributes
                         });
-                        console.log(this.LOG, 'Observer started after initial setup complete');
+                        console.log(this.LOG, '[OBSERVER] Observer started - now watching for changes');
                     }, 100);
                 }
             }
@@ -1804,41 +1821,30 @@ Private send interception
             if (node.closest?.('#ca-panel')) return true;
             if (node.classList?.contains('ca-sent-chip') ||
                 node.classList?.contains('ca-ck-wrap') ||
-                node.classList?.contains('ca-hidden')) return true;
+                node.classList?.contains('ca-ck')) return true;
             return false;
         }
 
-        _handleAddedNode(n) {
-            // Set flag FIRST before any processing
-            const wasChanging = this._isMakingOwnChanges;
-            this._isMakingOwnChanges = true;
+        _processUserItems(nodeOrContainer) {
+            if (!nodeOrContainer) return;
 
-            try {
-                // Check if the node itself is a user item
-                if (this.safeMatches(n, '.user_item')) {
-                    this._handleVisibilityOrGenderChange(n);
-                    return;
-                }
-
-                // Otherwise, check direct children for user items
-                const children = n.children;
-                if (children) {
-                    for (let i = 0; i < children.length; i++) {
-                        const child = children[i];
-                        if (this.safeMatches(child, '.user_item')) {
-                            this._handleVisibilityOrGenderChange(child);
-                        }
-                    }
-                }
-            } finally {
-                // Clear flag synchronously - no setTimeout
-                if (!wasChanging) {
-                    this._isMakingOwnChanges = false;
-                }
+            // Check if the node itself is a user item
+            if (this.safeMatches(nodeOrContainer, '.user_item')) {
+                this._handleVisibilityOrGenderChange(nodeOrContainer);
+                return;
             }
+
+            // Otherwise, find all user items within the container
+            const items = this.qsa('.user_item', nodeOrContainer);
+            items.forEach(item => this._handleVisibilityOrGenderChange(item));
+        }
+
+        _handleAddedNode(n) {
+            this._processUserItems(n);
         }
 
         _handleRemovedNode(n) {
+            // Process removed nodes to handle logout
             let items;
             if (this.safeMatches(n, '.user_item')) items = [n];
             else items = this.qsa('.user_item', n);
@@ -1903,8 +1909,8 @@ Private send interception
                             return;
                         }
 
-                        // Early return if we're making changes
-                        if (this._isMakingOwnChanges || this.state?.isPruning) {
+                        // Early return if we're pruning (global operation)
+                        if (this.state?.isPruning) {
                             return;
                         }
 
@@ -1913,14 +1919,24 @@ Private send interception
                         recs.forEach((r) => {
                             if (r.target?.closest?.('#ca-panel')) return;
 
-                            // Handle attribute changes (only data-gender - ignore style/class changes from DM UI)
+                            // Handle attribute changes (data-gender and class for visibility)
                             if (r.type === 'attributes') {
                                 const target = r.target;
                                 if (this.safeMatches(target, '.user_item')) {
+                                    const uid = this.getUserId(target);
                                     const attrName = r.attributeName;
-                                    // Only react to data-gender changes - ignore everything else
-                                    // This prevents infinite loops when DM UI modifies styles/classes
+                                    // React to data-gender changes (user type changed)
                                     if (attrName === 'data-gender') {
+                                        const name = this.extractUsername(target);
+                                        this.debug(`[OBSERVER] Attribute change: data-gender for ${name} (${uid})`);
+                                        this._handleVisibilityOrGenderChange(target);
+                                        hadUserListChanges = true;
+                                    }
+                                    // React to class changes (visibility might have changed)
+                                    else if (attrName === 'class') {
+                                        const name = this.extractUsername(target);
+                                        const hasHidden = target.classList.contains('ca-hidden');
+                                        this.debug(`[OBSERVER] Class change for ${name} (${uid}) - ca-hidden: ${hasHidden}`);
                                         this._handleVisibilityOrGenderChange(target);
                                         hadUserListChanges = true;
                                     }
@@ -1934,6 +1950,9 @@ Private send interception
                                     if (this._shouldIgnoreNode(node)) continue;
 
                                     if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
+                                        const uid = this.getUserId(node);
+                                        const name = this.extractUsername(node);
+                                        this.debug(`[OBSERVER] Node added: ${name} (${uid})`);
                                         this._handleAddedNode(node);
                                         hadUserListChanges = true;
                                     }
@@ -1946,6 +1965,9 @@ Private send interception
                                     if (this._shouldIgnoreNode(node)) continue;
 
                                     if (this.safeMatches(node, '.user_item') || this.safeQuery(node, '.user_item')) {
+                                        const uid = this.getUserId(node);
+                                        const name = this.extractUsername(node);
+                                        this.debug(`[OBSERVER] Node removed: ${name} (${uid})`);
                                         this._handleRemovedNode(node);
                                         hadUserListChanges = true;
                                     }
@@ -1996,13 +2018,14 @@ Private send interception
 
                 const wasLoggedIn = this.Users.isLoggedIn(uid);
 
-                this.debug('Handling visibility/gender change:', uid, name, avatar, isFemale, visible, 'wasLoggedIn:', wasLoggedIn);
+                this.debug(`[VISIBILITY] User: ${name} (${uid}) | Female: ${isFemale} | Visible: ${visible} | WasLoggedIn: ${wasLoggedIn} | PresenceArmed: ${this._presenceArmed}`);
 
                 // Only apply gender-based hiding/showing if state actually changed
                 const shouldBeHidden = !isFemale;
                 const isCurrentlyHidden = row.classList.contains('ca-hidden');
 
                 if (shouldBeHidden !== isCurrentlyHidden) {
+                    this.debug(`[HIDE] ${isFemale ? 'Female' : 'Male'} user ${name} (${uid}) - shouldBeHidden: ${shouldBeHidden}, isCurrentlyHidden: ${isCurrentlyHidden}`);
                     this.pruneNonFemale(row);
                 }
 
@@ -2010,9 +2033,12 @@ Private send interception
                 if (!isFemale) {
                     // Handle logout for non-females
                     if (wasLoggedIn) {
+                        this.debug(`[LOGOUT] Non-female ${name} (${uid}) was logged in, logging out`);
                         this.Users.setLoggedIn(uid, false);
                         if (this._didInitialLog && this._presenceArmed) {
                             this.logLogout({uid, name, avatar});
+                        } else {
+                            this.debug(`[LOGOUT SKIP] Not logging logout - didInitialLog: ${this._didInitialLog}, presenceArmed: ${this._presenceArmed}`);
                         }
                     }
                     return;
@@ -2020,11 +2046,15 @@ Private send interception
 
                 // Female user processing - check eligibility
                 if (row.classList.contains('ca-hidden') || !visible || !this._isAllowedRank(row)) {
+                    this.debug(`[INELIGIBLE] Female ${name} (${uid}) - hidden: ${row.classList.contains('ca-hidden')}, visible: ${visible}, allowedRank: ${this._isAllowedRank(row)}`);
                     // Female but not eligible - handle logout if needed
                     if (wasLoggedIn) {
+                        this.debug(`[LOGOUT] Ineligible female ${name} (${uid}) logging out`);
                         this.Users.setLoggedIn(uid, false);
                         if (this._didInitialLog && this._presenceArmed) {
                             this.logLogout({uid, name, avatar});
+                        } else {
+                            this.debug(`[LOGOUT SKIP] Not logging logout - didInitialLog: ${this._didInitialLog}, presenceArmed: ${this._presenceArmed}`);
                         }
                     }
                     return;
@@ -2039,20 +2069,27 @@ Private send interception
                 // Handle login/logout based on visibility
                 if (visible && !wasLoggedIn) {
                     // Newly visible female
+                    console.log(this.LOG, `[LOGIN] ✅ Female ${name} (${uid}) is now visible and logging in`);
                     this.Users.setLoggedIn(uid, true);
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogin({uid, name, avatar});
+                    } else {
+                        this.debug(`[LOGIN SKIP] Not logging login - didInitialLog: ${this._didInitialLog}, presenceArmed: ${this._presenceArmed}`);
                     }
                     this.ensureSentChip?.(uid, replied);
                     this._placeRowByReplyStatus(row, replied);
                 } else if (!visible && wasLoggedIn) {
                     // Female became invisible
+                    console.log(this.LOG, `[LOGOUT] ❌ Female ${name} (${uid}) became invisible, logging out`);
                     this.Users.setLoggedIn(uid, false);
                     if (this._didInitialLog && this._presenceArmed) {
                         this.logLogout({uid, name, avatar});
+                    } else {
+                        this.debug(`[LOGOUT SKIP] Not logging logout - didInitialLog: ${this._didInitialLog}, presenceArmed: ${this._presenceArmed}`);
                     }
                 } else if (visible && wasLoggedIn) {
                     // Already visible, ensure chip and positioning
+                    this.debug(`[UPDATE] Female ${name} (${uid}) still visible and logged in, updating UI`);
                     this.ensureSentChip?.(uid, replied);
                     this._placeRowByReplyStatus(row, replied);
                 }
@@ -2061,12 +2098,14 @@ Private send interception
             }
         }
 
-        // Treat nodes with `.ca-hidden` (self or ancestor) as invisible
+        // Treat nodes with `.ca-hidden` or our custom attribute as invisible
         isUserVisible(el) {
             try {
                 if (!el || el.nodeType !== 1) return false;
-                // If this node OR any ancestor is ca-hidden → invisible
-                if (el.classList?.contains('ca-hidden') || el.closest?.('.ca-hidden')) return false;
+                // If this node OR any ancestor is ca-hidden or has our custom attribute → invisible
+                if (el.classList?.contains('ca-hidden') ||
+                    el.closest?.('.ca-hidden') ||
+                    el.hasAttribute('data-ca-addon-hidden')) return false;
 
                 const cs = window.getComputedStyle(el);
                 if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
@@ -2261,14 +2300,12 @@ Private send interception
             const isFemale = el.getAttribute('data-gender') === this.FEMALE_CODE;
 
             if (!isFemale) {
-                // Force hide non-female accounts
-                el.classList.add('ca-hidden');
-                // Also set display:none as a backup
-                el.style.setProperty('display', 'none', 'important');
+                // Force hide non-female accounts using our custom attribute
+                // This won't trigger the observer since we don't watch this attribute
+                el.setAttribute('data-ca-addon-hidden', 'true');
             } else {
                 // Ensure female accounts are visible
-                el.classList.remove('ca-hidden');
-                el.style.removeProperty('display');
+                el.removeAttribute('data-ca-addon-hidden');
             }
         }
 
@@ -2276,13 +2313,12 @@ Private send interception
             const c = this.getContainer();
             if (!c) return;
 
-            // Don't set flags - let the CSS do the heavy lifting
-            // This ensures we can continuously enforce hiding without blocking the observer
+            // Use our custom attribute - won't trigger observer since we don't watch it
             try {
                 this.qsa('.user_item[data-gender]', c).forEach((el) => {
                     const isFemale = el.getAttribute('data-gender') === this.FEMALE_CODE;
                     if (!isFemale) {
-                        el.classList.add('ca-hidden');
+                        el.setAttribute('data-ca-addon-hidden', 'true');
                     }
                 });
             } catch (e) {
@@ -2648,24 +2684,16 @@ Private send interception
                 let chip = userEl.querySelector('.ca-sent-chip');
                 if (on) {
                     if (!chip) {
-                        this._isMakingOwnChanges = true;
                         chip = document.createElement('span');
                         chip.className = 'ca-sent-chip';
                         chip.textContent = '✓';
                         userEl.appendChild(chip);
-                        setTimeout(() => {
-                            this._isMakingOwnChanges = false;
-                        }, 10);
                     } else {
                         chip.textContent = '✓';
                     }
                 } else {
                     if (chip?.parentNode) {
-                        this._isMakingOwnChanges = true;
                         chip.parentNode.removeChild(chip);
-                        setTimeout(() => {
-                            this._isMakingOwnChanges = false;
-                        }, 10);
                     }
                 }
             } catch (e) {
@@ -2705,7 +2733,6 @@ Private send interception
             // if caller already knows, use it; otherwise compute
             const isReplied = (replied != null) ? replied : this._isRowReplied(row);
 
-            if (!this._isMakingOwnChanges) this._isMakingOwnChanges = true;
             try {
                 if (isReplied) {
                     list.appendChild(row);
@@ -2715,10 +2742,6 @@ Private send interception
                 }
             } catch (e) {
                 console.error(e);
-            } finally {
-                setTimeout(() => {
-                    this._isMakingOwnChanges = false;
-                }, 0);
             }
         }
 
@@ -2793,6 +2816,10 @@ Private send interception
                   <label class="ca-debug-toggle" title="Enable debug logging">
                     <input type="checkbox" id="ca-debug-checkbox">
                     <span>Debug</span>
+                  </label>
+                  <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
+                    <input type="checkbox" id="ca-verbose-checkbox">
+                    <span>Verbose</span>
                   </label>
                 </div>
             
@@ -3155,6 +3182,7 @@ Private send interception
 
             // debug checkbox
             this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
+            this.ui.verboseCheckbox = this.qs('#ca-verbose-checkbox');
         }
 
         _wirePanelNav() {
@@ -3197,6 +3225,33 @@ Private send interception
                     console.log(this.LOG, '[DEBUG] Debug mode enabled');
                 } else {
                     console.log(this.LOG, 'Debug mode disabled');
+                }
+            });
+        }
+
+        _wireVerboseCheckbox() {
+            if (!this.ui.verboseCheckbox) return;
+
+            // Set initial state from loaded verboseMode
+            this.ui.verboseCheckbox.checked = this.verboseMode;
+
+            this.ui.verboseCheckbox.addEventListener('change', (e) => {
+                this.verboseMode = e.target.checked;
+
+                // Save to both Store and raw localStorage for immediate availability on reload
+                try {
+                    localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
+                    if (this.Store) {
+                        this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
+                    }
+                } catch (err) {
+                    console.error('Failed to save verbose mode:', err);
+                }
+
+                if (this.verboseMode) {
+                    console.log(this.LOG, '[VERBOSE] Verbose mode enabled');
+                } else {
+                    console.log(this.LOG, 'Verbose mode disabled');
                 }
             });
         }
@@ -3288,7 +3343,7 @@ Private send interception
                     break;
             }
             if (!targetContainer) return;
-            this.debug(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
+            this.verbose(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
 
             // 5) entry root
             const entry = document.createElement('div');
@@ -3401,7 +3456,7 @@ Private send interception
 
             for (let i = arr.length - 1; i >= 0; i--) {
                 const e = arr[i];
-                this.debug('Restoring log', e);
+                this.verbose('Restoring log', e);
                 // If you have a Users store/fetcher, adapt here; else build a minimal user object:
                 const user = await this.Users.getOrFetch(e.uid);
                 this.renderLogEntry(e.ts, e.kind, e.content, user);
@@ -3738,20 +3793,20 @@ Private send interception
         initializeGlobalWatermark() {
             try {
                 const current = this.getGlobalWatermark();
-                this.debug(this.LOG, 'Checking watermark... current value:', current || '(not set)');
+                this.verbose('Checking watermark... current value:', current || '(not set)');
 
                 if (current && current.length > 0) {
-                    this.debug(this.LOG, 'Watermark already set:', current);
+                    this.verbose('Watermark already set:', current);
                     return;
                 }
 
                 const timestamp = this.getTimeStampInWebsiteFormat();
-                this.debug(this.LOG, 'Setting initial watermark to:', timestamp);
+                this.verbose('Setting initial watermark to:', timestamp);
                 this.setGlobalWatermark(timestamp);
 
                 const verify = this.getGlobalWatermark();
                 if (verify === timestamp) {
-                    this.debug(this.LOG, 'Watermark successfully initialized:', timestamp);
+                    this.verbose('Watermark successfully initialized:', timestamp);
                 } else {
                     console.warn(this.LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
                 }

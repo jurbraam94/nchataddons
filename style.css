@@ -449,6 +449,15 @@
     overflow: hidden !important;
 }
 
+/* Hide users with our custom addon hidden attribute - won't trigger observer */
+.user_item[data-ca-addon-hidden] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
 /* Sent highlight */
 .chataddons-sent {
     outline: 2px solid #8bc34a66 !important;
