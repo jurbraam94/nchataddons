@@ -404,14 +404,14 @@
                     getFemalesLoggedIn: () => {
                         return Array.from(_index.values()).filter(u => u.loggedIn && u.isFemale);
                     },
-                    async getOrFetch(id) {
-                        return this.get(id) || {
-                            uid: String(id),
-                            name: String(id),
-                            avatar: '',
-                            loggedIn: false,
-                            isFemale: false
-                        };
+                    getOrFetch: async (id) => {
+                        let user = this.Users.get(id);
+
+                        if (!user) {
+                            user = await this.searchUserRemote(id);
+                            console.log(`Got user ${id} from remote:`, user);
+                        }
+                        return user;
                     },
                     async getOrFetchByName(q) {
                         const needle = String(q || '').toLowerCase();
@@ -858,6 +858,86 @@ Private send interception
             }
         }
 
+        async searchUserRemote(uid) {
+            const token = this.getToken();
+            if (!token || !uid) return null;
+
+            try {
+                const body = new URLSearchParams({
+                    token,
+                    get_profile: uid,
+                    cp: "chat"
+                }).toString();
+
+                const response = await fetch('/system/box/profile.php', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': '*/*',
+                        'X-CA-OWN': '1'
+                    },
+                    body
+                });
+
+                const html = await response.text();
+                const {name, avatar, isFemale, isOnline} = this.caParseProfile(html);
+
+                // If we successfully parsed the profile, save and return it
+                if (name && avatar) {
+                    if (this.Users?.set) {
+                        this.Users.set(uid, name, avatar, isFemale, isOnline);
+                    }
+
+                    // Return the parsed user object
+                    return {uid, name, avatar, isFemale, isOnline};
+                }
+
+                // No valid profile found
+                return null;
+
+            } catch (err) {
+                console.error(this.LOG, 'Fetch profile error:', err);
+                return null;
+            }
+        }
+
+
+        caParseProfile(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // --- Extract username ---
+            const name =
+                doc.querySelector('.pro_name')?.textContent?.trim() ||
+                null;
+
+            // --- Extract avatar URL ---
+            const avatar =
+                doc.querySelector('.profile_avatar img')?.getAttribute('src') ||
+                null;
+
+            // --- Extract gender ---
+            const genderText = (
+                doc.querySelector('.proicon.fa-venus-mars')
+                    ?.closest('.proitem')
+                    ?.querySelector('.prodata')
+                    ?.textContent || ''
+            ).trim();
+
+            // --- Determine gender flag ---
+            const isFemale = genderText.toLowerCase() === 'female';
+
+            // --- Detect online state ---
+            const stateImg = doc.querySelector('img.state_profile');
+            const isOnline =
+                !!stateImg && stateImg.src.toLowerCase().includes('active');
+
+            return {name, avatar, gender: genderText, isFemale, isOnline};
+        }
+
+
         caFetchPrivateNotify() {
             const token = this.getToken();
             if (!token) return Promise.resolve([]);
@@ -1063,11 +1143,7 @@ Private send interception
                     const content = (this.escapeHTML ? this.escapeHTML(decodedContent) : decodedContent).replace(/\s+/g, ' ').trim();
 
                     // resolve user
-                    const user = (this.Users?.getOrFetch) ? await this.Users.getOrFetch(fromId) : {
-                        uid: fromId,
-                        name: String(fromId),
-                        avatar: ''
-                    };
+                    const user = await this.Users.getOrFetch(fromId);
 
                     // render
                     this.logLine('dm-in', content, user);
@@ -1310,7 +1386,7 @@ Private send interception
             this.logLine('login', null, user);
         }
 
-        logLogout(user) {
+        logLogoutToLogLine(user) {
             const now = Date.now();
             const key = `logout_${user.uid}`;
             if (this._lastPresenceLog[key] && (now - this._lastPresenceLog[key]) < this.PRESENCE_LOG_THROTTLE) return;
@@ -1812,8 +1888,9 @@ Private send interception
         }
 
         /* Update or create user element in managed container */
-        _updateOrCreateUserElement(managedList, existingEl, newEl, uid, name, avatar, isFemale) {
+        _updateOrCreateUserElement(managedList, newEl, uid, name) {
             try {
+                const existingEl = this.qs(`.user_item[data-id="${uid}"]`, managedList);
                 if (existingEl) {
                     // Update existing element
                     existingEl.innerHTML = newEl.innerHTML;
@@ -1822,11 +1899,13 @@ Private send interception
                         existingEl.setAttribute(attr.name, attr.value);
                     });
                     this.verbose('[_updateOrCreateUserElement] Updated existing user element for', uid, name);
+                    return existingEl;
                 } else {
                     // Create new element
                     const clonedEl = newEl.cloneNode(true);
                     managedList.appendChild(clonedEl);
                     this.verbose('[_updateOrCreateUserElement] Created new user element for', uid, name);
+                    return clonedEl;
                 }
             } catch (e) {
                 console.error(e);
@@ -1896,13 +1975,10 @@ Private send interception
                 tempDiv.innerHTML = html;
 
                 // Find all female users using proper DOM queries
-                const femaleUsers = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, tempDiv);
-                console.log(this.LOG, '[USER_LIST] Found', femaleUsers.length, 'female users in response HTML');
+                const users = this.qsa(`.user_item`, tempDiv);
+                console.log(this.LOG, '[USER_LIST] Found', users.length, 'female users in response HTML');
 
-                if (femaleUsers.length === 0) {
-                    // If no female users found with data-gender, try alternate selectors
-                    console.warn(this.LOG, '[USER_LIST] No users found with data-gender attribute, trying alternate selectors');
-                    const allUsers = this.qsa('.user_item', tempDiv);
+                if (users.length === 0) {
                     console.log(this.LOG, '[USER_LIST] Total users found:', allUsers.length);
                 }
 
@@ -1915,7 +1991,7 @@ Private send interception
                 let removedCount = 0;
 
                 const usersList = this.Users.getAllLoggedIn();
-                femaleUsers.forEach(userEl => {
+                users.forEach(userEl => {
                     try {
                         const uid = this.getUserId(userEl);
                         if (!uid) return;
@@ -1932,46 +2008,43 @@ Private send interception
                         const name = this.extractUsername(userEl) || uid;
                         const avatar = this.extractAvatar(userEl);
                         const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
+                        const isAllowedRank = this._isAllowedRank(userEl);
 
-                        // Check if user is hidden (logged out) in the response
-                        const isHidden = userEl.classList.contains('ca-hidden');
+                        const existingUser = this.Users?.get(uid);
+                        const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar || existingUser?.loggedIn !== true;
+                        let handleUserElement = false;
 
-                        // Check if already in managed container
-                        const existingInManaged = this.qs(`.user_item[data-id="${uid}"], .user_item[data-uid="${uid}"]`, managedList);
-
-                        // Skip new hidden users entirely - they shouldn't be added
-                        if (!existingInManaged && isHidden) {
-                            this.verbose('[USER_LIST] Skipping hidden new user', uid, name);
-                            userEl.remove();
-                            return;
-                        }
-                        if (existingInManaged) {
-                            // Update user if properties changed
-                            const existingUser = this.Users?.get(uid);
-                            const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar;
-
-                            if (hasChanged) {
-                                this._updateOrCreateUserElement(managedList, existingInManaged, userEl, uid, name, avatar, isFemale);
-                                updatedCount++;
-                                console.log(this.LOG, '[USER_LIST] Updated existing user', uid, name);
-                                this._handleVisibilityOrGenderChange(existingInManaged, isInitialLoad);
-                            } else {
-                                this.verbose('[USER_LIST] No changes for user', uid, name);
-                            }
-                        } else {
-                            // Add new visible user (hidden users are filtered out above)
-                            this._updateOrCreateUserElement(managedList, null, userEl, uid, name, avatar, isFemale);
+                        if (hasChanged) {
+                            updatedCount++;
+                            handleUserElement = true;
+                            console.log(this.LOG, '[USER_LIST] Updating existing user', uid, name);
+                        } else if (!existingUser) {
                             addedCount++;
-                            const newElement = this.qs(`.user_item[data-id="${uid}"], .user_item[data-uid="${uid}"]`, managedList);
-                            if (newElement) {
-                                this._handleVisibilityOrGenderChange(newElement, isInitialLoad);
+                            handleUserElement = true;
+                            console.log(this.LOG, '[USER_LIST] Adding non existing user', uid, name);
+                        }
+
+                        if (handleUserElement) {
+                            const user = this.Users.set(uid, name, avatar, isFemale, true);
+
+                            if (!isInitialLoad && existingUser?.loggedIn !== true) {
+                                console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
+
+                                if (isFemale) {
+                                    this.logLogin?.(user);
+                                }
+                            }
+
+                            if (isFemale) {
+                                const el = this._updateOrCreateUserElement(managedList, userEl, uid, name, avatar, isFemale);
+                                this._handleUserLogin(uid, name, avatar, 'Female is now visible,', isInitialLoad);
+                                this._handleVisibilityOrGenderChange(el, isInitialLoad, uid, name, avatar, isFemale, isAllowedRank);
+                                userEl.remove();
+
+                                this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
                             }
                         }
 
-                        // Remove from host container immediately after processing
-                        userEl.remove();
-
-                        this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
                     } catch (err) {
                         console.error(err);
                         console.error(this.LOG, '[USER_LIST] Error processing user:', err);
@@ -1979,14 +2052,25 @@ Private send interception
                 });
 
                 usersList.forEach(user => {
-                    this._handleUserLogout(user.uid, isInitialLoad);
-                    const elementToRemove = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
-                    if (elementToRemove) {
-                        elementToRemove.remove();
+                    this.Users.setLoggedIn(user.uid, false);
 
+                    if (!isInitialLoad) {
+                        console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
                     } else {
-                        console.error(`Couldn't remove user ${user.uid} from managed container`);
+                        this.verbose(`[INIT] User ${user.name} (${user.uid}) initially logged out - no log entry`);
                     }
+
+                    if (user.isFemale) {
+                        this.logLogoutToLogLine(user);
+
+                        const elementToRemove = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
+                        if (elementToRemove) {
+                            elementToRemove.remove();
+                        } else {
+                            console.error(`Couldn't remove user ${user.uid} from managed container`);
+                        }
+                    }
+
                     removedCount++;
                 })
 
@@ -2047,50 +2131,17 @@ Private send interception
 
 
         _handleUserLogin(uid, name, avatar, reason = '', isInitialLoad = false) {
-            this.Users.setLoggedIn(uid, true);
-            console.log(this.LOG, `[LOGIN] ✅ ${reason} ${name} (${uid}) logging in`);
-            if (!isInitialLoad) {
-                console.log(this.LOG, `[LOGIN] ✅ ${reason} ${name} (${uid}) logging in`);
-                this.logLogin({uid, name, avatar});
-            } else {
-                this.verbose(`[INIT] User ${name} (${uid}) initially logged in - no log entry`);
-            }
+
         }
 
-        _handleUserLogout(uid, isInitialLoad = false) {
-            const user = this.Users.setLoggedIn(uid, false);
-            if (!isInitialLoad) {
-                console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${uid}) logging out`);
-                this.logLogout(user);
-            } else {
-                this.verbose(`[INIT] User ${user.name} (${uid}) initially logged out - no log entry`);
-            }
-        }
-
-        _handleVisibilityOrGenderChange(el, isInitialLoad = false) {
+        _handleVisibilityOrGenderChange(el, isInitialLoad = false, uid, name, avatar, isFemale, isAllowedRank) {
             try {
-                // Accept either `.user_item` or a wrapper with data-uid
-                const row = el.closest?.('.user_item, [data-uid]') || el;
-                const uid = this.getUserId(row);
-                if (!uid) {
-                    this.verbose('[_handleVisibilityOrGenderChange] No uid found for element, skipping');
-                    return;
-                }
-
-                const isFemale = row.getAttribute('data-gender') === this.FEMALE_CODE;
-                const name = this.extractUsername(row) || uid;
-                const avatar = this.extractAvatar(row);
-
                 this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${uid})`);
 
-                // Update user store
-                const wasLoggedIn = this.Users.isLoggedIn(uid);
-                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) wasLoggedIn:`, wasLoggedIn);
-
-                // Ensure UI elements for female users
-                if (this._isAllowedRank(row)) {
+                // Ensure UI elements for female users if rank allows
+                if (isAllowedRank) {
                     this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) has allowed rank, ensuring broadcast checkbox`);
-                    this.ensureBroadcastCheckbox(row);
+                    this.ensureBroadcastCheckbox(el);
                 } else {
                     this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) does not have allowed rank, skipping checkbox`);
                 }
@@ -2098,26 +2149,8 @@ Private send interception
                 // Determine reply status
                 const replied = !!(uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]);
                 this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) replied status:`, replied);
-
-                // Handle login/logout based on visibility
-                if (!wasLoggedIn) {
-                    if (uid && name && this.Users?.set) {
-                        this.Users.set(uid, name, avatar, isFemale, true);
-                        this.debug(`[_handleVisibilityOrGenderChange] Updated user store for ${name} (${uid})`);
-                    }
-                    // Newly visible female
-                    this.debug(`[_handleVisibilityOrGenderChange] Newly visible female ${name} (${uid})`);
-                    this._handleUserLogin(uid, name, avatar, 'Female is now visible,', isInitialLoad);
-                    this.ensureSentChip?.(uid, replied);
-                    this._placeRowByReplyStatus(row, replied);
-                } else if (wasLoggedIn) {
-                    // Already visible female, ensure chip and positioning
-                    this.verbose(`[_handleVisibilityOrGenderChange] Already visible female ${name} (${uid}), updating chip and position`);
-                    this.ensureSentChip?.(uid, replied);
-                    this._placeRowByReplyStatus(row, replied);
-                } else {
-                    this.verbose(`[_handleVisibilityOrGenderChange] No action needed for ${name} (${uid}) - visible:${visible}, wasLoggedIn:${wasLoggedIn}`);
-                }
+                this.debug(`[_handleVisibilityOrGenderChange] Newly visible female ${name} (${uid})`);
+                this.ensureSentChip?.(uid, replied);
             } catch (e) {
                 console.error(e);
             }
@@ -2527,25 +2560,9 @@ Private send interception
         }
 
         /* ---------- Mark sent + chips/sorting ---------- */
-        markSent(uid) {
+        markSent(userEl, uid) {
             try {
-                const userEl = this.findUserElementById(uid);
-                if (!userEl) return;
-
-                // only apply if not already marked
-                if (!userEl.classList.contains('chataddons-sent')) {
-                    userEl.classList.add('chataddons-sent');
-                    userEl.style.setProperty('outline', '2px solid #8bc34a66', 'important');
-                    userEl.style.setProperty('border-radius', '8px', 'important');
-                }
-
-                // update chip (sorting is handled by _placeRowByReplyStatus via observer)
                 this.ensureSentChip(uid, !!this.REPLIED_CONVOS[uid]);
-
-                // Trigger re-positioning of the row since reply status changed
-                if (userEl) {
-                    this._placeRowByReplyStatus(userEl, true); // true = now replied
-                }
             } catch (e) {
                 console.error(e);
             }
@@ -2667,7 +2684,7 @@ Private send interception
         findUserElementById(id, root = document) {
             if (!id) return null;
             try {
-                return root.querySelector(`.user_item[data-id="${id}"], .user_item[data-uid="${id}"], .user_item [data-id="${id}"], .user_item [data-uid="${id}"]`);
+                return root.querySelector(`.user_item[data-id="${id}"]`);
             } catch (e) {
                 console.error('findUserElementById failed:', e);
                 return null;
@@ -2679,8 +2696,15 @@ Private send interception
             const userEl = this.findUserElementById(uid);
             try {
                 if (!userEl) return;
+
                 let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
                 if (on) {
+                    // only apply if not already marked
+                    if (!userEl.classList.contains('chataddons-sent')) {
+                        userEl.classList.add('chataddons-sent');
+                        userEl.style.setProperty('outline', '2px solid #8bc34a66', 'important');
+                        userEl.style.setProperty('border-radius', '8px', 'important');
+                    }
                     if (!chip) {
                         chip = document.createElement('span');
                         chip.className = this.sel.log.classes.ca_sent_chip.substring(1);
@@ -2690,6 +2714,12 @@ Private send interception
                         chip.textContent = '✓';
                     }
                 } else {
+                    // only apply if not already marked
+                    if (userEl.classList.contains('chataddons-sent')) {
+                        userEl.classList.remove('chataddons-sent');
+                        userEl.style.removeProperty('outline');
+                        userEl.style.removeProperty('border-radius');
+                    }
                     if (chip?.parentNode) {
                         chip.parentNode.removeChild(chip);
                     }
@@ -2742,40 +2772,6 @@ Private send interception
                 }
             }
             return null;
-        }
-
-        _placeRowByReplyStatus(row, replied = null) {
-            const list = this.getContainer?.();
-            if (!list || !row) return;
-
-            // if caller already knows, use it; otherwise compute
-            const isReplied = (replied != null) ? replied : this._isRowReplied(row);
-            const isEligible = this._isRowEligible(row);
-
-            try {
-                // Ineligible accounts always go to the bottom
-                if (!isEligible) {
-                    list.appendChild(row);
-                    return;
-                }
-
-                // For eligible accounts, sort by reply status
-                if (isReplied) {
-                    // Find first ineligible row - insert replied before ineligible
-                    const firstIneligible = this._getFirstIneligibleRow(list);
-                    if (firstIneligible) {
-                        list.insertBefore(row, firstIneligible);
-                    } else {
-                        list.appendChild(row);
-                    }
-                } else {
-                    // Unreplied eligible goes at the top
-                    const firstReplied = this._getFirstVisibleRepliedRow(list);
-                    list.insertBefore(row, firstReplied || list.firstChild);
-                }
-            } catch (e) {
-                console.error(e);
-            }
         }
 
 
@@ -3512,21 +3508,20 @@ Private send interception
             return replied ? this.ui.repliedMessageBox : this.ui.unrepliedMessageBox;
         }
 
-        AppendIfNotYetMarkedReplied(LogEntryEl, uid) {
+        AppendIfNotYetMarkedReplied(guid) {
+            const logEl = this.qs(`.ca-log-entry[data-guid="${guid}"]`, this.ui.receivedMessagesBox);
             try {
-                if (typeof this.REPLIED_CONVOS === 'object' && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]) {
-                    const badge = document.createElement('span');
-                    badge.className = 'ca-badge-replied';
-                    badge.title = 'Already replied';
-                    badge.textContent = '✓';
-                    LogEntryEl.appendChild(badge);
-                }
+                const badge = document.createElement('span');
+                badge.className = 'ca-badge-replied';
+                badge.title = 'Already replied';
+                badge.textContent = '✓';
+                logEl.appendChild(badge);
             } catch (e) {
                 console.error(e);
             }
         }
 
-        renderLogEntry(ts, kind, content, user) {
+        renderLogEntry(ts, kind, content, user, guid) {
             // Ensure user object is valid
             if (!user || !user.uid) {
                 console.error(this.LOG, 'renderLogEntry: Invalid user object', user);
@@ -3605,6 +3600,8 @@ Private send interception
             dm.textContent = 'dm';
             entry.appendChild(dm);
 
+            entry.setAttribute('data-guid', guid);
+
             // 2) incoming DMs: send to "Not Replied" vs "Replied" section
             //    (do this before DOM creation to choose the real container)
             if (kind === 'dm-in' && targetContainer === this.ui.receivedMessagesBox) {
@@ -3630,7 +3627,7 @@ Private send interception
             });
         }
 
-        saveLogEntry(ts, kind, content, uid) {
+        saveLogEntry(ts, kind, content, uid, guid) {
             if (kind === 'login' || kind === 'logout') return; // don’t persist presence
             let arr = [];
             try {
@@ -3639,7 +3636,7 @@ Private send interception
             } catch (e) {
                 console.error(e);
             }
-            arr.unshift({ts, kind, uid, content});
+            arr.unshift({ts, kind, uid, content, guid});
             const LOG_MAX = 200;
             if (arr.length > LOG_MAX) arr = arr.slice(0, LOG_MAX);
             this.Store.set(this.ACTIVITY_LOG_KEY, arr);
@@ -3667,7 +3664,7 @@ Private send interception
                 this.verbose('Restoring log', e);
                 // If you have a Users store/fetcher, adapt here; else build a minimal user object:
                 const user = await this.Users.getOrFetch(e.uid);
-                this.renderLogEntry(e.ts, e.kind, e.content, user);
+                this.renderLogEntry(e.ts, e.kind, e.content, user, e.guid);
             }
         }
 
@@ -3695,9 +3692,15 @@ Private send interception
 
         logLine(kind, content, user) {
             const ts = this.getTimeStampInWebsiteFormat();
-            this.renderLogEntry(ts, kind, content, user);
-            this.saveLogEntry(ts, kind, content, user.uid);
+
+            // Generate a globally unique identifier (GUID)
+            const guid = crypto.randomUUID();
+
+            // Pass it along to both functions
+            this.renderLogEntry(ts, kind, content, user, guid);
+            this.saveLogEntry(ts, kind, content, user.uid, guid);
         }
+
 
         userLinkHTML(user) {
             const esc = this.escapeHTML;
@@ -4064,8 +4067,11 @@ Private send interception
             this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
             this.debug('Marking conversation as replied:', uid, 'timestamp:', this.REPLIED_CONVOS[uid]);
             this._saveRepliedConvos(this.REPLIED_CONVOS);
-            this.AppendIfNotYetMarkedReplied(this.getLogEntryByUid(uid));
-            // lso mark the regular profile picture as replied in the menu
+            this.Store.get(this.ACTIVITY_LOG_KEY).filter(log => log.uid === uid).forEach(log => {
+                this.AppendIfNotYetMarkedReplied(log.guid);
+            });
+
+            // also mark the regular profile picture as replied in the menu
             this.markSent?.(uid);
         }
 
