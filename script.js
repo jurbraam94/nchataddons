@@ -81,48 +81,34 @@
     }
 
     class ActivityLogStore {
-        constructor({kv, cacheKey, max = 200} = {}) {
+        constructor({kv, cacheKey, max = 200, app} = {}) {
             if (!kv) throw new Error('ActivityLogStore requires a KeyValueStore');
             this.kv = kv;
             this.cacheKey = cacheKey;
             this.max = max;
-            this._migrateIfNeeded();
+            this.app = app;
         }
 
-        get(guid) {
-            const idx = this._getIndex();
-            return idx[guid] || null;
-        }
-
-        has({guid, uid}) {
-            const e = this.get(guid);
-            return !!(e && (!uid || String(e.uid) === String(uid)));
-        }
-
-        // --- core helpers ---
-        _getIndex() {
+        // ---- storage helpers (arrays only) ----
+        _getAll() {
             const raw = this.kv.get(this.cacheKey);
-            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+            return Array.isArray(raw) ? raw : [];
         }
 
-        _setIndex(map) {
-            this.kv.set(this.cacheKey, map || {});
+        _saveAll(list) {
+            // keep newest first, enforce max
+            const sorted = [...(Array.isArray(list) ? list : [])].sort(
+                (a, b) => this.parseLogDateToNumber(b?.ts) - this.parseLogDateToNumber(a?.ts)
+            );
+            this.kv.set(this.cacheKey, sorted.slice(0, this.max));
+            return true;
         }
 
-        _migrateIfNeeded() {
-            const raw = this.kv.get(this.cacheKey);
-            if (Array.isArray(raw)) {
-                const map = {};
-                for (const e of raw) if (e && e.guid) map[e.guid] = e;
-                this._setIndex(map);
-            }
-        }
-
-        // ✅ move your parser here
+        // ---- util: your parser unchanged ----
         parseLogDateToNumber(logDateStr) {
             try {
                 if (!logDateStr || typeof logDateStr !== 'string') return 0;
-                const parts = logDateStr.trim().split(/[\s\/:/]+/);
+                const parts = logDateStr.trim().split(/[\s\/:]+/);
                 if (parts.length < 4) return 0;
                 const [day, month, hours, minutes] = parts.map(x => parseInt(x, 10));
                 if ([day, month, hours, minutes].some(isNaN)) return 0;
@@ -132,91 +118,207 @@
             }
         }
 
-        // --- normal store methods ---
+        // ---- API (array) ----
         list({order = 'desc'} = {}) {
-            const idx = this._getIndex();
-            const arr = Object.values(idx).sort((a, b) => {
-                const ta = this.parseLogDateToNumber(a.ts);
-                const tb = this.parseLogDateToNumber(b.ts);
+            const arr = [...this._getAll()];
+            arr.sort((a, b) => {
+                const ta = this.parseLogDateToNumber(a?.ts);
+                const tb = this.parseLogDateToNumber(b?.ts);
                 return order === 'asc' ? ta - tb : tb - ta;
             });
             return arr;
         }
 
-        upsert(entry) {
-            if (!entry || !entry.guid) return false;
-            const idx = this._getIndex();
-            idx[entry.guid] = {...(idx[entry.guid] || {}), ...entry};
-            this._setIndex(idx);
-            this.trim();
-            return idx[entry.guid];
+        get(guid) {
+            return this._getAll().find(log => String(log.guid) === String(guid)) || null;
+        }
+
+        getAllByUserUid(uid) {
+            const u = String(uid);
+            return this._getAll().filter(log => String(log.uid) === u);
+        }
+
+        has({guid, uid}) {
+            const e = this.get(guid);
+            return !!(e && (!uid || String(e.uid) === String(uid)));
+        }
+
+        set(changedLog) {
+            if (!changedLog || !changedLog.guid) {
+                throw new Error('set() requires changedLog.guid');
+            }
+            const list = this._getAll();
+            const i = list.findIndex(l => String(l.guid) === String(changedLog.guid));
+            let next;
+            if (i >= 0) {
+                next = [...list];
+                next[i] = {...next[i], ...changedLog};
+            } else {
+                next = [...list, changedLog];
+            }
+            this._saveAll(next);
+            return i >= 0 ? next[i] : changedLog;
+        }
+
+        _upsertLogs(changedLogs) {
+            if (!changedLogs) return changedLogs;
+            const incoming = Array.isArray(changedLogs) ? changedLogs : Object.values(changedLogs);
+            const list = this._getAll();
+            const byId = new Map(list.map(l => [String(l.guid), l]));
+            for (const e of incoming) {
+                if (!e || !e.guid) continue;
+                const id = String(e.guid);
+                byId.set(id, {...(byId.get(id) || {}), ...e});
+            }
+            const next = Array.from(byId.values());
+            this._saveAll(next);
+            return changedLogs;
         }
 
         markRead(guid) {
-            const idx = this._getIndex();
-            const log = idx[guid];
-            if (!log) return false;
-            log.unread = false;
-            this._setIndex(idx);
-            return true;
+            const list = this._getAll();
+            const i = list.findIndex(l => String(l.guid) === String(guid));
+            if (i < 0) return false;
+            const next = [...list];
+            next[i] = {...next[i], unread: false};
+            this._saveAll(next);
+            return next[i];
         }
 
         markReadFromDate(uid, fromDateStr) {
-            if (!uid || !fromDateStr) return 0;
+            if (!uid || !fromDateStr) return [];
             const cutoff = this.parseLogDateToNumber(fromDateStr);
-            const idx = this._getIndex();
-            let count = 0;
+            const list = this._getAll();
+            const next = [];
+            const touched = [];
 
-            for (const [guid, log] of Object.entries(idx)) {
-                if (String(log.uid) !== String(uid)) continue;
-                if (log.unread && this.parseLogDateToNumber(log.ts) >= cutoff) {
-                    log.unread = false;
-                    count++;
+            for (const log of list) {
+                if (String(log.uid) === String(uid) && log.unread && this.parseLogDateToNumber(log.ts) >= cutoff) {
+                    const updated = {...log, unread: false};
+                    next.push(updated);
+                    touched.push(updated.guid);
+                    this.app?.debug?.(`Marking message ${updated.guid} as read from ${fromDateStr}`, updated);
+                } else {
+                    next.push(log);
                 }
             }
-
-            this._setIndex(idx);
-            return count;
+            this._saveAll(next);
+            return touched;
         }
 
         trim() {
-            const arr = this.list({order: 'desc'});
-            if (arr.length <= this.max) return;
-            const keep = new Set(arr.slice(0, this.max).map(e => e.guid));
-            const next = {};
-            for (const g of keep) next[g] = this._getIndex()[g];
-            this._setIndex(next);
+            // _saveAll enforces max & sorting
+            this._saveAll(this._getAll());
+        }
+
+        clear() {
+            this.kv.set(this.cacheKey, []);
         }
     }
 
 
     /** Example Users store */
+    /** Users store (direct-to-store, like ActivityLogStore) */
     class UsersStore {
-        constructor({kv, cacheKey}) {
+        constructor({kv, cacheKey, app} = {}) {
+            if (!kv) throw new Error('UsersStore requires a KeyValueStore');
             this.kv = kv;
             this.cacheKey = cacheKey;
+            this.app = app; // so we can call app.searchUserRemote
+            this._runtimeLoggedIn = Object.create(null); // runtime-only login flags
+        }
+
+        // internal helpers: mirror ActivityLogStore’s pattern
+        _getIndex() {
+            const raw = this.kv.get(this.cacheKey);
+            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+        }
+
+        _setIndex(map) {
+            this.kv.set(this.cacheKey, map || {});
         }
 
         list() {
-            return Array.isArray(this.kv.get(this.cacheKey)) ? this.kv.get(this.cacheKey) : [];
+            return Object.values(this._getIndex());
+        }
+
+        get(uid) {
+            const idx = this._getIndex();
+            return idx[String(uid)] || null;
+        }
+
+        has(uid) {
+            const idx = this._getIndex();
+            return !!idx[String(uid)];
         }
 
         upsert(user) {
-            const arr = this.list();
-            const idx = arr.findIndex(u => String(u.uid) === String(user.uid));
-            if (idx >= 0) {
-                arr[idx] = {...arr[idx], ...user};
-            } else {
-                arr.push({
-                    uid: String(user.uid),
-                    name: String(user.name || user.uid),
-                    avatar: String(user.avatar || ''),
-                    loggedIn: user.loggedIn || false,
-                    isFemale: user.isFemale || false
-                });
+            if (!user || user.uid == null) return null;
+            const uid = String(user.uid);
+            const normalized = {
+                uid,
+                name: String(user.name ?? uid),
+                avatar: String(user.avatar ?? ''),
+                isFemale: !!user.isFemale,
+                ...(user.lastRead ? {lastRead: user.lastRead} : {})
+            };
+            const idx = this._getIndex();
+            idx[uid] = {...(idx[uid] || {}), ...normalized};
+            this._setIndex(idx);
+            return idx[uid];
+        }
+
+        // alias used by call sites
+        set(user) {
+            return this.upsert(user);
+        }
+
+        setLastRead(uid, lastRead) {
+            const idx = this._getIndex();
+            const id = String(uid);
+            if (!idx[id]) return null;
+            idx[id].lastRead = lastRead;
+            this.set(idx[id]);
+            return idx[id];
+        }
+
+        // runtime-only login state (not persisted)
+        isLoggedIn(uid) {
+            return !!this._runtimeLoggedIn[String(uid)];
+        }
+
+        setLoggedIn(uid, status) {
+            const id = String(uid);
+            this._runtimeLoggedIn[id] = !!status;
+            return this.get(id) || {uid: id};
+        }
+
+        getAllLoggedIn() {
+            return Object.keys(this._runtimeLoggedIn)
+                .filter(id => this._runtimeLoggedIn[id])
+                .map(id => this.get(id) || {uid: id});
+        }
+
+        getFemalesLoggedIn() {
+            return this.getAllLoggedIn().filter(u => u.isFemale);
+        }
+
+        async getOrFetch(id) {
+            let u = this.get(id);
+            if (!u && this.app?.searchUserRemote) {
+                u = await this.app.searchUserRemote(String(id));
             }
-            this.kv.set(this.cacheKey, arr);
-            return user;
+            return u || null;
+        }
+
+        async getOrFetchByName(q) {
+            const needle = String(q || '').toLowerCase();
+            const local = this.list().filter(
+                u => (u.name || String(u.uid)).toLowerCase() === needle
+            );
+            if (local.length) return local;
+            // (Optional) if you later add a remote-by-name endpoint, call it here.
+            return [];
         }
     }
 
@@ -452,94 +554,19 @@
             this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
 
             // Backing store for users (separate namespace so the map stays tidy)
-            const usersKV = new KeyValueStore();
-            this.UserStore = this.UserStore || new UsersStore({kv: usersKV, cacheKey: this.USERS_KEY});
+            this.UserStore = this.UserStore || new UsersStore({
+                kv: this.Store,
+                cacheKey: this.USERS_KEY,
+                app: this
+            });
 
             // Activity log store (guid-indexed)
             this.ActivityLogStore = this.ActivityLogStore || new ActivityLogStore({
                 kv: this.Store,
                 cacheKey: this.ACTIVITY_LOG_KEY, // already defined in your App
-                max: 200
+                max: 200,
+                app: this
             });
-
-
-            // Adapt UsersStore to the API the rest of the code expects: set/has/get/getOrFetch/getOrFetchByName
-            if (!this.Users) {
-                // keep an in-memory index for fast lookups
-                // Note: loggedIn is NOT loaded from storage - it's determined fresh on each page load
-                const _index = new Map(
-                    (this.UserStore.list() || []).map(u => [String(u.uid), {
-                        uid: String(u.uid),
-                        name: u.name || String(u.uid),
-                        avatar: u.avatar || '',
-                        loggedIn: false, // Always start as logged out, will be set during initial user list processing
-                        isFemale: u.isFemale || false
-                    }])
-                );
-
-                this.Users = {
-                    set: (id, name, avatar = '', isFemale = false, isLoggedIn = false) => {
-                        const rec = {
-                            uid: String(id),
-                            name: String(name || id),
-                            avatar: String(avatar || ''),
-                            loggedIn: isLoggedIn,
-                            isFemale: isFemale
-                        };
-                        _index.set(rec.uid, rec);
-                        // Only persist basic user info, not login status (that's runtime-only)
-                        this.UserStore.upsert({
-                            uid: rec.uid,
-                            name: rec.name,
-                            avatar: rec.avatar,
-                            isFemale: rec.isFemale
-                        });
-                        return rec;
-                    },
-                    has: (id) => _index.has(String(id)),
-                    get: (id) => _index.get(String(id)) || null,
-                    isLoggedIn: (id) => {
-                        const user = _index.get(String(id));
-                        if (!user) {
-                            console.warn('[LOGGEDIN CHECK] User not found in index:', id);
-                            return false;
-                        }          // user not found in the index
-                        return user.loggedIn === true;    // explicitly true only
-                    },
-                    setLoggedIn: (id, status) => {
-                        const user = _index.get(String(id));
-                        if (user) {
-                            user.loggedIn = !!status;
-                            _index.set(String(id), user);
-                            // Don't persist login status - it's determined fresh on each page load
-                            return user;
-                        }
-                    },
-                    getAllLoggedIn: () => {
-                        return Array.from(_index.values()).filter(u => u.loggedIn);
-                    },
-                    getFemalesLoggedIn: () => {
-                        return Array.from(_index.values()).filter(u => u.loggedIn && u.isFemale);
-                    },
-                    getOrFetch: async (id) => {
-                        let user = this.Users.get(id);
-
-                        if (!user) {
-                            user = await this.searchUserRemote(id);
-                            console.log(`Got user ${id} from remote:`, user);
-                        }
-                        return user;
-                    },
-                    async getOrFetchByName(q) {
-                        const needle = String(q || '').toLowerCase();
-                        // try local first
-                        const local = Array.from(_index.values()).filter(u => u.name.toLowerCase() === needle);
-                        if (local.length) return local.map(u => ({uid: u.uid, name: u.name}));
-                        // fallback to remote search the app already implements
-                        return await this.searchUsersRemote(needle);
-                    }
-                };
-            }
 
             this._installAudioAutoplayGate();
 
@@ -795,7 +822,7 @@ Private send interception
                 // Look up user - ensure we always have a valid user object
                 let userInfo = null;
                 try {
-                    userInfo = (this.Users && this.Users.get) ? this.Users.get(targetId) : null;
+                    userInfo = (this.UserStore && this.UserStore.get) ? this.UserStore.get(targetId) : null;
                 } catch (e) {
                     console.error(e);
                 }
@@ -811,11 +838,16 @@ Private send interception
 
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
-                // Log to "Sent" box
                 this.logLine('dm-out', content, userInfo, logData.log_id);
+                //this.addOrUpdateLastRepliedDateTimeForConversation?.(targetId);
 
-                // Mark conversation as replied
-                this.addOrUpdateLastRepliedDateTimeForConversation?.(targetId);
+                try {
+                    const repliedAt = this.getTimeStampInWebsiteFormat();
+                    const affectedGuids = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
+                    this._moveUnreadDomToRepliedByGuid(affectedGuids);
+                } catch (e) {
+                    console.error(this.LOG, 'Post-send mark/move error:', e);
+                }
             } catch (err) {
                 console.error(err);
                 console.error(this.LOG, 'Process private send error:', err);
@@ -978,6 +1010,8 @@ Private send interception
             const token = this.getToken();
             if (!token || !uid) return null;
 
+            console.log(`Starting remote search for profile with uid ${uid}`);
+
             try {
                 const body = new URLSearchParams({
                     token,
@@ -998,16 +1032,19 @@ Private send interception
                 });
 
                 const html = await response.text();
-                const {name, avatar, isFemale, isOnline} = this.caParseProfile(html);
+                let user = this.caParseProfile(html);
 
                 // If we successfully parsed the profile, save and return it
-                if (name && avatar) {
-                    if (this.Users?.set) {
-                        this.Users.set(uid, name, avatar, isFemale, isOnline);
+                if (user.name && user.avatar) {
+                    if (this.UserStore?.set) {
+                        user = this.UserStore.set({
+                            ...user,
+                            uid
+                        });
                     }
 
                     // Return the parsed user object
-                    return {uid, name, avatar, isFemale, isOnline};
+                    return user;
                 }
 
                 // No valid profile found
@@ -1047,10 +1084,10 @@ Private send interception
 
             // --- Detect online state ---
             const stateImg = doc.querySelector('img.state_profile');
-            const isOnline =
+            const isLoggedIn =
                 !!stateImg && stateImg.src.toLowerCase().includes('active');
 
-            return {name, avatar, gender: genderText, isFemale, isOnline};
+            return {name, avatar, isFemale, isLoggedIn};
         }
 
 
@@ -1102,18 +1139,24 @@ Private send interception
         }
 
         /* Carry over site chat context and fetch private chat_log for uid */
-        caFetchChatLogFor(uid, lastCheckedPcount) {
+        caFetchChatLogFor(uid, params) {
             try {
                 const token = this.getToken();
-                if (!token || !uid) return Promise.resolve('');
+                if (!token || !uid) {
+                    console.error(`.caFetchChatLogFor() called with invalid arguments:`, uid, params);
+                    return Promise.resolve('');
+                }
 
+                console.error(this.UserStore.get(uid)?.lastRead || 0);
                 const bodyObj = {
                     token,
                     cp: 'chat',
                     fload: '1',
-                    preload: '1',
+                    preload: '0',
                     priv: String(uid),
-                    pcount: lastCheckedPcount
+                    pcount: params.get('pcount'),
+                    last: params.get('last'),
+                    lastp: this.UserStore.get(uid)?.lastRead || 0
                 };
 
                 // carry over CHAT_CTX if present
@@ -1121,17 +1164,17 @@ Private send interception
                     const CC = (this.state && this.state.CHAT_CTX) ? this.state.CHAT_CTX : null;
                     if (CC) {
                         if (CC.caction) bodyObj.caction = String(CC.caction);
-                        if (CC.last) bodyObj.last = String(CC.last);
                         if (CC.room) bodyObj.room = String(CC.room);
                         if (CC.notify) bodyObj.notify = String(CC.notify);
                         if (CC.curset) bodyObj.curset = String(CC.curset);
-                        if (CC.lastp) bodyObj.lastp = String(CC.lastp);
                         if (CC.pcount) bodyObj.pcount = String(CC.pcount);
                     }
                 } catch (e) {
                     console.error(e);
                     console.error(this.LOG, 'Chat context error:', e);
                 }
+
+                console.log(bodyObj);
 
                 // Debug log (sanitized)
                 try {
@@ -1158,7 +1201,7 @@ Private send interception
                         return res.text();
                     })
                     .then((txt) => {
-                        console.log(this.LOG, 'caFetchChatLogFor: Response preview:', String(txt || '').slice(0, 300));
+                        console.log(this.LOG, 'caFetchChatLogFor received a response succesfully');
                         return txt;
                     })
                     .catch((err) => {
@@ -1202,56 +1245,50 @@ Private send interception
                     console.error(e);
                 }
 
-                const items = Array.isArray(conversationChatLog?.pload) ? conversationChatLog.pload
+                let items = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
                     : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
-                if (!items.length) return;
-
-                // my user id (if page exposes it)
-                let myUserId = null;
-                try { /* global on page */  // eslint-disable-next-line no-undef
-                    myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-                } catch {
+                if (!items.length) {
+                    console.log(`No new logs for user ${uid}`);
+                    return;
                 }
 
-                // chronological
-                items.sort((a, b) => (a.log_id || 0) - (b.log_id || 0));
-
-                const watermark = this.getGlobalWatermark?.() || '';
-                console.log(this.LOG, 'Processing messages for', uid, '— watermark:', watermark || 'not set');
 
                 let newMessages = 0;
                 const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
-                let newestLogDate = null;
+                const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
+
+                const isInitialFetch = this.UserStore.get(uid)?.lastRead === 0 || true;
+
+                if (isInitialFetch) {
+                    console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
+                }
+
+                items = items.filter(item => {
+                    // Always skip messages sent by myself
+                    if (myUserId && String(item.user_id) === myUserId) {
+                        skipped.fromMe++;
+                        return false;
+                    }
+
+                    // Only on initial fetch: skip too-old messages
+                    if (isInitialFetch && !this.isMessageNewer(item.log_date, false)) {
+                        skipped.tooOld++;
+                        console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
+                        return false;
+                    }
+
+                    // Keep everything else
+                    return true;
+                }).sort((a, b) => (b.log_id) - (a.log_id));
+
+                console.log(`Parsing new messages`, items);
+                console.log(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
+                this.UserStore.setLastRead(uid, items[items.length - 1]?.log_id);
 
                 for (let i = 0; i < items.length; i++) {
                     const t = items[i];
                     const fromId = (t?.user_id != null) ? String(t.user_id) : null;
-                    const logDate = String(t?.log_date ?? '');
                     const logId = (t?.log_id != null) ? String(t.log_id) : null;
-
-                    // track newest date
-                    if (logDate && (!newestLogDate || this.parseLogDateToNumber(logDate) > this.parseLogDateToNumber(newestLogDate))) {
-                        newestLogDate = logDate;
-                    }
-
-                    // skip from me
-                    if (myUserId && fromId === myUserId) {
-                        skipped.fromMe++;
-                        continue;
-                    }
-
-                    const alreadyStored = logId ? this.ActivityLogStore.has({uid, guid: logId}) : false;
-                    if (alreadyStored) {
-                        skipped.alreadyShown++;
-                        continue;
-                    }
-
-                    // skip older than watermark
-                    const shouldShow = this.isMessageNewer?.(logDate, false);
-                    if (!shouldShow) {
-                        skipped.tooOld++;
-                        continue;
-                    }
 
                     // decode → escape → normalize whitespace
                     const rawContent = t?.log_content ? String(t.log_content) : '';
@@ -1259,7 +1296,7 @@ Private send interception
                     const content = (this.escapeHTML ? this.escapeHTML(decodedContent) : decodedContent).replace(/\s+/g, ' ').trim();
 
                     // resolve user
-                    const user = await this.Users.getOrFetch(fromId);
+                    const user = await this.UserStore.getOrFetch(fromId);
 
                     // render
                     this.logLine('dm-in', content, user, logId);
@@ -1269,11 +1306,6 @@ Private send interception
 
                 if (skipped.fromMe || skipped.alreadyShown || skipped.tooOld) {
                     console.log(this.LOG, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
-                }
-
-                if (newestLogDate) {
-                    this.setGlobalWatermark?.(newestLogDate);
-                    console.log(this.LOG, 'Updated watermark to:', newestLogDate);
                 }
 
                 if (newMessages > 0) {
@@ -1288,7 +1320,7 @@ Private send interception
         }
 
         /* ============ Chat payload processing ============ */
-        caProcessChatPayload(txt) {
+        caProcessChatPayload(txt, params) {
             try {
                 if (!txt || typeof txt !== 'string' || txt.trim() === '') {
                     console.warn(this.LOG, 'Empty or invalid chat payload response');
@@ -1360,7 +1392,7 @@ Private send interception
                                 const conversation = toFetch[i];
                                 try {
                                     console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
-                                    const convoLog = await this.caFetchChatLogFor(conversation.uid, this.getLastPcountFor(conversation.uid));
+                                    const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
                                     try {
                                         await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
                                         // sync pcount (site increments this on each poll)
@@ -1408,27 +1440,27 @@ Private send interception
                 };
 
                 XMLHttpRequest.prototype.send = function (...sendArgs) {
+                    let qs = null;
+
                     try {
                         const targetUrl = this._ca_url || '';
-                        // capture POST body into context
-                        try {
-                            if (self.isChatLogUrl(targetUrl) && sendArgs && sendArgs.length) {
-                                const qs0 = self.normalizeBodyToQuery(sendArgs[0]);
-                                self.caUpdateChatCtxFromBody(qs0 || '', targetUrl);
-                            }
-                        } catch (err) {
-                            console.error(self.LOG, 'XHR body capture error:', err);
+
+                        if (self.isChatLogUrl(targetUrl) && sendArgs && sendArgs[0].length) {
+                            if (sendArgs[0].indexOf('priv=1') !== -1) return;
+
+                            qs = new URLSearchParams(sendArgs[0]);
+                            self.caUpdateChatCtxFromBody(qs);
+                            console.log(qs, targetUrl);
                         }
 
                         this.addEventListener('readystatechange', function () {
                             try {
                                 const responseUrl = this.responseURL || this._ca_url || '';
-                                if (this.responseText && this.readyState === 4 && this.status === 200) {
-
+                                if (this.readyState === 4 && this.status === 200 && this.responseText) {
                                     if (self.isChatLogUrl(responseUrl)) {
-                                        self.caProcessChatPayload(this.responseText);
+                                        // ✅ Now you can access the right params for this XHR instance
+                                        self.caProcessChatPayload(this.responseText, qs);
                                     }
-                                    // Intercept user_list.php responses
                                     if (self.isUserListUrl(responseUrl)) {
                                         self.processUserListResponse(this.responseText);
                                     }
@@ -1440,6 +1472,7 @@ Private send interception
                     } catch (e) {
                         console.error(e);
                     }
+
                     return self._xhrSend.apply(this, sendArgs);
                 };
             } catch (e) {
@@ -1525,51 +1558,46 @@ Private send interception
             }
         }
 
-        // Wires generic click handling on sent/received/presence logs,
         _attachLogClickHandlers() {
-            [this.ui.sentBox, this.ui.receivedMessagesBox, this.ui.presenceBox].forEach(box => {
-                if (!box) return;
-                // Remove old listener if it exists to avoid duplicates
-                if (box._caGenericWired) return;
-                this.verbose('Added on click handler to', box);
+            const boxes = [
+                this.ui.sentBox,
+                this.ui.receivedMessagesBox,
+                this.ui.presenceBox,
+                this.ui.unrepliedMessageBox,     // add
+                this.ui.repliedMessageBox        // add
+            ];
+            boxes.forEach(box => {
+                if (!box || box._caGenericWired) return;
                 box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
                 box._caGenericWired = true;
-            });
 
-            // Attach collapse/expand handler to all log boxes
-            [this.ui.sentBox, this.ui.receivedMessagesBox, this.ui.presenceBox].forEach(box => {
-                if (!box) return;
-                if (box._caCollapseWired) return;
-                this.verbose('Added on click handler to', box);
-                box.addEventListener('click', (e) => this._onLogEntryClick(e, box));
-                box._caCollapseWired = true;
+                if (!box._caCollapseWired) {
+                    box.addEventListener('click', (e) => this._onLogEntryClick(e, box));
+                    box._caCollapseWired = true;
+                }
             });
         }
 
-        /** Generic handler for log clicks (profile/DM actions). */
         async _onLogClickGeneric(e, box) {
             try {
-                this.verbose('_onLogClickGeneric: Click detected', {
-                    target: e.target,
-                    targetClass: e.target.className,
-                    targetTag: e.target.tagName
-                });
+                // Prefer closest when available; fall back to manual walk
+                let entry = (e.target.closest && this.sel?.log?.classes?.ca_log_entry)
+                    ? e.target.closest(this.sel.log.classes.ca_log_entry)
+                    : null;
 
-                // 1) find the .ca-log-entry ancestor (manual walk, no closest())
-                let node = e.target;
-                let entry = null;
-                const entryClass = this.sel.log.classes.ca_log_entry.substring(1); // Remove leading dot
-                while (node && node !== box) {
-                    if (node.classList && node.classList.contains(entryClass)) {
-                        entry = node;
-                        break;
-                    }
-                    node = node.parentNode;
-                }
                 if (!entry) {
-                    console.error(`No entry was found to call the handler for click on ${e.target}`)
+                    let node = e.target;
+                    const cls = (this.sel?.log?.classes?.ca_log_entry || '.ca-log-entry').slice(1);
+                    while (node && node !== box) {
+                        if (node.classList && node.classList.contains(cls)) {
+                            entry = node;
+                            break;
+                        }
+                        node = node.parentNode;
+                    }
                     return;
                 }
+
                 this.verbose('_onLogClickGeneric: Found log entry', entry);
 
                 // 2) find actionable element with [data-action] inside that entry (manual walk)
@@ -1591,7 +1619,7 @@ Private send interception
                     console.error('Empty uid while trying to open profile/dm from a log line.');
                     return;
                 }
-                const user = await this.Users.getOrFetch(uid);
+                const user = await this.UserStore.getOrFetch(uid);
                 this.verbose('_onLogClickGeneric: Resolved user:', user);
                 if (!user) {
                     console.warn('[321ChatAddons] unknown uid:', uid);
@@ -1857,8 +1885,8 @@ Private send interception
                 // try local, then remote search
                 let candidates = [];
                 try {
-                    if (this.Users?.getOrFetchByName) {
-                        candidates = await this.Users.getOrFetchByName(nameQ);
+                    if (this.UserStore?.getOrFetchByName) {
+                        candidates = await this.UserStore.getOrFetchByName(nameQ);
                     }
                 } catch (e) {
                     console.error(e);
@@ -1884,7 +1912,7 @@ Private send interception
                         : `Failed (HTTP ${r ? r.status : 0}).`;
                 } catch (err) {
                     if (stat) stat.textContent = 'Error sending.';
-                    this.logSendFail?.(target.name || target.uid, target.uid, '', 'ERR', text);
+                    //this.logSendFail?.(target.name || target.uid, target.uid, '', 'ERR', text);
                 } finally {
                     this.ui.sSend.disabled = false;
                 }
@@ -1937,21 +1965,21 @@ Private send interception
                             return runBatch(bi + 1);
                         }
 
-                        const item = batch[idx++], uname = item.name || item.id, av = this.extractAvatar(item.el);
+                        const item = batch[idx++];
                         this.sendWithThrottle(item.id, text).then((r) => {
                             if (r && r.ok) {
                                 ok++;
                                 sent[item.id] = 1;
                             } else {
                                 fail++;
-                                this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text);
+                                // this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text);
                             }
                             $bStat && ($bStat.textContent = `Batch ${bi + 1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`);
                             const delay = 2000 + Math.floor(Math.random() * 3000);
                             return new Promise(r => setTimeout(r, delay));
                         }).then(one).catch(() => {
                             fail++;
-                            this.logSendFail?.(uname, item.id, av, 'ERR', text);
+                            //this.logSendFail?.(uname, item.id, av, 'ERR', text);
                             const delay = 2000 + Math.floor(Math.random() * 3000);
                             return new Promise(r => setTimeout(r, delay)).then(one);
                         });
@@ -2001,9 +2029,9 @@ Private send interception
         }
 
         /* Update or create user element in managed container */
-        _updateOrCreateUserElement(managedList, newEl, uid, name) {
+        _updateOrCreateUserElement(managedList, newEl, user) {
             try {
-                const existingEl = this.qs(`.user_item[data-id="${uid}"]`, managedList);
+                const existingEl = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
                 if (existingEl) {
                     // Update existing element
                     existingEl.innerHTML = newEl.innerHTML;
@@ -2011,13 +2039,12 @@ Private send interception
                     Array.from(newEl.attributes).forEach(attr => {
                         existingEl.setAttribute(attr.name, attr.value);
                     });
-                    this.verbose('[_updateOrCreateUserElement] Updated existing user element for', uid, name);
+                    this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, user.name);
                     return existingEl;
                 } else {
-                    // Create new element
                     const clonedEl = newEl.cloneNode(true);
                     managedList.appendChild(clonedEl);
-                    this.verbose('[_updateOrCreateUserElement] Created new user element for', uid, name);
+                    this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
                     return clonedEl;
                 }
             } catch (e) {
@@ -2092,7 +2119,7 @@ Private send interception
                 console.log(this.LOG, '[USER_LIST] Found', users.length, 'female users in response HTML');
 
                 if (users.length === 0) {
-                    console.log(this.LOG, '[USER_LIST] Total users found:', allUsers.length);
+                    console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
                 }
 
                 // Track UIDs from the response for cleanup later
@@ -2103,7 +2130,8 @@ Private send interception
                 let updatedCount = 0;
                 let removedCount = 0;
 
-                const usersList = this.Users.getAllLoggedIn();
+                const usersList = this.UserStore.getAllLoggedIn();
+
                 users.forEach(userEl => {
                     try {
                         const uid = this.getUserId(userEl);
@@ -2123,7 +2151,7 @@ Private send interception
                         const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
                         const isAllowedRank = this._isAllowedRank(userEl);
 
-                        const existingUser = this.Users?.get(uid);
+                        const existingUser = this.UserStore?.get(uid);
                         const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar || existingUser?.loggedIn !== true;
                         let handleUserElement = false;
 
@@ -2138,7 +2166,14 @@ Private send interception
                         }
 
                         if (handleUserElement) {
-                            const user = this.Users.set(uid, name, avatar, isFemale, true);
+                            const user = this.UserStore.set(
+                                {
+                                    uid,
+                                    name,
+                                    avatar,
+                                    isFemale,
+                                    isLoggedIn: true,
+                                });
 
                             if (!isInitialLoad && existingUser?.loggedIn !== true) {
                                 console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
@@ -2149,9 +2184,8 @@ Private send interception
                             }
 
                             if (isFemale) {
-                                const el = this._updateOrCreateUserElement(managedList, userEl, uid, name, avatar, isFemale);
-                                this._handleUserLogin(uid, name, avatar, 'Female is now visible,', isInitialLoad);
-                                this._handleVisibilityOrGenderChange(el, isInitialLoad, uid, name, avatar, isFemale, isAllowedRank);
+                                const el = this._updateOrCreateUserElement(managedList, userEl, user);
+                                this._handleVisibilityOrGenderChange(el, user, isAllowedRank);
                                 userEl.remove();
 
                                 this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
@@ -2165,7 +2199,7 @@ Private send interception
                 });
 
                 usersList.forEach(user => {
-                    this.Users.setLoggedIn(user.uid, false);
+                    this.UserStore.setLoggedIn(user.uid, false);
 
                     if (!isInitialLoad) {
                         console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
@@ -2195,7 +2229,6 @@ Private send interception
                 // Update counters AFTER all processing is complete using requestAnimationFrame
                 // This ensures all DOM mutations have completed
                 requestAnimationFrame(() => {
-                    // Re-bind counter references in case they weren't cached yet
                     if (!this.ui.managedCount) {
                         this.ui.managedCount = this.qs(this.sel.users.managedCount);
                     }
@@ -2224,17 +2257,7 @@ Private send interception
                         } else {
                             console.warn(this.LOG, '[USER_LIST] hostCount element not found - selector:', this.sel.users.hostCount);
                         }
-
-                        // Verify no females remain in host
-                        const verifyFemales = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, this.ui.hostContainer);
-                        if (verifyFemales.length > 0) {
-                            console.warn(this.LOG, '[USER_LIST] WARNING: Still', verifyFemales.length, 'female users in host container!');
-                        } else {
-                            console.log(this.LOG, '[USER_LIST] Verified: No female users remain in host container ✓');
-                        }
                     }
-
-                    console.log(this.LOG, '[USER_LIST] Final counts - Managed:', managedCount, ', Host:', this.ui.hostContainer ? this.qsa('.user_item', this.ui.hostContainer).length : 0);
                 });
             } catch (e) {
                 console.error(e);
@@ -2242,28 +2265,23 @@ Private send interception
             }
         }
 
-
-        _handleUserLogin(uid, name, avatar, reason = '', isInitialLoad = false) {
-
-        }
-
-        _handleVisibilityOrGenderChange(el, isInitialLoad = false, uid, name, avatar, isFemale, isAllowedRank) {
+        _handleVisibilityOrGenderChange(el, user, isAllowedRank) {
             try {
-                this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${uid})`);
+                this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${user.uid})`);
 
                 // Ensure UI elements for female users if rank allows
                 if (isAllowedRank) {
-                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) has allowed rank, ensuring broadcast checkbox`);
+                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) has allowed rank, ensuring broadcast checkbox`);
                     this.ensureBroadcastCheckbox(el);
                 } else {
-                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) does not have allowed rank, skipping checkbox`);
+                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) does not have allowed rank, skipping checkbox`);
                 }
 
                 // Determine reply status
-                const replied = !!(uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]);
-                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${uid}) replied status:`, replied);
-                this.debug(`[_handleVisibilityOrGenderChange] Newly visible female ${name} (${uid})`);
-                this.ensureSentChip?.(uid, replied);
+                const replied = !!(user.uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[user.uid]);
+                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
+                this.debug(`[_handleVisibilityOrGenderChange] Newly visible female ${name} (${user.uid})`);
+                this.ensureSentChip?.(user.uid, replied);
             } catch (e) {
                 console.error(e);
             }
@@ -2301,27 +2319,13 @@ Private send interception
             }
         }
 
-        caUpdateChatCtxFromBody(bodyLike, urlMaybe) {
+        caUpdateChatCtxFromBody(searchParams) {
             try {
                 if (this.caUpdateChatCtxFromBody._initialized) return;
 
-                let qs = this.normalizeBodyToQuery(bodyLike);
-                if (!qs && typeof urlMaybe === 'string') {
-                    try {
-                        const u = new URL(urlMaybe, location.origin);
-                        qs = u.search ? u.search.replace(/^\?/, '') : '';
-                    } catch {
-                    }
-                }
-                if (!qs) {
-                    console.warn(this.LOG, 'No parameters found from chat_log.php call.');
-                    return;
-                }
-                if (qs.indexOf('priv=1') !== -1) return;
-
-                const p = new URLSearchParams(qs);
-                const ca = p.get('caction'), lp = p.get('lastp'), la = p.get('last'), rm = p.get('room'),
-                    nf = p.get('notify'), cs = p.get('curset'), pc = p.get('pcount');
+                const ca = searchParams.get('caction'), lp = searchParams.get('lastp'), la = searchParams.get('last'),
+                    rm = searchParams.get('room'),
+                    nf = searchParams.get('notify'), cs = searchParams.get('curset'), pc = searchParams.get('pcount');
 
                 this.state = this.state || {};
                 this.state.CHAT_CTX = this.state.CHAT_CTX || {
@@ -2383,6 +2387,7 @@ Private send interception
                 (typeof o.pico === 'string' ? (Number(o.pico) || 0) : 0);
             const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
             const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
+            console.log(`pload:`, pload, `plogs:`, plogs);
             return {
                 last: typeof o.last === 'string' ? o.last : '',
                 pico: picoNum,
@@ -2415,7 +2420,7 @@ Private send interception
         }
 
         /* ---------- Time & watermark comparison ---------- */
-        isMessageNewer(logDateStr, debugLog = false) {
+        isMessageNewer(logDateStr) {
             try {
                 const watermark = this.getGlobalWatermark();
                 if (!watermark) return true; // no watermark -> everything is "new"
@@ -2425,12 +2430,10 @@ Private send interception
                 if (!msgNum) return false;
 
                 const isNewer = msgNum >= wmNum;
-                if (debugLog) {
-                    console.log(this.LOG, 'Date comparison:', {
-                        logDate: logDateStr, logDateNum: msgNum,
-                        watermark, watermarkNum: wmNum, isNewer
-                    });
-                }
+                console.log(this.LOG, 'Date comparison:', {
+                    logDate: logDateStr, logDateNum: msgNum,
+                    watermark, watermarkNum: wmNum, isNewer
+                });
                 return isNewer;
             } catch (e) {
                 console.error(e);
@@ -2673,7 +2676,7 @@ Private send interception
         }
 
         /* ---------- Mark sent + chips/sorting ---------- */
-        markSent(userEl, uid) {
+        markSent(uid) {
             try {
                 this.ensureSentChip(uid, !!this.REPLIED_CONVOS[uid]);
             } catch (e) {
@@ -3681,12 +3684,6 @@ Private send interception
             if (kind === 'dm-in' && entry.unread === false) {
                 this.AppendIfNotYetMarkedReplied?.(entry.guid);
             }
-
-            // trim + autoscroll
-            try {
-                this.trimLogBoxToMax?.(targetContainer);
-            } catch {
-            }
             requestAnimationFrame(() => {
                 try {
                     targetContainer.scrollTop = targetContainer.scrollHeight;
@@ -3701,7 +3698,7 @@ Private send interception
                 ts, kind, content, uid, guid,
                 unread: (kind === 'dm-in') ? true : undefined
             };
-            this.ActivityLogStore.upsert(entry);
+            this.ActivityLogStore.set(entry);
         }
 
         clearNode(el) {
@@ -3712,37 +3709,15 @@ Private send interception
 
         async restoreLog() {
             if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
-            const arr = this.ActivityLogStore.list({order: 'asc'}); // oldest→newest
 
-            for (let i = 0; i < arr.length; i++) {
-                const e = arr[i];
-                this.verbose('Restoring log', e);
-                const user = await this.Users.getOrFetch(e.uid);
-                // ⬇️ pass the whole store entry + resolved user
-                this.renderLogEntry(e, user);
+            const logs = await this.ActivityLogStore.list({order: 'asc'}) || [];
+
+            for (const log of logs) {  // ✅ 'of' iterates the actual log objects
+                this.verbose('Restoring log', log);
+                const user = await this.UserStore.getOrFetch(log.uid);
+                this.renderLogEntry(log, user);
             }
-        }
 
-        trimLogBoxToMax(targetBox) {
-            try {
-                if (!targetBox || !targetBox.children) return;
-                const boxChildren = Array.from(targetBox.children);
-                const LOG_MAX = 200;
-                if (boxChildren.length <= LOG_MAX) return;
-
-                const toRemove = boxChildren.length - LOG_MAX;
-                for (let i = 0; i < toRemove; i++) {
-                    try {
-                        boxChildren[i]?.parentNode?.removeChild(boxChildren[i]);
-                    } catch (e) {
-                        console.error(e);
-                        console.error(this.LOG, 'Remove log entry error:', e);
-                    }
-                }
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Trim log error:', e);
-            }
         }
 
         logLine(kind, content, user, guid) {
@@ -4102,7 +4077,7 @@ Private send interception
                 if (!logDateStr || typeof logDateStr !== 'string') return 0;
 
                 // Example format: "23/10 11:25"
-                const parts = logDateStr.trim().split(/[\s\/:/]+/);
+                const parts = logDateStr.trim().split(/[\s\/:]+/);
                 if (parts.length < 4) return 0;
 
                 const day = parseInt(parts[0], 10);
@@ -4121,19 +4096,21 @@ Private send interception
             }
         }
 
-        addOrUpdateLastRepliedDateTimeForConversation(uid) {
-            // persist replied timestamp
-            this.REPLIED_CONVOS = this.REPLIED_CONVOS || {};
-            this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
-            this.debug('Marking conversation as replied:', uid, 'timestamp:', this.REPLIED_CONVOS[uid]);
-            this._saveRepliedConvos(this.REPLIED_CONVOS);
-            this.ActivityLogStore.markReadFromDate(uid, this.REPLIED_CONVOS[uid]);
-            // this.Store.get(this.ACTIVITY_LOG_KEY).filter(log => log.uid === uid && log.unread && (this.parseLogDateToNumber(log.ts) >= this.parseLogDateToNumber(this.REPLIED_CONVOS[uid]))).forEach(log => {
-            //     this.AppendIfNotYetMarkedReplied(log.guid);
-            // });
+        // in App
+        _moveUnreadDomToRepliedByGuid(guids) {
+            if (!Array.isArray(guids) || !guids.length) return;
+            const src = this.ui.unrepliedMessageBox;
+            const dst = this.ui.repliedMessageBox || this.ui.receivedMessagesBox;
+            if (!src || !dst) return;
 
-            // also mark the regular profile picture as replied in the menu
-            this.markSent?.(uid);
+            for (const guid of guids) {
+                const el = this.qs(`.ca-log-entry[data-guid="${guid}"]`, src);
+                if (!el) continue;
+                dst.appendChild(el);
+                this.AppendIfNotYetMarkedReplied?.(guid);
+
+                this.markSent?.(guid);
+            }
         }
 
         getLogEntryByUid(uid) {
