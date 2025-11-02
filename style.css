@@ -431,9 +431,22 @@
     pointer-events: none; /* never intercept clicks */
 }
 
-/* Hide non-females (JS toggles this class) */
+/* Force hide all non-female accounts (FEMALE_CODE = '2') */
+.user_item:not([data-gender="2"]) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Hide non-females (JS toggles this class as backup) */
 .user_item.ca-hidden {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
 }
 
 /* Sent highlight */
