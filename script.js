@@ -127,7 +127,6 @@
             this.EXC_KEY = '321chataddons.excluded';
             this.REPLIED_CONVOS_KEY = '321chataddons.repliedConversations';
             this.LAST_PCOUNT_MAP_KEY = '321chataddons.lastPcountPerConversation';
-            this.DISPLAYED_LOGIDS_KEY = '321chataddons.displayedLogIds';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 
             /* ========= App State ========= */
@@ -446,7 +445,6 @@
             this.EXCLUDED = this._loadExcluded();
             this.REPLIED_CONVOS = this._loadRepliedConvos();
             this.LAST_PCOUNT_MAP = this._loadLastPcountMap();
-            this.DISPLAYED_LOGIDS = this._loadDisplayedLogIds();
 
             // build panel + wire refs + handlers
             this.buildPanel();
@@ -696,7 +694,7 @@ Private send interception
                 console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
 
                 // Log to "Sent" box
-                this.logLine('dm-out', content, userInfo);
+                this.logLine('dm-out', content, userInfo, logData.log_id);
 
                 // Mark conversation as replied
                 this.addOrUpdateLastRepliedDateTimeForConversation?.(targetId);
@@ -1124,8 +1122,8 @@ Private send interception
                         continue;
                     }
 
-                    // skip duplicates
-                    if (logId && this.hasDisplayedLogId?.(uid, logId)) {
+                    const hasDisplayedLogId = (this.Store.get(this.ACTIVITY_LOG_KEY) || []).filter(l => l.uid === uid && l.guid === logId).length > 0;
+                    if (logId && hasDisplayedLogId) {
                         skipped.alreadyShown++;
                         continue;
                     }
@@ -1146,10 +1144,7 @@ Private send interception
                     const user = await this.Users.getOrFetch(fromId);
 
                     // render
-                    this.logLine('dm-in', content, user);
-
-                    // mark id
-                    if (logId) this.addDisplayedLogId?.(uid, logId);
+                    this.logLine('dm-in', content, user, logId);
 
                     newMessages++;
                 }
@@ -2630,56 +2625,6 @@ Private send interception
             }
         }
 
-        /* ---------- Displayed log_ids per conversation ---------- */
-        _loadDisplayedLogIds() {
-            try {
-                const raw = this.Store.get(this.DISPLAYED_LOGIDS_KEY);
-                return raw ? (raw || {}) : {};
-            } catch (e) {
-                console.error(e);
-                return {};
-            }
-        }
-
-        _saveDisplayedLogIds(map) {
-            this.Store.set(this.DISPLAYED_LOGIDS_KEY, map || {});
-        }
-
-        getDisplayedLogIdsFor(uid) {
-            try {
-                if (!uid || !this.DISPLAYED_LOGIDS[uid]) return [];
-                return this.DISPLAYED_LOGIDS[uid] || [];
-            } catch (e) {
-                console.error(e);
-                return [];
-            }
-        }
-
-        addDisplayedLogId(uid, logId) {
-            try {
-                if (!uid || !logId) return;
-                if (!this.DISPLAYED_LOGIDS[uid]) this.DISPLAYED_LOGIDS[uid] = [];
-                if (!this.DISPLAYED_LOGIDS[uid].includes(logId)) this.DISPLAYED_LOGIDS[uid].push(logId);
-                if (this.DISPLAYED_LOGIDS[uid].length > this.MAX_LOGIDS_PER_CONVERSATION) {
-                    this.DISPLAYED_LOGIDS[uid] = this.DISPLAYED_LOGIDS[uid].slice(-this.MAX_LOGIDS_PER_CONVERSATION);
-                }
-                this._saveDisplayedLogIds(this.DISPLAYED_LOGIDS);
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Add displayed log_id error:', e);
-            }
-        }
-
-        hasDisplayedLogId(uid, logId) {
-            try {
-                if (!uid || !logId) return false;
-                return this.getDisplayedLogIdsFor(uid).includes(logId);
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
-        }
-
         /* ---------- DOM find helper ---------- */
         findUserElementById(id, root = document) {
             if (!id) return null;
@@ -3510,6 +3455,10 @@ Private send interception
 
         AppendIfNotYetMarkedReplied(guid) {
             const logEl = this.qs(`.ca-log-entry[data-guid="${guid}"]`, this.ui.receivedMessagesBox);
+            if (!logEl) {
+                console.error('Failed to find log entry for:', guid);
+                return;
+            }
             try {
                 const badge = document.createElement('span');
                 badge.className = 'ca-badge-replied';
@@ -3690,11 +3639,11 @@ Private send interception
             }
         }
 
-        logLine(kind, content, user) {
+        logLine(kind, content, user, guid) {
             const ts = this.getTimeStampInWebsiteFormat();
 
             // Generate a globally unique identifier (GUID)
-            const guid = crypto.randomUUID();
+            guid = guid ? guid : crypto.randomUUID();
 
             // Pass it along to both functions
             this.renderLogEntry(ts, kind, content, user, guid);
