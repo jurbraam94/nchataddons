@@ -80,6 +80,116 @@
         }
     }
 
+    class ActivityLogStore {
+        constructor({kv, cacheKey, max = 200} = {}) {
+            if (!kv) throw new Error('ActivityLogStore requires a KeyValueStore');
+            this.kv = kv;
+            this.cacheKey = cacheKey;
+            this.max = max;
+            this._migrateIfNeeded();
+        }
+
+        get(guid) {
+            const idx = this._getIndex();
+            return idx[guid] || null;
+        }
+
+        has({guid, uid}) {
+            const e = this.get(guid);
+            return !!(e && (!uid || String(e.uid) === String(uid)));
+        }
+
+        // --- core helpers ---
+        _getIndex() {
+            const raw = this.kv.get(this.cacheKey);
+            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+        }
+
+        _setIndex(map) {
+            this.kv.set(this.cacheKey, map || {});
+        }
+
+        _migrateIfNeeded() {
+            const raw = this.kv.get(this.cacheKey);
+            if (Array.isArray(raw)) {
+                const map = {};
+                for (const e of raw) if (e && e.guid) map[e.guid] = e;
+                this._setIndex(map);
+            }
+        }
+
+        // ✅ move your parser here
+        parseLogDateToNumber(logDateStr) {
+            try {
+                if (!logDateStr || typeof logDateStr !== 'string') return 0;
+                const parts = logDateStr.trim().split(/[\s\/:/]+/);
+                if (parts.length < 4) return 0;
+                const [day, month, hours, minutes] = parts.map(x => parseInt(x, 10));
+                if ([day, month, hours, minutes].some(isNaN)) return 0;
+                return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
+            } catch {
+                return 0;
+            }
+        }
+
+        // --- normal store methods ---
+        list({order = 'desc'} = {}) {
+            const idx = this._getIndex();
+            const arr = Object.values(idx).sort((a, b) => {
+                const ta = this.parseLogDateToNumber(a.ts);
+                const tb = this.parseLogDateToNumber(b.ts);
+                return order === 'asc' ? ta - tb : tb - ta;
+            });
+            return arr;
+        }
+
+        upsert(entry) {
+            if (!entry || !entry.guid) return false;
+            const idx = this._getIndex();
+            idx[entry.guid] = {...(idx[entry.guid] || {}), ...entry};
+            this._setIndex(idx);
+            this.trim();
+            return idx[entry.guid];
+        }
+
+        markRead(guid) {
+            const idx = this._getIndex();
+            const log = idx[guid];
+            if (!log) return false;
+            log.unread = false;
+            this._setIndex(idx);
+            return true;
+        }
+
+        markReadFromDate(uid, fromDateStr) {
+            if (!uid || !fromDateStr) return 0;
+            const cutoff = this.parseLogDateToNumber(fromDateStr);
+            const idx = this._getIndex();
+            let count = 0;
+
+            for (const [guid, log] of Object.entries(idx)) {
+                if (String(log.uid) !== String(uid)) continue;
+                if (log.unread && this.parseLogDateToNumber(log.ts) >= cutoff) {
+                    log.unread = false;
+                    count++;
+                }
+            }
+
+            this._setIndex(idx);
+            return count;
+        }
+
+        trim() {
+            const arr = this.list({order: 'desc'});
+            if (arr.length <= this.max) return;
+            const keep = new Set(arr.slice(0, this.max).map(e => e.guid));
+            const next = {};
+            for (const g of keep) next[g] = this._getIndex()[g];
+            this._setIndex(next);
+        }
+    }
+
+
     /** Example Users store */
     class UsersStore {
         constructor({kv, cacheKey}) {
@@ -344,6 +454,14 @@
             // Backing store for users (separate namespace so the map stays tidy)
             const usersKV = new KeyValueStore();
             this.UserStore = this.UserStore || new UsersStore({kv: usersKV, cacheKey: this.USERS_KEY});
+
+            // Activity log store (guid-indexed)
+            this.ActivityLogStore = this.ActivityLogStore || new ActivityLogStore({
+                kv: this.Store,
+                cacheKey: this.ACTIVITY_LOG_KEY, // already defined in your App
+                max: 200
+            });
+
 
             // Adapt UsersStore to the API the rest of the code expects: set/has/get/getOrFetch/getOrFetchByName
             if (!this.Users) {
@@ -1122,8 +1240,8 @@ Private send interception
                         continue;
                     }
 
-                    const hasDisplayedLogId = (this.Store.get(this.ACTIVITY_LOG_KEY) || []).filter(l => l.uid === uid && l.guid === logId).length > 0;
-                    if (logId && hasDisplayedLogId) {
+                    const alreadyStored = logId ? this.ActivityLogStore.has({uid, guid: logId}) : false;
+                    if (alreadyStored) {
                         skipped.alreadyShown++;
                         continue;
                     }
@@ -3426,7 +3544,8 @@ Private send interception
                     this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
                 }
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
-                this.Store.set(this.ACTIVITY_LOG_KEY, []); // clear persisted log
+                this.ActivityLogStore?.clear();
+
 
                 // Re-attach event handlers since we replaced the HTML
                 this._attachLogClickHandlers?.();
@@ -3441,7 +3560,7 @@ Private send interception
                 if (!repliedAt) return false;
                 const repliedTime = this.parseLogDateToNumber(repliedAt);
                 const msgTime = this.parseLogDateToNumber(msgTimestamp);
-                return !!(repliedTime && msgTime && repliedTime > msgTime);
+                return !!(repliedTime && msgTime && repliedTime >= msgTime);
             } catch (e) {
                 console.error(e);
                 return false;
@@ -3470,22 +3589,27 @@ Private send interception
             }
         }
 
-        renderLogEntry(ts, kind, content, user, guid) {
-            // Ensure user object is valid
-            if (!user || !user.uid) {
-                console.error(this.LOG, 'renderLogEntry: Invalid user object', user);
+        renderLogEntry(entry, user) {
+            // entry: { ts, kind, content, uid, guid, unread }
+            if (!entry || !user || !user.uid) {
+                console.error(this.LOG, 'renderLogEntry: Invalid args', {entry, user});
                 return;
             }
 
-            // 1) pick target container
+            const {ts, kind, content, guid} = entry;
+
+            // pick target
             let targetContainer = null;
             switch (kind) {
                 case 'dm-out':
                     targetContainer = this.ui.sentBox;
                     break;
-                case 'dm-in':
-                    targetContainer = this.ui.receivedMessagesBox;
+                case 'dm-in': {
+                    const isUnread = (entry.unread !== false); // missing ⇒ unread
+                    const preferred = isUnread ? this.ui.unrepliedMessageBox : this.ui.repliedMessageBox;
+                    targetContainer = preferred || this.ui.receivedMessagesBox;
                     break;
+                }
                 case 'login':
                 case 'logout':
                     targetContainer = this.ui.presenceBox;
@@ -3495,79 +3619,74 @@ Private send interception
                     break;
             }
             if (!targetContainer) return;
-            this.verbose(`Start rendering entry with timestamp ${ts}, type/kind ${kind}  and content ${content} from user ${user.uid}`, user, `in target container`, targetContainer);
 
-            // 5) entry root
-            const entry = document.createElement('div');
-            // Map 'dm-out' to 'send-ok' so the collapse handler recognizes it
-            const mappedKind = kind === 'dm-out' ? 'send-ok' : kind;
-            entry.className = 'ca-log-entry ' + ('ca-log-' + mappedKind);
+            this.verbose(
+                `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
+                user, 'in target container', targetContainer
+            );
 
-            // 4) build details HTML (safe decode → build)
-            const html = this.buildLogHTML(kind, user || {}, content);
-            const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
+            // entry root
+            const el = document.createElement('div');
+            const mappedKind = (kind === 'dm-out') ? 'send-ok' : kind; // keep collapse mapping
+            el.className = 'ca-log-entry ' + ('ca-log-' + mappedKind);
+            el.setAttribute('data-uid', String(user.uid));
+            if (guid != null) el.setAttribute('data-guid', String(guid));
 
-            if (user && user.uid != null) entry.setAttribute('data-uid', String(user.uid));
-
-            // 7) timestamp (HH:MM or right part of "DD/MM HH:MM")
+            // timestamp (HH:MM or right part of "DD/MM HH:MM")
             const tsEl = document.createElement('span');
             tsEl.className = 'ca-log-ts';
             tsEl.textContent = (String(ts).split(' ')[1] || String(ts));
-            entry.appendChild(tsEl);
+            el.appendChild(tsEl);
 
-            // 8) dot separator
+            // dot
             const dot = document.createElement('span');
             dot.className = 'ca-log-dot';
-            entry.appendChild(dot);
+            el.appendChild(dot);
 
-            // 9) expand indicator for outgoing (optional – keep if you collapse long items)
+            // expand indicator for outgoing
             if (kind === 'dm-out') {
                 const exp = document.createElement('span');
                 exp.className = 'ca-expand-indicator';
                 exp.title = 'Click to expand/collapse';
                 exp.textContent = '▾';
-                entry.appendChild(exp);
+                el.appendChild(exp);
             }
 
-            // 👉 NEW: username as its own flex item using your helper
-            const userEl = document.createElement('span');
-            userEl.className = 'ca-log-user';
-            userEl.innerHTML = this.userLinkHTML(user);  // <a href="#">Name</a> etc.
-            entry.appendChild(userEl);
+            // username
+            const userSpan = document.createElement('span');
+            userSpan.className = 'ca-log-user';
+            userSpan.innerHTML = this.userLinkHTML(user);
+            el.appendChild(userSpan);
 
-            // 10) message text (trusted via buildLogHTML → innerHTML)
+            // message text
+            const html = this.buildLogHTML(kind, user || {}, content);
+            const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
             const text = document.createElement('span');
             text.className = 'ca-log-text';
             text.innerHTML = detailsHTML;
-            entry.appendChild(text);
+            el.appendChild(text);
 
-            // 11) optional: add a small “dm” link on the right if you use it to open chat
+            // dm link
             const dm = document.createElement('a');
             dm.className = 'ca-dm-link ca-dm-right';
             dm.href = '#';
             dm.setAttribute('data-action', 'open-dm');
             dm.textContent = 'dm';
-            entry.appendChild(dm);
+            el.appendChild(dm);
 
-            entry.setAttribute('data-guid', guid);
+            // insert
+            targetContainer.appendChild(el);
 
-            // 2) incoming DMs: send to "Not Replied" vs "Replied" section
-            //    (do this before DOM creation to choose the real container)
-            if (kind === 'dm-in' && targetContainer === this.ui.receivedMessagesBox) {
-                console.log(`Start calling method to decide which message box incoming message should be rendered depending on replied status.`);
-                this.MarkAndRenderOrMoveRepliedMessage(entry, user.uid, ts);
-            } else {
-                // 12) insert entry (newest at bottom)
-                targetContainer.appendChild(entry);
+            // add replied marker if dm-in and already read
+            if (kind === 'dm-in' && entry.unread === false) {
+                this.AppendIfNotYetMarkedReplied?.(entry.guid);
             }
 
-            // 3) enforce max entries (older removed)
+            // trim + autoscroll
             try {
                 this.trimLogBoxToMax?.(targetContainer);
             } catch {
             }
-
-            // 13) auto-scroll the box to the bottom (next frame for reliability)
             requestAnimationFrame(() => {
                 try {
                     targetContainer.scrollTop = targetContainer.scrollHeight;
@@ -3577,18 +3696,12 @@ Private send interception
         }
 
         saveLogEntry(ts, kind, content, uid, guid) {
-            if (kind === 'login' || kind === 'logout') return; // don’t persist presence
-            let arr = [];
-            try {
-                const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
-                if (raw) arr = raw || [];
-            } catch (e) {
-                console.error(e);
-            }
-            arr.unshift({ts, kind, uid, content, guid});
-            const LOG_MAX = 200;
-            if (arr.length > LOG_MAX) arr = arr.slice(0, LOG_MAX);
-            this.Store.set(this.ACTIVITY_LOG_KEY, arr);
+            if (kind === 'login' || kind === 'logout') return; // presence not persisted
+            const entry = {
+                ts, kind, content, uid, guid,
+                unread: (kind === 'dm-in') ? true : undefined
+            };
+            this.ActivityLogStore.upsert(entry);
         }
 
         clearNode(el) {
@@ -3599,21 +3712,14 @@ Private send interception
 
         async restoreLog() {
             if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
+            const arr = this.ActivityLogStore.list({order: 'asc'}); // oldest→newest
 
-            let arr = [];
-            try {
-                const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
-                if (raw) arr = raw || [];
-            } catch (e) {
-                console.error(e);
-            }
-
-            for (let i = arr.length - 1; i >= 0; i--) {
+            for (let i = 0; i < arr.length; i++) {
                 const e = arr[i];
                 this.verbose('Restoring log', e);
-                // If you have a Users store/fetcher, adapt here; else build a minimal user object:
                 const user = await this.Users.getOrFetch(e.uid);
-                this.renderLogEntry(e.ts, e.kind, e.content, user, e.guid);
+                // ⬇️ pass the whole store entry + resolved user
+                this.renderLogEntry(e, user);
             }
         }
 
@@ -3641,13 +3747,18 @@ Private send interception
 
         logLine(kind, content, user, guid) {
             const ts = this.getTimeStampInWebsiteFormat();
+            const entry = {
+                ts,
+                kind,
+                content,
+                uid: user.uid,
+                guid: guid ? guid : crypto.randomUUID(),
+                unread: (kind === 'dm-in') ? true : undefined
+            };
 
-            // Generate a globally unique identifier (GUID)
-            guid = guid ? guid : crypto.randomUUID();
-
-            // Pass it along to both functions
-            this.renderLogEntry(ts, kind, content, user, guid);
-            this.saveLogEntry(ts, kind, content, user.uid, guid);
+            this.renderLogEntry(entry, user);
+            // keep existing persistence call but ensure it stores unread too (see next step)
+            this.saveLogEntry(entry.ts, entry.kind, entry.content, entry.uid, entry.guid);
         }
 
 
@@ -4016,9 +4127,10 @@ Private send interception
             this.REPLIED_CONVOS[uid] = this.getTimeStampInWebsiteFormat?.() || '';
             this.debug('Marking conversation as replied:', uid, 'timestamp:', this.REPLIED_CONVOS[uid]);
             this._saveRepliedConvos(this.REPLIED_CONVOS);
-            this.Store.get(this.ACTIVITY_LOG_KEY).filter(log => log.uid === uid).forEach(log => {
-                this.AppendIfNotYetMarkedReplied(log.guid);
-            });
+            this.ActivityLogStore.markReadFromDate(uid, this.REPLIED_CONVOS[uid]);
+            // this.Store.get(this.ACTIVITY_LOG_KEY).filter(log => log.uid === uid && log.unread && (this.parseLogDateToNumber(log.ts) >= this.parseLogDateToNumber(this.REPLIED_CONVOS[uid]))).forEach(log => {
+            //     this.AppendIfNotYetMarkedReplied(log.guid);
+            // });
 
             // also mark the regular profile picture as replied in the menu
             this.markSent?.(uid);
