@@ -848,21 +848,25 @@
             this._refreshUsersRunning = false;
         }
 
+        // ===== Clear Event Logs loop =====
         startClearEventLogLoop({
-                                   intervalMs = 5 * 60 * 1000, // default 5 minutes
+                                   intervalMs = 5 * 60 * 1000, // default: 5 minutes
                                    runImmediately = true
                                } = {}) {
             this.stopClearEventLogLoop?.(); // clear any previous loop
 
             const clearEvents = () => {
                 try {
+                    // clear all "event" entries from localStorage
                     const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
-                    if (removed > 0 && this.ui?.otherBox) {
-                        this.ui.otherBox.innerHTML = '';
-                        this.verbose?.('Cleared event logs automatically:', removed);
-                    }
-                } catch (e) {
-                    console.error("clearEvents failed:", e);
+
+                    // clear the UI container
+                    if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
+
+                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`);
+                    this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
+                } catch (err) {
+                    console.error("Error clearing event logs:", err);
                 }
             };
 
@@ -899,9 +903,7 @@
 
                 const html = await res.text();
                 this.processUserListResponse(html);
-
-                const sysUser = {uid: 'system', name: 'System'};
-                this.logLine('event', `Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`, sysUser);
+                this.logEventLine(`Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`);
 
             } catch (err) {
                 console.error('Error reloading user list:', err);
@@ -1512,6 +1514,54 @@ Private send interception
             }
         }
 
+        // Converts "D/M HH:MM" (or with seconds) to "DD/MM HH:MM:SS"
+        normalizeApiDate(ts) {
+            if (!ts) return this.getTimeStampInWebsiteFormat?.() || '';
+            const m = String(ts).match(/^\s*(\d{1,2})\/(\d{1,2})\s+(\d{2}):(\d{2})(?::(\d{2}))?\s*$/);
+            if (!m) return String(ts);
+            const DD = String(m[1]).padStart(2, '0');
+            const MM = String(m[2]).padStart(2, '0');
+            const hh = m[3], mm = m[4], ss = m[5] ?? '00';
+            return `${DD}/${MM} ${hh}:${mm}:${ss}`;
+        }
+
+        async handleChatLogPlogs(payload) {
+            try {
+                const plogs = Array.isArray(payload?.plogs) ? payload.plogs : [];
+                if (!plogs.length) return;
+
+                for (const p of plogs) {
+                    try {
+                        const uid = String(p.user_id);
+
+                        const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
+                        if (myUserId && String(uid) === myUserId) {
+                            console.verbose(`Skipping message from myself: ${uid}`);
+                            return false;
+                        }
+
+                        const user = await this.UserStore.getOrFetch(uid);
+                        if (!user) continue;
+
+                        // Normalize timestamp like "3/11 19:30" → "03/11 19:30:00"
+                        const ts = this.normalizeApiDate
+                            ? this.normalizeApiDate(p.log_date)
+                            : String(p.log_date || '');
+
+                        // Log as inbound private DM
+                        this.logLine('dm-in', String(p.log_content || ''), user, String(p.log_id), ts);
+
+                        // Update user’s chip status
+                        this.updateProfileChip?.(uid);
+                    } catch (err) {
+                        console.error('handleChatLogPlogs: entry failed:', err);
+                    }
+                }
+            } catch (e) {
+                console.error('handleChatLogPlogs failed:', e);
+            }
+        }
+
         /* ============ Chat payload processing ============ */
         caProcessChatPayload(txt, params) {
             try {
@@ -1539,6 +1589,12 @@ Private send interception
                 } catch (e) {
                     console.error(e);
                     console.error(this.LOG, 'Update CHAT_CTX.last error:', e);
+                }
+
+                // 🔗 NEW: if server already sent private logs in this payload, handle them now.
+                if (Array.isArray(data.plogs) && data.plogs.length > 0) {
+                    this.handleChatLogPlogs(data);
+                    return;
                 }
 
                 const pico = Number(data && data.pico);
@@ -3830,6 +3886,11 @@ Private send interception
                 const user = await this.UserStore.getOrFetch(log.uid);
                 this.renderLogEntry(log, user);
             }
+        }
+
+        logEventLine(content) {
+            const user = {uid: 'system', name: 'System'};
+            this.logLine('event', content, user);
         }
 
         logLine(kind, content, user, guid) {
