@@ -153,7 +153,7 @@
             const result = this._getAll().filter(
                 log => String(log.uid) === String(uid) && (!onlyUnread || log.unread)
             );
-            console.log(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+            this.app.debug(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
             return result;
         }
 
@@ -221,7 +221,7 @@
             const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
                 .filter(log => this.parseLogDateToNumber(log.ts) <= this.parseLogDateToNumber(fromDateStr))
                 .map(log => ({...log, unread: false}))
-            console.log(allUnreadMessagesForUid);
+            this.app.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
             return this.setAll(allUnreadMessagesForUid);
         }
 
@@ -243,6 +243,10 @@
         _getAll() {
             const raw = this.kv.get(this.cacheKey);
             return Array.isArray(raw) ? raw : [];
+        }
+
+        setHasRepliedUpToLog(uid) {
+            return this.get(uid)?.hasRepliedUpToLog !== 0;
         }
 
         _save(userToEdit) {
@@ -298,7 +302,11 @@
                 console.error('_mergeUser requires patch.uid');
             }
             const existing = this.get(newUser.uid);
-            return existing ? {...existing, ...newUser} : {...newUser, unread: 0};
+            return existing ? {...existing, ...newUser} : {
+                ...newUser,
+                hasRepliedUpToLog: 0,
+                isIncludedForBroadcast: true
+            };
         }
 
         // Merge many patches with existing (NO SAVE)
@@ -381,8 +389,28 @@
                 u => (u.name || String(u.uid)).toLowerCase() === needle
             );
             if (local.length) return local;
-            // Optional: add remote-by-name lookup here later
             return [];
+        }
+
+        includeUserForBroadcast(uid, include) {
+            if (uid == null) return null;
+            const u = this.get(uid) || {uid: String(uid)};
+            return this.set({...u, isIncludedForBroadcast: !!include});
+        }
+
+        isIncludedForBroadcast(uid) {
+            if (uid == null || uid === '') {
+                console.error(`isIncludedForBroadcast requires uid`);
+                return null;
+            }
+
+            const user = this.get(uid);
+            if (!user) {
+                console.error(`User ${uid} not found, cannot check isIncludedForBroadcast`);
+                return false;
+            }
+
+            return user.isIncludedForBroadcast;
         }
 
         clear() {
@@ -394,7 +422,7 @@
     class App {
         constructor() {
             /* ========= Constants / Keys ========= */
-            this.LOG = '[321ChatAddons]';
+            this.LOG = '';
             this.FEMALE_CODE = '2';
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
@@ -404,8 +432,6 @@
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
             this.USERS_KEY = '321chataddons.users';
-            this.EXC_KEY = '321chataddons.excluded';
-            this.REPLIED_CONVOS_KEY = '321chataddons.repliedConversations';
             this.LAST_PCOUNT_MAP_KEY = '321chataddons.lastPcountPerConversation';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 
@@ -420,14 +446,11 @@
             };
 
             // runtime maps (populated in init from storage)
-            this.EXCLUDED = {};          // { [uid]: 1 }
-            this.REPLIED_CONVOS = {};    // { [uid]: 'DD/MM HH:MM' }
             this.LAST_PCOUNT_MAP = {};   // { [uid]: number }
-            this.DISPLAYED_LOGIDS = {};  // { [uid]: string[] }
 
             /* ========= UI Refs ========= */
             this.ui = {
-                sUser: null, sMsg: null, sSend: null, sStat: null, sReset: null,
+                sUser: null, sMsg: null, sSend: null, sStat: null,
                 bMsg: null, bSend: null, bStat: null, bReset: null,
                 sentBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
                 repliedMessageBox: null, unrepliedMessageBox: null,
@@ -653,8 +676,6 @@
             // Initialize watermark once
             this.initializeGlobalWatermark();
 
-            this.EXCLUDED = this._loadExcluded();
-            this.REPLIED_CONVOS = this._loadRepliedConvos();
             this.LAST_PCOUNT_MAP = this._loadLastPcountMap();
 
             // build panel + wire refs + handlers
@@ -846,70 +867,40 @@ Private send interception
         }
 
         processPrivateSendResponse(responseText, requestBody) {
+
+            if (!responseText || typeof responseText !== 'string') return;
+
+            let data;
             try {
-                if (!responseText || typeof responseText !== 'string') return;
-
-                let data;
-                try {
-                    data = this.parseJSONOrEmpty(responseText);
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Private process parse error:', e);
-                    return;
-                }
-
-                data = this.toPrivateSendResponse(data);
-
-                // success = code:1
-                if (!data || data.code !== 1) return;
-
-                const logData = data.log || {};
-                const content = logData.log_content || '';
-                let targetId = '';
-
-                // Extract target from original request body
-                try {
-                    const params = new URLSearchParams(requestBody || '');
-                    targetId = params.get('target') || '';
-                } catch (e) {
-                    console.error(e);
-                }
-
-                if (!content || !targetId) return;
-
-                // Look up user - ensure we always have a valid user object
-                let userInfo = null;
-                try {
-                    userInfo = (this.UserStore && this.UserStore.get) ? this.UserStore.get(targetId) : null;
-                } catch (e) {
-                    console.error(e);
-                }
-
-                // Fallback to minimal user object if not found
-                if (!userInfo || !userInfo.uid) {
-                    userInfo = {
-                        uid: String(targetId),
-                        name: String(targetId),
-                        avatar: ''
-                    };
-                }
-
-                console.log(this.LOG, 'Intercepted native message send to', userInfo?.name || targetId, '(ID:', targetId, ')');
-
-                this.logLine('dm-out', content, userInfo, logData.log_id);
-                //this.addOrUpdateLastRepliedDateTimeForConversation?.(targetId);
-
-                try {
-                    const repliedAt = this.getTimeStampInWebsiteFormat();
-                    const affectedGuids = this.ActivityLogStore.markReadFromDate(targetId, repliedAt).map(log => log.guid);
-                    this._moveUnreadDomToRepliedByGuid(affectedGuids);
-                } catch (e) {
-                    console.error(this.LOG, 'Post-send mark/move error:', e);
-                }
-            } catch (err) {
-                console.error(err);
-                console.error(this.LOG, 'Process private send error:', err);
+                data = this.parseJSONOrEmpty(responseText);
+            } catch (e) {
+                console.error(e);
+                console.error(this.LOG, 'Private process parse error:', e);
+                return;
             }
+
+            data = this.toPrivateSendResponse(data);
+
+            if (!data || data.code !== 1) {
+                return;
+            }
+
+            const logData = data.log || {};
+            const content = logData.log_content || '';
+            const targetId = new URLSearchParams(requestBody || '').get('target') || '';
+
+            // Look up user - ensure we always have a valid user object
+            let dmSentToUser = this.UserStore.get(targetId);
+
+            console.log(this.LOG, 'Intercepted native message send to', dmSentToUser?.name || targetId, '(ID:', targetId, ')');
+
+            this.logLine('dm-out', content, dmSentToUser, logData.log_id);
+            this.UserStore.set({uid: dmSentToUser.uid, hasRepliedUpToLog: logData.log_id});
+            this.ensureSentChip(dmSentToUser.uid, true);
+
+            const repliedAt = this.getTimeStampInWebsiteFormat();
+            const affectedLogs = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
+            this.processReadStatusForLogs(affectedLogs);
         }
 
         installPrivateSendInterceptor() {
@@ -1054,7 +1045,7 @@ Private send interception
                 }
                 // Clean up temporary DOM element
                 tmp.innerHTML = '';
-                console.log(this.LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
+                this.verbose(this.LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
                 return out;
             } catch (e) {
                 console.error(e);
@@ -1178,7 +1169,7 @@ Private send interception
             return this.caFetchPrivateNotify().then((privateConversations) => {
                 try {
                     privateConversations = privateConversations || [];
-                    console.log(this.LOG, 'Private conversations:', privateConversations.length);
+                    this.verbose(this.LOG, 'Private conversations:', privateConversations.length);
                     // sort: unread desc, then name asc
                     privateConversations.sort((a, b) => {
                         const au = a.unread || 0, bu = b.unread || 0;
@@ -1204,7 +1195,6 @@ Private send interception
                     return Promise.resolve('');
                 }
 
-                console.error(this.UserStore.get(uid)?.lastRead || 0);
                 const bodyObj = {
                     token,
                     cp: 'chat',
@@ -1231,12 +1221,12 @@ Private send interception
                     console.error(this.LOG, 'Chat context error:', e);
                 }
 
-                console.log(bodyObj);
+                this.verbose(`Fetch chatlog body: `, bodyObj);
 
                 // Debug log (sanitized)
                 try {
                     const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
-                    console.log(this.LOG, 'caFetchChatLogFor uid=', uid, ' body:', bodyLog);
+                    this.verbose(this.LOG, 'caFetchChatLogFor uid=', uid, ' body:', bodyLog);
                 } catch (err) {
                     console.error(err);
                 }
@@ -1254,15 +1244,15 @@ Private send interception
                     body
                 })
                     .then((res) => {
-                        console.log(this.LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
+                        this.verbose(this.LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
                         return res.text();
                     })
                     .then((txt) => {
-                        console.log(this.LOG, 'caFetchChatLogFor received a response succesfully');
+                        this.verbose(this.LOG, 'caFetchChatLogFor received a response succesfully');
                         return txt;
                     })
                     .catch((err) => {
-                        console.error(this.LOG, 'Fetch chat log error:', err);
+                        this.verbose(this.LOG, 'Fetch chat log error:', err);
                         return null;
                     });
             } catch (e) {
@@ -1339,7 +1329,7 @@ Private send interception
                 }).sort((a, b) => (b.log_id) - (a.log_id));
 
                 console.log(`Parsing new messages`, items);
-                console.log(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
+                this.debug(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
                 this.UserStore.setLastRead(uid, items[items.length - 1]?.log_id);
 
                 for (let i = 0; i < items.length; i++) {
@@ -1419,7 +1409,7 @@ Private send interception
 
                 // throttle actual PM fetches when pico > 0
                 if (this._cp_lastPN && (now - this._cp_lastPN) <= this._cp_PN_INTERVAL) {
-                    console.log(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
+                    this.verbose(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
                     return;
                 }
                 this._cp_lastPN = now;
@@ -1430,7 +1420,7 @@ Private send interception
                 this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
                     try {
                         privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-                        console.log(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
+                        this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
 
                         const toFetch = privateConversations
                             .filter(pc => pc.unread > 0)
@@ -1441,7 +1431,7 @@ Private send interception
                             return;
                         }
 
-                        console.log(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+                        this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
 
                         (async () => {
                             for (let i = 0; i < toFetch.length; i++) {
@@ -1677,7 +1667,7 @@ Private send interception
                 const user = await this.UserStore.getOrFetch(uid);
                 this.verbose('_onLogClickGeneric: Resolved user:', user);
                 if (!user) {
-                    console.warn('[321ChatAddons] unknown uid:', uid);
+                    console.warn(`unknown uid ${uid}`);
                     return;
                 }
 
@@ -1893,18 +1883,17 @@ Private send interception
             for (let i = 0; i < list.length; i++) {
                 const el = list[i].el, uid = list[i].uid;
                 if (!this._isAllowedRank?.(el)) continue;
-                if (this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]) continue; // skip already messaged
+                if (this.UserStore.setHasRepliedUpToLog(uid)) {
+                    console.log(`Skipping message to ${el.name} (already replied)`);
+                    continue;
+                }
                 const cb = el ? el.querySelector('.ca-ck') : null;
-                const include = cb ? cb.checked : !this.EXCLUDED[uid];
-                if (include) out.push(list[i]);
+
+                if (cb ? cb.checked : !this.UserStore.isIncludedForBroadcast(uid)) {
+                    out.push(list[i]);
+                }
             }
             return out;
-        }
-
-        resetForText(statEl) {
-            this._saveRepliedConvos({});
-            if (statEl) statEl.textContent = 'Cleared sent-tracking for this message.';
-            return true;
         }
 
         /* ===================== SEND WITH THROTTLE ===================== */
@@ -1953,11 +1942,6 @@ Private send interception
                 }
 
                 const target = candidates[0]; // first exact match
-                const sentMap = this._loadRepliedConvos();
-                if (sentMap && sentMap[target.uid]) {
-                    if (stat) stat.textContent = `Already sent to ${target.name || target.uid}. Change text to resend.`;
-                    return;
-                }
 
                 this.ui.sSend.disabled = true;
                 try {
@@ -1989,13 +1973,8 @@ Private send interception
                 }
 
                 const list = this.buildBroadcastList();
-                const sent = this._loadRepliedConvos();
                 const to = [];
-                for (let i = 0; i < list.length; i++) if (!sent[list[i].id]) to.push(list[i]);
-                if (!to.length) {
-                    $bStat && ($bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).');
-                    return;
-                }
+                for (let i = 0; i < list.length; i++) to.push(list[i]);
 
                 $bSend.disabled = true;
                 let ok = 0, fail = 0, B = 10, T = Math.ceil(to.length / B);
@@ -2024,7 +2003,6 @@ Private send interception
                         this.sendWithThrottle(item.id, text).then((r) => {
                             if (r && r.ok) {
                                 ok++;
-                                sent[item.id] = 1;
                             } else {
                                 fail++;
                                 // this.logSendFail?.(uname, item.id, av, r ? r.status : 0, text);
@@ -2278,7 +2256,16 @@ Private send interception
                     loggedOffCount++;
                 }
 
-                console.log(`[USER_LIST] Summary: Logged in ${loggedInCount} users, Logged off ${loggedOffCount} female users, Updated ${updatedProfileCount} profiles`);
+                console.log(`%c [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} female users logged off`,
+                    'color: #7ea9d1; font-weight: 600;', // soft blue
+                    'color: inherit;',
+                    'color: #6bbf73; font-weight: 500;', // soft green
+                    'color: inherit;',
+                    'color: #d8b35a; font-weight: 500;', // muted yellow/gold
+                    'color: inherit;',
+                    'color: #d66b6b; font-weight: 500;'  // soft red
+                );
+
 
                 // Clean up temporary DOM element
                 tempDiv.innerHTML = '';
@@ -2298,9 +2285,9 @@ Private send interception
                     const managedCount = allManagedUsers.length;
                     if (this.ui.managedCount) {
                         this.ui.managedCount.textContent = String(managedCount);
-                        console.log(this.LOG, '[USER_LIST] Updated managed counter to:', managedCount, 'users');
+                        console.log(this.LOG, '[USER_LIST] Woman online:', managedCount);
                     } else {
-                        console.warn(this.LOG, '[USER_LIST] managedCount element not found - selector:', this.sel.users.managedCount);
+                        console.warn(this.LOG, '[USER_LIST] Men online::', this.sel.users.managedCount);
                     }
 
                     // Update host users count - count actual DOM elements in host container
@@ -2335,9 +2322,8 @@ Private send interception
                 }
 
                 // Determine reply status
-                const replied = !!(user.uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[user.uid]);
+                const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
                 this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
-                this.debug(`[_handleVisibilityOrGenderChange] Newly visible female ${name} (${user.uid})`);
                 this.ensureSentChip?.(user.uid, replied);
             } catch (e) {
                 console.error(e);
@@ -2347,6 +2333,7 @@ Private send interception
         // Check if a user element is visible in the DOM
         isUserVisible(el) {
             try {
+                d
                 if (!el || el.nodeType !== 1) return false;
                 // Check if this node or any ancestor has ca-hidden class
                 if (el.classList?.contains('ca-hidden') || el.closest?.('.ca-hidden')) return false;
@@ -2416,11 +2403,8 @@ Private send interception
             try {
                 return JSON.parse(String(str));
             } catch (e) {
-                try {
-                    console.error(e);
-                } catch (_) {
-                }
-                return {};
+                console.error(e);
+                return null;
             }
         }
 
@@ -2460,7 +2444,7 @@ Private send interception
                 (typeof o.code === 'string' ? (Number(o.code) || 0) : 0);
             return {
                 code: codeNum,
-                log: {log_content: String(o?.log?.log_content ?? '')}
+                log: o?.log
             };
         }
 
@@ -2487,7 +2471,7 @@ Private send interception
                 if (!msgNum) return false;
 
                 const isNewer = msgNum >= wmNum;
-                console.log(this.LOG, 'Date comparison:', {
+                this.verbose(this.LOG, 'Date comparison:', {
                     logDate: logDateStr, logDateNum: msgNum,
                     watermark, watermarkNum: wmNum, isNewer
                 });
@@ -2732,43 +2716,6 @@ Private send interception
             return out;
         }
 
-        /* ---------- Mark sent + chips/sorting ---------- */
-        markSent(uid) {
-            try {
-                this.ensureSentChip(uid);
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        /* ---------- EXCLUDED (persisted checkboxes) ---------- */
-        _loadExcluded() {
-            const raw = this.Store.get(this.EXC_KEY);
-            if (!raw) return {};
-            const arr = Array.isArray(raw) ? raw : [];
-            const map = {};
-            for (let i = 0; i < arr.length; i++) {
-                const k = String(arr[i]);
-                if (k) map[k] = 1;
-            }
-            return map;
-        }
-
-        _saveExcluded(map) {
-            const arr = [];
-            for (const k in map) if (Object.prototype.hasOwnProperty.call(map, k) && map[k]) arr.push(k);
-            this.Store.set(this.EXC_KEY, arr);
-        }
-
-        /* ---------- REPLIED_CONVOS ---------- */
-        _loadRepliedConvos() {
-            return this.Store.get(this.REPLIED_CONVOS_KEY) || {};
-        }
-
-        _saveRepliedConvos(map) {
-            this.Store.set(this.REPLIED_CONVOS_KEY, map);
-        }
-
         /* ---------- Last pcount map ---------- */
         _loadLastPcountMap() {
             try {
@@ -2852,23 +2799,10 @@ Private send interception
             }
         }
 
-        updateSentBadges() {
-            try {
-                const c = this.getContainer();
-                if (!c) return;
-                this.qsa('.user_item', c).forEach(el => {
-                    const id = this.getUserId(el);
-                    this.ensureSentChip(id, !!(id && this.REPLIED_CONVOS[id]));
-                });
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
         // Is this row "replied" according to your truth source
         _isRowReplied(row) {
             const uid = this.getUserId?.(row);
-            return !!(uid && this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid]);
+            return this.UserStore.setHasRepliedUpToLog(uid);
         }
 
         // Check if a row is eligible (female + allowed rank)
@@ -2919,8 +2853,8 @@ Private send interception
                 if (this.qs('.ca-ck-wrap', el)) return;    // already has one
                 if (!this._isAllowedRank?.(el)) return;
 
-                const id = this.getUserId?.(el);
-                if (!id) return;
+                const uid = this.getUserId?.(el);
+                if (!uid) return;
 
                 this._isMakingOwnChanges = true;
 
@@ -2932,14 +2866,13 @@ Private send interception
                 cb.type = 'checkbox';
                 cb.className = 'ca-ck';
 
-                // initial state could reflect some user list / selection map if you have one
-                cb.checked = !!(this.EXCLUDED && !this.EXCLUDED[id]);
+                cb.checked = this.UserStore.isIncludedForBroadcast(uid);
 
                 wrap.appendChild(cb);
                 el.appendChild(wrap);
 
                 // (optional) event hookup here if you don’t already wire at container level
-                cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, id, el));
+                cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
 
             } catch (e) {
                 console.error(e);
@@ -2947,6 +2880,16 @@ Private send interception
                 setTimeout(() => {
                     this._isMakingOwnChanges = false;
                 }, 0);
+            }
+        }
+
+        handleCheckboxChange(e, uid /*, el */) {
+            try {
+                const include = !!e?.target?.checked;
+                this.UserStore?.includeUserForBroadcast?.(uid, include);
+                this.debug?.(`[BC] isIncludedForBroadcast → uid=${uid}, include=${include}`);
+            } catch (err) {
+                console.error('[BC] handleCheckboxChange failed:', err);
             }
         }
 
@@ -3311,15 +3254,6 @@ Private send interception
             this.ui.sMsg = this.qs(this.sel.specificPop.msg);
             this.ui.sSend = this.qs(this.sel.specificPop.send);
             this.ui.sStat = this.qs(this.sel.specificPop.status);
-            this.ui.sReset = this.qs(this.sel.specificPop.reset);
-
-            if (this.ui.sReset && !this.ui.sReset._wired) {
-                this.ui.sReset._wired = true;
-                this.ui.sReset.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.resetForText(this.ui.sStat);
-                });
-            }
 
             // Wire the send button - reset the flag since we're binding to new modal elements
             if (this.ui.sSend) {
@@ -3352,17 +3286,7 @@ Private send interception
             // rebind refs and handlers for broadcast controls inside popup
             this.ui.bMsg = this.qs('#ca-bc-msg');
             this.ui.bSend = this.qs('#ca-bc-send');
-            this.ui.bReset = this.qs('#ca-bc-reset');
             this.ui.bStat = this.qs('#ca-bc-status');
-
-            if (this.ui.bReset && !this.ui.bReset._wired) {
-                this.ui.bReset._wired = true;
-
-                this.ui.bReset.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.resetForText(this.ui.bStat);
-                });
-            }
 
             if (this.ui.bSend && !this.ui.bSend._wired) {
                 this.ui.bSend._wired = true;
@@ -3376,10 +3300,9 @@ Private send interception
                     }
 
                     const list = this.buildBroadcastList();
-                    const sent = this._loadRepliedConvos();
                     const to = [];
                     for (let i = 0; i < list.length; i++) {
-                        if (!sent[list[i].uid]) to.push(list[i]);
+                        to.push(list[i]);
                     }
                     if (!to.length) {
                         if ($bStat) $bStat.textContent = 'No new recipients for this message (after exclusions/rank filter).';
@@ -3415,7 +3338,6 @@ Private send interception
                             this.sendWithThrottle(item.uid, text).then((r) => {
                                 if (r && r.ok) {
                                     ok++;
-                                    sent[item.uid] = 1;
                                 }
                                 if ($bStat) {
                                     $bStat.textContent = `Batch ${bi + 1}/${T} — ${idx}/${batch.length} sent (OK:${ok} Fail:${fail})`;
@@ -3607,27 +3529,7 @@ Private send interception
             });
         }
 
-        /* ---------- Activity Log ---------- */
-        hasRepliedSince(uid, msgTimestamp) {
-            try {
-                if (!uid) return false;
-                const repliedAt = this.REPLIED_CONVOS && this.REPLIED_CONVOS[uid];
-                if (!repliedAt) return false;
-                const repliedTime = this.parseLogDateToNumber(repliedAt);
-                const msgTime = this.parseLogDateToNumber(msgTimestamp);
-                return !!(repliedTime && msgTime && repliedTime >= msgTime);
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
-        }
-
-        determineTargetMessagesContainer(uid, msgTimestamp) {
-            const replied = this.hasRepliedSince(uid, msgTimestamp);
-            return replied ? this.ui.repliedMessageBox : this.ui.unrepliedMessageBox;
-        }
-
-        AppendIfNotYetMarkedReplied(guid) {
+        addRepliedBadgeToLog(guid) {
             const logEl = this.qs(`.ca-log-entry[data-guid="${guid}"]`, this.ui.receivedMessagesBox);
             if (!logEl) {
                 console.error('Failed to find log entry for:', guid);
@@ -3733,7 +3635,7 @@ Private send interception
 
             // add replied marker if dm-in and already read
             if (kind === 'dm-in' && activityLog.unread === false) {
-                this.AppendIfNotYetMarkedReplied?.(activityLog.guid);
+                this.addRepliedBadgeToLog?.(activityLog.guid);
             }
             requestAnimationFrame(() => {
                 try {
@@ -3761,7 +3663,7 @@ Private send interception
         async restoreLog() {
             if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
 
-            const logs = await this.ActivityLogStore.list({order: 'asc'}) || [];
+            const logs = this.ActivityLogStore.list({order: 'asc'}) || [];
 
             for (const log of logs) {  // ✅ 'of' iterates the actual log objects
                 this.verbose('Restoring log', log);
@@ -4145,20 +4047,21 @@ Private send interception
             }
         }
 
-        // in App
-        _moveUnreadDomToRepliedByGuid(guids) {
-            if (!Array.isArray(guids) || !guids.length) return;
+        processReadStatusForLogs(logs) {
+            if (!Array.isArray(logs) || !logs.length) {
+                console.warn(`There are no logs to process the read status for.`);
+                return;
+            }
+
             const src = this.ui.unrepliedMessageBox;
             const dst = this.ui.repliedMessageBox || this.ui.receivedMessagesBox;
             if (!src || !dst) return;
 
-            for (const guid of guids) {
-                const el = this.qs(`.ca-log-entry[data-guid="${guid}"]`, src);
-                if (!el) continue;
+            for (const log of logs) {
+                log.debug(`Processing read status for log ${log.guid}`);
+                const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, src);
                 dst.appendChild(el);
-                this.AppendIfNotYetMarkedReplied?.(guid);
-
-                this.markSent?.(guid);
+                this.addRepliedBadgeToLog?.(log.guid);
             }
         }
 

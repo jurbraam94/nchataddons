@@ -2,7 +2,7 @@
 .ca-panel {
     display: flex;
     flex-direction: column;
-    width: 700px;
+    width: 600px;
     max-width: 96vw;
     border: 2px solid #2b90ff;
     border-radius: 12px;
@@ -391,8 +391,8 @@
 
 .ca-ck-wrap {
     position: absolute;
-    top: 6px;
-    right: 8px;
+    right: 3px;
+    top: 0;
     z-index: 2;
     display: inline-flex;
     align-items: center;
@@ -404,8 +404,8 @@
 }
 
 .ca-ck-wrap .ca-ck {
-    width: 14px;
-    height: 14px;
+    width: 10px;
+    height: 10px;
     cursor: pointer;
     pointer-events: auto;
     accent-color: #93c5fd;
@@ -414,14 +414,13 @@
 /* Already messaged checkmark (non-interactive) */
 .user_item .ca-sent-chip {
     position: absolute;
-    bottom: 6px;
-    left: 8px;
+    left: 35px;
     z-index: 2;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 13px;
+    height: 13px;
     border-radius: 4px;
     background: #22c55e;
     color: #073b16;
