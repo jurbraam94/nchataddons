@@ -262,6 +262,18 @@
             return next.length !== all.length;
         }
 
+        clearByKind(kind) {
+            if (!kind) return 0;
+            const all = this._getAll();
+            const next = all.filter(l => l?.kind !== kind);
+            this.kv.set(this.cacheKey, next);
+            return all.length - next.length;
+        }
+
+        clearEvents() {
+            return this.clearByKind('event');
+        }
+
         clear() {
             this.kv.set(this.cacheKey, []);
         }
@@ -791,19 +803,83 @@
             this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
             this.watchChatRightForHostChanges();
 
-            // Prevent multiple intervals if init() can be called again
-            if (this._refreshInterval) clearInterval(this._refreshInterval);
+            await this.startRefreshUsersLoop({intervalMs: 60000}); // every 60s
+            this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
 
-            // Schedule every 30 seconds
-            this._refreshInterval = setInterval(async () => {
+            return this;
+        }
+
+        // ===== Refresh Users loop =====
+        async startRefreshUsersLoop({
+                                        intervalMs = 60000,    // default 60s
+                                        runImmediately = true
+                                    } = {}) {
+            this.stopRefreshUsersLoop?.(); // clear any previous loop
+
+            this._refreshUsersIntervalMs = intervalMs;
+            this._refreshUsersRunning = false;
+
+            if (runImmediately) {
                 try {
                     await this.refreshUserList();
                 } catch (err) {
-                    console.error("Error refreshing user list:", err);
+                    console.error("Error refreshing user list (initial):", err);
                 }
-            }, 30000);
+            }
 
-            return this;
+            this._refreshUsersTimerId = setInterval(async () => {
+                if (this._refreshUsersRunning) return;
+                this._refreshUsersRunning = true;
+                try {
+                    await this.refreshUserList();
+                } catch (err) {
+                    console.error("Error refreshing user list (interval):", err);
+                } finally {
+                    this._refreshUsersRunning = false;
+                }
+            }, this._refreshUsersIntervalMs);
+        }
+
+        stopRefreshUsersLoop() {
+            if (this._refreshUsersTimerId) {
+                clearInterval(this._refreshUsersTimerId);
+                this._refreshUsersTimerId = null;
+            }
+            this._refreshUsersRunning = false;
+        }
+
+        startClearEventLogLoop({
+                                   intervalMs = 5 * 60 * 1000, // default 5 minutes
+                                   runImmediately = true
+                               } = {}) {
+            this.stopClearEventLogLoop?.(); // clear any previous loop
+
+            const clearEvents = () => {
+                try {
+                    const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
+                    if (removed > 0 && this.ui?.otherBox) {
+                        this.ui.otherBox.innerHTML = '';
+                        this.verbose?.('Cleared event logs automatically:', removed);
+                    }
+                } catch (e) {
+                    console.error("clearEvents failed:", e);
+                }
+            };
+
+            if (runImmediately) clearEvents();
+
+            this._clearEventsTimerId = setInterval(clearEvents, intervalMs);
+        }
+
+        stopClearEventLogLoop() {
+            if (this._clearEventsTimerId) {
+                clearInterval(this._clearEventsTimerId);
+                this._clearEventsTimerId = null;
+            }
+        }
+
+        clearEventLogUI() {
+            if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
         }
 
         async refreshUserList() {
@@ -2215,7 +2291,6 @@ Private send interception
 
         /* Parse user_list.php HTML response and process users */
         processUserListResponse(html, isInitialLoad = false) {
-
             if (!html || typeof html !== 'string') return;
             console.log("\n========== START PARSING NEW USER LIST ==========");
             if (html.includes('ca-hidden')) {
@@ -2302,14 +2377,13 @@ Private send interception
                 // UI updates for female users
                 if (isFemale) {
                     const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
-                    this._handleVisibilityOrGenderChange(el, newUser, isAllowedRank);
+                    this.addUserItemAdditions(el, newUser, isAllowedRank);
                     userEl.remove();
                     this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
                 }
             });
 
             // Only try to remove nodes if it wasnt the initial load ( after page reload all nodes are readded)
-
             const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
             for (const user of currentlyLoggedIn) {
                 const id = String(user.uid);
@@ -2329,7 +2403,9 @@ Private send interception
                         const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
                         this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
                         if (elementToRemove) elementToRemove.remove();
-                        else console.error(`Couldn't remove user ${id} from managed container`);
+                        else {
+                            console.warn(`Couldn't remove user ${id} from managed container because the user is probably offline already.`);
+                        }
                     }
                 }
 
@@ -2345,7 +2421,6 @@ Private send interception
                 'color: inherit;',
                 'color: #d66b6b; font-weight: 500;'  // soft red
             );
-
 
             // Clean up temporary DOM element
             tempDiv.innerHTML = '';
@@ -2385,9 +2460,9 @@ Private send interception
             });
         }
 
-        _handleVisibilityOrGenderChange(el, user, isAllowedRank) {
+        addUserItemAdditions(el, user, isAllowedRank) {
             const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
-            this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) profile processeing. replied status:`, replied, 'isAllowedRank (for broadcast)', isAllowedRank);
+            this.verbose(`[UserItemAdditions] User ${name} (${user.uid}) profile processing. replied status:`, replied, 'isAllowedRank (for broadcast)', isAllowedRank);
 
             // Ensure UI elements for female users if rank allows
             if (isAllowedRank) {
@@ -4152,6 +4227,8 @@ Private send interception
             this._uninstallAudioAutoplayGate();
             this.uninstallNetworkTaps();
             this.uninstallPrivateSendInterceptor();
+            this.stopRefreshUsersLoop();
+            this.stopClearEventLogLoop();
         }
     }
 
