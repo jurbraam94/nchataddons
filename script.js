@@ -1124,7 +1124,6 @@ Private send interception
             }
         }
 
-
         caParseProfile(html) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
@@ -1157,7 +1156,6 @@ Private send interception
 
             return {name, avatar, isFemale, isLoggedIn};
         }
-
 
         caFetchPrivateNotify() {
             const token = this.getToken();
@@ -2317,7 +2315,6 @@ Private send interception
         }
 
         _handleVisibilityOrGenderChange(el, user, isAllowedRank) {
-
             this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${user.uid})`);
 
             // Ensure UI elements for female users if rank allows
@@ -2332,24 +2329,6 @@ Private send interception
             const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
             this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
             this.updateProfileChip?.(user.uid);
-
-        }
-
-        // Check if a user element is visible in the DOM
-        isUserVisible(el) {
-            try {
-                if (!el || el.nodeType !== 1) return false;
-                // Check if this node or any ancestor has ca-hidden class
-                if (el.classList?.contains('ca-hidden') || el.closest?.('.ca-hidden')) return false;
-
-                const cs = window.getComputedStyle(el);
-                if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
-                // offsetParent covers many hidden cases; also check size
-                return !(el.offsetParent === null && (el.offsetWidth === 0 && el.offsetHeight === 0));
-
-            } catch {
-                return true;
-            }
         }
 
         /* ===================== CHAT TAP (partial) ===================== */
@@ -2735,15 +2714,6 @@ Private send interception
             this.Store.set(this.LAST_PCOUNT_MAP_KEY, map || {});
         }
 
-        getLastPcountFor(uid) {
-            try {
-                return (this.LAST_PCOUNT_MAP && Number(this.LAST_PCOUNT_MAP[uid])) || 0;
-            } catch (e) {
-                console.error(e);
-                return 0;
-            }
-        }
-
         setLastPcountFor(uid, pc) {
             try {
                 if (!uid) return;
@@ -2773,25 +2743,18 @@ Private send interception
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
             console.log(`Updating profile chip for user ${uid} with ${unreadReceivedMessagesCount} unread received messages and ${sentMessagesCount} sent messages`);
-            const userEl = this.findUserElementById(uid);
 
+            const userEl = this.findUserElementById(uid);
             if (!userEl) {
                 console.error('updateProfileChip: user element not found for uid:', uid);
                 return;
             }
 
+            const container = userEl.parentElement;
+            if (!container) return;
 
-            if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                console.log('Adding all read chip to user:', uid);
-                const chip = this._createChipForUserItem(userEl, uid);
-
-                userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
-                userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
-
-                chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_all_read));
-                chip.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_unread));
-                chip.textContent = '✓';
-            } else if (unreadReceivedMessagesCount > 0) {
+            // Unread messages → move to top
+            if (unreadReceivedMessagesCount > 0) {
                 console.log('Adding unread sent chip to user:', uid);
                 const chip = this._createChipForUserItem(userEl, uid);
 
@@ -2801,9 +2764,30 @@ Private send interception
                 chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_unread));
                 chip.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_all_read));
                 chip.textContent = `${unreadReceivedMessagesCount}`;
+
+                // --- Move user to top of container ---
+                if (container.firstElementChild !== userEl) {
+                    container.insertBefore(userEl, container.firstElementChild);
+                }
+
+                // All read (✓) → move to bottom
+            } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
+                console.log('Adding all read chip to user:', uid);
+                const chip = this._createChipForUserItem(userEl, uid);
+
+                userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
+                userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
+
+                chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_all_read));
+                chip.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_unread));
+                chip.textContent = '✓';
+
+                // --- Move user to bottom of container ---
+                container.appendChild(userEl);
+
+                // No sent messages → remove chip
             } else {
                 console.log(`Removing sent chip from user ${uid}`);
-                // only apply if no message have sent to the user.
                 if (userEl.classList.contains('chataddons-sent')) {
                     userEl.classList.remove('chataddons-sent');
                     userEl.style.removeProperty('outline');
@@ -2828,39 +2812,6 @@ Private send interception
             }
             return chip;
         }
-
-        // Is this row "replied" according to your truth source
-        _isRowReplied(row) {
-            const uid = this.getUserId?.(row);
-            return this.UserStore.setHasRepliedUpToLog(uid);
-        }
-
-        // Check if a row is eligible (female + allowed rank)
-        _isRowEligible(row) {
-            if (!row) return false;
-            const isFemale = row.getAttribute('data-gender') === this.FEMALE_CODE;
-            const hasAllowedRank = this._isAllowedRank?.(row);
-            return isFemale && hasAllowedRank;
-        }
-
-        // Find the first visible replied row (partition boundary)
-        _getFirstVisibleRepliedRow(container) {
-            // skip hidden (e.g., non-female or filtered)
-            return this.qs('.user_item:not(.ca-hidden) .ca-sent-chip', container)?.closest('.user_item') || null;
-        }
-
-        // Find the first ineligible row (partition boundary for ineligible accounts)
-        _getFirstIneligibleRow(container) {
-            if (!container) return null;
-            const items = this.qsa('.user_item:not(.ca-hidden)', container);
-            for (let i = 0; i < items.length; i++) {
-                if (!this._isRowEligible(items[i])) {
-                    return items[i];
-                }
-            }
-            return null;
-        }
-
 
         /* ---------- Rank filter & selection checkbox ---------- */
         _isAllowedRank(el) {
@@ -3292,7 +3243,6 @@ Private send interception
             }
         }
 
-
         openBroadcast() {
             console.log(this.LOG, 'openBroadcast() called');
             const pop = this.createBroadcastPopup();
@@ -3684,12 +3634,6 @@ Private send interception
             this.ActivityLogStore.set(entry);
         }
 
-        clearNode(el) {
-            if (!el) return;
-            // Fast and safe: clears children without replacing the node
-            el.textContent = '';
-        }
-
         async restoreLog() {
             if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
 
@@ -3700,7 +3644,6 @@ Private send interception
                 const user = await this.UserStore.getOrFetch(log.uid);
                 this.renderLogEntry(log, user);
             }
-
         }
 
         logLine(kind, content, user, guid) {
@@ -3718,7 +3661,6 @@ Private send interception
             // keep existing persistence call but ensure it stores unread too (see next step)
             this.saveLogEntry(entry.ts, entry.kind, entry.content, entry.uid, entry.guid);
         }
-
 
         userLinkHTML(user) {
             return `<a href="#"
