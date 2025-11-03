@@ -421,6 +421,18 @@
             return this.getAllLoggedIn().filter(u => u.isFemale);
         }
 
+        getMalesLoggedIn() {
+            return this.getAllLoggedIn().filter(u => !u.isFemale);
+        }
+
+        getFemalesLoggedInCount() {
+            return this.getFemalesLoggedIn().length;
+        }
+
+        getMalesLoggedInCount() {
+            return this.getMalesLoggedIn().length;
+        }
+
         async getOrFetch(id) {
             let u = this.get(id);
             if (!u && this.app?.searchUserRemote) {
@@ -535,6 +547,8 @@
             this._origFetch = null;
             this._xhrOpen = null;
             this._xhrSend = null;
+
+            this.isInitialLoad = true;
 
             /* ========= Small Helpers (bound) =========
                (If you later move these to class methods, remove these lambdas.) */
@@ -771,13 +785,6 @@
             // Re-bind counter references after creating the containers
             this.ui.managedCount = this.qs(this.sel.users.managedCount);
             this.ui.hostCount = this.qs(this.sel.users.hostCount);
-
-            // Process the initial user list after a short delay to ensure DOM is ready
-            // This handles the initial state before user_list.php is called
-            setTimeout(() => {
-                console.log(this.LOG, '[INIT] Running processInitialUserList after delay');
-                this.processInitialUserList();
-            }, 500);
 
             const bar = document.getElementById('right_panel_bar');
 
@@ -2193,25 +2200,6 @@ Private send interception
             }
         }
 
-        /* Process initial user list that's already in the DOM on page load */
-        processInitialUserList() {
-            console.log(this.LOG, '[INITIAL] Processing initial user list from DOM');
-
-            // Use cached host container
-            if (!this.ui.hostContainer) {
-                console.warn(this.LOG, '[INITIAL] Host container not cached');
-                return;
-            }
-
-            // Get the HTML from the host container and process it using unified method
-            const htmlContent = this.ui.hostContainer.innerHTML;
-
-            if (htmlContent) {
-                this.processUserListResponse(htmlContent, true); // true = isInitialLoad
-            } else {
-                console.warn(this.LOG, '[INITIAL] Host container is empty');
-            }
-        }
 
         /* Check if URL is user_list.php */
         isUserListUrl(u) {
@@ -2231,14 +2219,14 @@ Private send interception
         }
 
         /* Parse user_list.php HTML response and process users */
-        processUserListResponse(html, isInitialLoad = false) {
+        processUserListResponse(html) {
             if (!html || typeof html !== 'string') return;
             console.log("\n========== START PARSING NEW USER LIST ==========");
             if (html.includes('ca-hidden')) {
                 console.error(`RESPONSE CONTAINS HIDDEN USER ITEMS!!`);
             }
 
-            const context = isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
+            const context = this.isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
             this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
 
             // Get managed container (created once in init, never removed)
@@ -2299,7 +2287,7 @@ Private send interception
                     });
 
                     // Login transition event
-                    if (!isInitialLoad && existingUser?.isLoggedIn !== true) {
+                    if (!this.isInitialLoad && existingUser?.isLoggedIn !== true) {
                         console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
                         if (isFemale) {
                             this.logLogin?.(newUser);
@@ -2332,7 +2320,7 @@ Private send interception
 
                 this.UserStore.setLoggedIn(id, false);
 
-                if (!isInitialLoad) {
+                if (!this.isInitialLoad) {
                     console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
                 } else {
                     this.verbose(`[INIT] User ${user.name} (${user.uid}) initially logged out - no log entry`);
@@ -2340,7 +2328,7 @@ Private send interception
 
                 if (user.isFemale) {
                     this.logLogoutToLogLine(user);
-                    if (!isInitialLoad) {
+                    if (!this.isInitialLoad) {
                         const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
                         this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
                         if (elementToRemove) elementToRemove.remove();
@@ -2353,14 +2341,19 @@ Private send interception
                 loggedOffCount++;
             }
 
-            console.log(`%c [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} female users logged off`,
-                'color: #7ea9d1; font-weight: 600;', // soft blue
+            console.log(
+                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
+                'color: #7ea9d1; font-weight: 600;',
                 'color: inherit;',
-                'color: #6bbf73; font-weight: 500;', // soft green
+                'color: #6bbf73; font-weight: 500;',
                 'color: inherit;',
-                'color: #d8b35a; font-weight: 500;', // muted yellow/gold
+                'color: #d8b35a; font-weight: 500;',
                 'color: inherit;',
-                'color: #d66b6b; font-weight: 500;'  // soft red
+                'color: #d66b6b; font-weight: 500;',
+                'color: inherit;',
+                'color: #ba68c8; font-weight: 500;',
+                'color: inherit;',
+                'color: #64b5f6; font-weight: 500;'
             );
 
             // Clean up temporary DOM element
@@ -2376,17 +2369,11 @@ Private send interception
                     this.ui.hostCount = this.qs(this.sel.users.hostCount);
                 }
 
-                // Update managed counter - count actual DOM elements
-                const allManagedUsers = this.qsa('.user_item', managedList);
-                const managedCount = allManagedUsers.length;
                 if (this.ui.managedCount) {
-                    this.ui.managedCount.textContent = String(managedCount);
-                    console.log(this.LOG, '[USER_LIST] Woman online:', managedCount);
-                } else {
-                    console.warn(this.LOG, '[USER_LIST] Men online::', this.sel.users.managedCount);
+                    this.ui.managedCount.textContent = String(this.qsa('.user_item', managedList).length);
                 }
 
-                // Update host users count - count actual DOM elements in host container
+                // Update host users count - count actual DOM elements in
                 if (this.ui.hostContainer) {
                     // Count ALL users in host (should be only males now)
                     const hostUsers = this.qsa('.user_item', this.ui.hostContainer);
@@ -2399,6 +2386,7 @@ Private send interception
                     }
                 }
             });
+            this.isInitialLoad = false;
         }
 
         addUserItemAdditions(el, user, isAllowedRank) {
