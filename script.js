@@ -1820,181 +1820,66 @@ Private send interception
                 if (!box || box._caGenericWired) return;
                 box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
                 box._caGenericWired = true;
-
-                if (!box._caCollapseWired) {
-                    box.addEventListener('click', (e) => this._onLogEntryClick(e, box));
-                    box._caCollapseWired = true;
-                }
             });
         }
 
         async _onLogClickGeneric(e, box) {
             try {
-                // Prefer closest when available; fall back to manual walk
-                let entry = (e.target.closest && this.sel?.log?.classes?.ca_log_entry)
-                    ? e.target.closest(this.sel.log.classes.ca_log_entry)
-                    : null;
+                // Find the clicked log entry
+                const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
+                if (!entry) return;
 
-                if (!entry) {
-                    let node = e.target;
-                    const cls = (this.sel?.log?.classes?.ca_log_entry || '.ca-log-entry').slice(1);
-                    while (node && node !== box) {
-                        if (node.classList && node.classList.contains(cls)) {
-                            entry = node;
-                            break;
+                // Route by data-action, if present
+                const actionEl = e.target.closest?.('[data-action]');
+                if (actionEl) {
+                    const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
+
+                    if (action === 'toggle-expand') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        const expanded = entry.classList.toggle('ca-expanded');
+
+                        // keep the chevron + ARIA in sync
+                        const ind = entry.querySelector(this.sel.log.classes.ca_expand_indicator);
+                        if (ind) {
+                            ind.textContent = expanded ? '▴' : '▾';
+                            ind.setAttribute('aria-expanded', expanded ? 'true' : 'false');
                         }
-                        node = node.parentNode;
+                        return;
                     }
-                    return;
-                }
 
-                this.verbose('_onLogClickGeneric: Found log entry', entry);
-
-                // 2) find actionable element with [data-action] inside that entry (manual walk)
-                let ptr = e.target;
-                let actionEl = null;
-                while (ptr && ptr !== entry) {
-                    if (ptr.getAttribute && ptr.hasAttribute('data-action')) {
-                        actionEl = ptr;
-                        break;
+                    if (action === 'open-profile') {
+                        e.preventDefault();
+                        this.openProfileOnHost(entry.getAttribute('data-uid') || '');
+                        return;
                     }
-                    ptr = ptr.parentNode;
-                }
-                this.verbose('_onLogClickGeneric: Actionable element:', actionEl, 'data-action:', actionEl?.getAttribute('data-action'));
 
-                // 3) resolve uid
-                const uid = entry.getAttribute('data-uid');
-                this.verbose('_onLogClickGeneric: Resolved uid:', uid);
-                if (!uid) {
-                    console.error('Empty uid while trying to open profile/dm from a log line.');
-                    return;
-                }
-                const user = await this.UserStore.getOrFetch(uid);
-                this.verbose('_onLogClickGeneric: Resolved user:', user);
-                if (!user) {
-                    console.warn(`unknown uid ${uid}`);
-                    return;
-                }
-
-                // 4) explicit actions
-                const action = actionEl ? String(actionEl.getAttribute('data-action') || '').toLowerCase() : '';
-                this.verbose('_onLogClickGeneric: Action to execute:', action);
-
-                if (action === 'open-profile') {
-                    this.verbose('_onLogClickGeneric: Opening profile for uid:', uid);
-                    e.preventDefault();
-                    this.openProfileOnHost(uid);
-                    return;
-                }
-
-                if (action === 'open-dm') {
-                    this.verbose('_onLogClickGeneric: Opening DM for user:', user);
-                    e.preventDefault();
-                    this.applyLegacyAndOpenDm(user);
-                    return;
-                }
-
-                if (action === 'delete-log') {
-                    e.preventDefault();
-                    const guid = entry.getAttribute('data-guid');
-                    if (!guid) return;
-
-                    // remove from store (if the method exists) and from DOM
-                    try {
-                        this.ActivityLogStore?.remove?.(guid);
-                    } catch (_) {
+                    if (action === 'open-dm') {
+                        e.preventDefault();
+                        const uid = entry.getAttribute('data-uid') || '';
+                        this.applyLegacyAndOpenDm(this.UserStore?.get?.(uid));
+                        return;
                     }
-                    entry.remove();
 
-                    // nothing else to do
+                    if (action === 'delete-log') {
+                        e.preventDefault();
+                        const guid = entry.getAttribute('data-guid');
+                        if (guid) this.ActivityLogStore?.remove?.(guid);
+                        entry.remove();
+                        return;
+                    }
+
+                    // Unknown action → do nothing
                     return;
                 }
 
-                // 5) fallback: background click opens profile
-                this.verbose('_onLogClickGeneric: No explicit action, falling back to profile');
+                // No data-action: background click falls back to open profile
                 e.preventDefault();
-                this.openProfileOnHost(uid);
+                this.openProfileOnHost(entry.getAttribute('data-uid') || '');
             } catch (err) {
                 console.error('Log click handler error:', err);
-            }
-        }
-
-        /** Handler for all log entries: collapse/expand when clicking chevron or message text. */
-        _onLogEntryClick(e, box) {
-            try {
-                this.verbose('_onLogEntryClick: Click on log box', {
-                    target: e.target,
-                    targetClass: e.target.className,
-                    targetTag: e.target.tagName
-                });
-
-                // find .ca-log-entry (manual walk)
-                let node = e.target, entry = null;
-                const entryClass = this.sel.log.classes.ca_log_entry.substring(1); // Remove leading dot
-                while (node && node !== box) {
-                    if (node.classList && node.classList.contains(entryClass)) {
-                        entry = node;
-                        break;
-                    }
-                    node = node.parentNode;
-                }
-                if (!entry) {
-                    this.verbose('_onLogEntryClick: No entry found, returning');
-                    return;
-                }
-
-                // Check if clicking on an actionable element FIRST - return early without stopping propagation
-                const tgt = e.target;
-                let ptr = tgt;
-                while (ptr && ptr !== entry) {
-                    if (ptr.getAttribute && ptr.hasAttribute('data-action')) {
-                        // This is an actionable element - return early, let it bubble
-                        this.verbose('_onLogEntryClick: Clicked actionable element with data-action:', ptr.getAttribute('data-action'), '- letting event bubble');
-                        return;
-                    }
-                    const userLinkClass = this.sel.log.classes.ca_user_link.substring(1);
-                    const dmLinkClass = this.sel.log.classes.ca_dm_link.substring(1);
-                    if (ptr.classList && (ptr.classList.contains(userLinkClass) || ptr.classList.contains(dmLinkClass))) {
-                        // This is a link - return early, let it bubble
-                        this.verbose('_onLogEntryClick: Clicked user/dm link - letting event bubble');
-                        return;
-                    }
-                    ptr = ptr.parentNode;
-                }
-
-                // only toggle when clicking the expand indicator or the message text
-                const expandClass = this.sel.log.classes.ca_expand_indicator.substring(1);
-                const textClass = this.sel.log.classes.ca_log_text.substring(1);
-                const isExpandBtn = !!(tgt && tgt.classList && tgt.classList.contains(expandClass));
-                const isMessageTxt = !!(tgt && tgt.classList && tgt.classList.contains(textClass));
-                if (!isExpandBtn && !isMessageTxt) {
-                    this.verbose('_onLogEntryClick: Not expand button or message text, returning');
-                    return;
-                }
-
-                this.verbose('_onLogEntryClick: Toggling expand/collapse');
-
-                // ONLY NOW stop propagation (only for expand/collapse actions on indicator or message text)
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                e.preventDefault();
-
-                // toggle expanded state
-                const expanded = entry.classList.toggle('ca-expanded');
-
-                // update indicator arrow (if present)
-                let child = entry.firstChild, indicator = null;
-                while (child) {
-                    if (child.classList && child.classList.contains(expandClass)) {
-                        indicator = child;
-                        break;
-                    }
-                    child = child.nextSibling;
-                }
-                indicator = indicator || entry.querySelector(this.sel.log.classes.ca_expand_indicator);
-                if (indicator) indicator.textContent = expanded ? '▴' : '▾';
-            } catch (err) {
-                console.error('Log entry click handler error:', err);
             }
         }
 
@@ -3816,6 +3701,11 @@ Private send interception
                 exp.className = 'ca-expand-indicator';
                 exp.title = 'Click to expand/collapse';
                 exp.textContent = '▾';
+                exp.setAttribute('data-action', 'toggle-expand'); // <-- add this line
+                exp.setAttribute('role', 'button');
+                exp.setAttribute('tabindex', '0');
+                exp.setAttribute('aria-expanded', 'false');
+
                 el.appendChild(exp);
             }
 
