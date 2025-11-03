@@ -300,16 +300,14 @@
         }
 
         setLoggedIn(uid, status) {
-            const id = String(uid);
-            const user = this.get(id);
+            const user = this.get(uid);
             user.isLoggedIn = status;
             return this.set(user);
         }
 
         getAllLoggedIn() {
             return this.list()
-                .filter(id => id.isLoggedIn)
-                .map(id => this.get(id) || {uid: id});
+                .filter(id => id.isLoggedIn);
         }
 
         getFemalesLoggedIn() {
@@ -2215,6 +2213,7 @@ Private send interception
                 });
 
                 usersList.forEach(user => {
+                    console.log(`Handling remaining user ${user.uid} (${user.name}) to logoff`);
                     this.UserStore.setLoggedIn(user.uid, false);
 
                     if (!isInitialLoad) {
