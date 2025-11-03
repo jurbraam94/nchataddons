@@ -555,11 +555,6 @@
             this.qs = (sel, rootEl) => (rootEl || document).querySelector(sel);
             this.qsa = (sel, rootEl) => Array.from((rootEl || document).querySelectorAll(sel));
 
-            this.timeHHMM = () => {
-                const d = new Date();
-                return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-            };
-
             /* ========= Audio Autoplay Gate (policy-safe) ========= */
             this._audioGate = {
                 userInteracted: false,
@@ -810,7 +805,7 @@
             this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
             this.watchChatRightForHostChanges();
 
-            await this.startRefreshUsersLoop({intervalMs: 60000}); // every 60s
+            await this.startRefreshUsersLoop({intervalMs: 15000}); // every 60s
             this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
 
             return this;
@@ -870,7 +865,7 @@
                     // clear the UI container
                     if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
 
-                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`);
+                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMMSS()}`);
                     this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
                 } catch (err) {
                     console.error("Error clearing event logs:", err);
@@ -910,7 +905,7 @@
 
                 const html = await res.text();
                 this.processUserListResponse(html);
-                this.logEventLine(`Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`);
+                this.logEventLine(`Refreshed user list at ${this.timeHHMMSS()}`);
 
             } catch (err) {
                 console.error('Error reloading user list:', err);
@@ -999,13 +994,6 @@
                 console.error(e);
                 return String(s);
             }
-        }
-
-        timeHHMM() {
-            const d = new Date();
-            const h = String(d.getHours()).padStart(2, '0');
-            const m = String(d.getMinutes()).padStart(2, '0');
-            return `${h}:${m}`;
         }
 
         /* =========================
@@ -2517,20 +2505,8 @@ Private send interception
                 const watermark = this.getGlobalWatermark();
                 if (!watermark) return true; // no watermark -> everything is "new"
 
-                // Normalize "DD/MM HH:MM" → "DD/MM HH:MM:SS" (append :00 if seconds missing)
-                const toHHMMSS = (ts) => {
-                    const s = String(ts || '').trim();
-                    if (!s) return '';
-                    // already has seconds?
-                    if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
-                    // has only HH:MM → append :00
-                    if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
-                    // unknown format → return as-is (parser will return 0)
-                    return s;
-                };
-
-                const msgNum = this.parseLogDateToNumber(toHHMMSS(logDateStr));
-                const wmNum = this.parseLogDateToNumber(toHHMMSS(watermark));
+                const msgNum = this.parseLogDateToNumber(this.timeHHMMSS(logDateStr));
+                const wmNum = this.parseLogDateToNumber(this.timeHHMMSS(watermark));
                 if (!msgNum) return false;
 
                 const isNewer = msgNum >= wmNum; // include equal → not missed at same second
@@ -3931,7 +3907,7 @@ Private send interception
 
                 const ts = document.createElement('div');
                 ts.className = 'ca-log-ts';
-                ts.textContent = this.timeHHMM();
+                ts.textContent = this.getTimeStampInWebsiteFormat();
                 const dot = document.createElement('div');
                 dot.className = 'ca-log-dot';
                 const msg = document.createElement('div');
