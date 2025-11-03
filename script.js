@@ -294,7 +294,7 @@
             return Array.isArray(raw) ? raw : [];
         }
 
-        setHasRepliedUpToLog(uid) {
+        hasRepliedUpToLog(uid) {
             return this.get(uid)?.hasRepliedUpToLog !== 0;
         }
 
@@ -1344,7 +1344,7 @@ Private send interception
                     priv: String(uid),
                     pcount: params.get('pcount'),
                     last: params.get('last'),
-                    lastp: this.UserStore.get(uid)?.lastRead || 0
+                    lastp: this.UserStore.get(uid)?.hasRepliedUpToLog || 0
                 };
 
                 // carry over CHAT_CTX if present
@@ -1985,7 +1985,7 @@ Private send interception
             for (let i = 0; i < list.length; i++) {
                 const el = list[i].el, uid = list[i].uid;
                 if (!this._isAllowedRank?.(el)) continue;
-                if (this.UserStore.setHasRepliedUpToLog(uid)) {
+                if (this.UserStore.hasRepliedUpToLog(uid)) {
                     console.log(`Skipping message to ${el.name} (already replied)`);
                     continue;
                 }
