@@ -153,8 +153,24 @@
             const result = this._getAll().filter(
                 log => String(log.uid) === String(uid) && (!onlyUnread || log.unread)
             );
-            this.app.debug(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+            this.app.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
             return result;
+        }
+
+        getAllReceivedMessagesByUserId(uid, onlyUnread = false) {
+            return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-in`);
+        }
+
+        getAllSentMessagesByUserId(uid, onlyUnread = false) {
+            return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-out`);
+        }
+
+        getUnreadReceivedMessageCountByUserUid(uid) {
+            return this.getAllReceivedMessagesByUserId(uid, true).length;
+        }
+
+        getAllSentMessagesCountByUserId(uid) {
+            return this.getAllSentMessagesByUserId(uid).length;
         }
 
         has({guid, uid}) {
@@ -546,6 +562,10 @@
                         ca_dm_link: '.ca-dm-link',
                         ca_log_text: '.ca-log-text',
                         ca_sent_chip: '.ca-sent-chip',
+                        ca_unread_messages: '.ca-unread-messages',
+                        ca_replied_messages: '.ca-replied-messages',
+                        ca_sent_chip_all_read: '.ca-sent-chip-all-read',
+                        ca_sent_chip_unread: '.ca-sent-chip-unread',
                         ca_hidden: '.ca-hidden',
                         user_item: '.user_item',
                         ca_ck_wrap: '.ca-ck-wrap',
@@ -896,11 +916,11 @@ Private send interception
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
             this.UserStore.set({uid: dmSentToUser.uid, hasRepliedUpToLog: logData.log_id});
-            this.ensureSentChip(dmSentToUser.uid, true);
 
             const repliedAt = this.getTimeStampInWebsiteFormat();
             const affectedLogs = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
             this.processReadStatusForLogs(affectedLogs);
+            this.updateProfileChip(dmSentToUser.uid);
         }
 
         installPrivateSendInterceptor() {
@@ -1346,6 +1366,7 @@ Private send interception
 
                     // render
                     this.logLine('dm-in', content, user, logId);
+                    this.updateProfileChip(user.uid);
 
                     newMessages++;
                 }
@@ -2088,26 +2109,21 @@ Private send interception
 
         /* Process initial user list that's already in the DOM on page load */
         processInitialUserList() {
-            try {
-                console.log(this.LOG, '[INITIAL] Processing initial user list from DOM');
+            console.log(this.LOG, '[INITIAL] Processing initial user list from DOM');
 
-                // Use cached host container
-                if (!this.ui.hostContainer) {
-                    console.warn(this.LOG, '[INITIAL] Host container not cached');
-                    return;
-                }
+            // Use cached host container
+            if (!this.ui.hostContainer) {
+                console.warn(this.LOG, '[INITIAL] Host container not cached');
+                return;
+            }
 
-                // Get the HTML from the host container and process it using unified method
-                const htmlContent = this.ui.hostContainer.innerHTML;
+            // Get the HTML from the host container and process it using unified method
+            const htmlContent = this.ui.hostContainer.innerHTML;
 
-                if (htmlContent) {
-                    this.processUserListResponse(htmlContent, true); // true = isInitialLoad
-                } else {
-                    console.warn(this.LOG, '[INITIAL] Host container is empty');
-                }
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, '[INITIAL] Process initial user list error:', e);
+            if (htmlContent) {
+                this.processUserListResponse(htmlContent, true); // true = isInitialLoad
+            } else {
+                console.warn(this.LOG, '[INITIAL] Host container is empty');
             }
         }
 
@@ -2130,210 +2146,198 @@ Private send interception
 
         /* Parse user_list.php HTML response and process users */
         processUserListResponse(html, isInitialLoad = false) {
-            try {
-                if (!html || typeof html !== 'string') return;
-                console.log("\n========== START PARSING NEW USER LIST ==========");
-                if (html.includes('ca-hidden')) {
-                    console.error(`RESPONSE CONTAINS HIDDEN USER ITEMS!!`);
-                }
 
-                const context = isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
-                this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
-
-                // Get managed container (created once in init, never removed)
-                const managedList = this.getContainer();
-                if (!managedList) {
-                    console.error(this.LOG, '[USER_LIST] Managed container not found - should have been created in init()');
-                    return;
-                }
-
-                // Parse the HTML into a proper DOM structure
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html;
-
-                // Find all female users using proper DOM queries
-                const users = this.qsa('.online_user .user_item', tempDiv);
-                console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
-
-                if (users.length === 0) {
-                    console.error(`Something went wrong processing the user list. Skipping this round.`);
-                    return;
-                }
-
-                // Move/update female users to managed container immediately
-                let loggedInCount = 0;
-                let updatedProfileCount = 0;
-                let loggedOffCount = 0;
-
-                const seenLoggedIn = new Set();
-
-                users.forEach(userEl => {
-                    try {
-                        // Extract user data from DOM
-                        const uid = this.getUserId(userEl);
-                        const name = this.extractUsername(userEl) || uid;
-                        const avatar = this.extractAvatar(userEl);
-                        const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
-                        const isAllowedRank = this._isAllowedRank(userEl);
-
-                        const existingUser = this.UserStore.get(uid);
-                        let newUser = existingUser;
-
-                        seenLoggedIn.add(uid);
-
-                        const hasChanged =
-                            !existingUser ||
-                            existingUser.name !== name ||
-                            existingUser.avatar !== avatar ||
-                            existingUser.isFemale !== isFemale ||
-                            existingUser.isLoggedIn !== true;
-
-                        if (hasChanged) {
-                            // Upsert & mark logged-in
-                            newUser = this.UserStore.set({
-                                uid,
-                                name,
-                                avatar,
-                                isFemale,
-                                isLoggedIn: true,
-                            });
-
-                            // Login transition event
-                            if (!isInitialLoad && existingUser?.isLoggedIn !== true) {
-                                console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
-                                if (isFemale) {
-                                    this.logLogin?.(newUser);
-                                }
-                            }
-
-                            if (!existingUser || existingUser.isLoggedIn !== true) {
-                                loggedInCount++;
-                                this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
-                            } else if (existingUser.isLoggedIn === true) {
-                                updatedProfileCount++;
-                                this.debug(this.LOG, `[USER_LIST] Updating metadata of existing user ${uid}`, newUser);
-                            }
-                        }
-
-                        // UI updates for female users
-                        if (isFemale) {
-                            const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
-                            this._handleVisibilityOrGenderChange(el, newUser, isAllowedRank);
-                            userEl.remove();
-                            this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
-                        }
-                    } catch (err) {
-                        console.error(err);
-                        console.error(this.LOG, '[USER_LIST] Error processing user:', err);
-                    }
-                });
-
-                // Only try to remove nodes if it wasnt the initial load ( after page reload all nodes are readded)
-
-                const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
-                for (const user of currentlyLoggedIn) {
-                    const id = String(user.uid);
-                    if (seenLoggedIn.has(id)) continue;
-
-                    this.UserStore.setLoggedIn(id, false);
-
-                    if (!isInitialLoad) {
-                        console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
-                    } else {
-                        this.verbose(`[INIT] User ${user.name} (${user.uid}) initially logged out - no log entry`);
-                    }
-
-                    if (user.isFemale) {
-                        this.logLogoutToLogLine(user);
-                        if (!isInitialLoad) {
-                            const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
-                            this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
-                            if (elementToRemove) elementToRemove.remove();
-                            else console.error(`Couldn't remove user ${id} from managed container`);
-                        }
-                    }
-
-                    loggedOffCount++;
-                }
-
-                console.log(`%c [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} female users logged off`,
-                    'color: #7ea9d1; font-weight: 600;', // soft blue
-                    'color: inherit;',
-                    'color: #6bbf73; font-weight: 500;', // soft green
-                    'color: inherit;',
-                    'color: #d8b35a; font-weight: 500;', // muted yellow/gold
-                    'color: inherit;',
-                    'color: #d66b6b; font-weight: 500;'  // soft red
-                );
-
-
-                // Clean up temporary DOM element
-                tempDiv.innerHTML = '';
-
-                // Update counters AFTER all processing is complete using requestAnimationFrame
-                // This ensures all DOM mutations have completed
-                requestAnimationFrame(() => {
-                    if (!this.ui.managedCount) {
-                        this.ui.managedCount = this.qs(this.sel.users.managedCount);
-                    }
-                    if (!this.ui.hostCount) {
-                        this.ui.hostCount = this.qs(this.sel.users.hostCount);
-                    }
-
-                    // Update managed counter - count actual DOM elements
-                    const allManagedUsers = this.qsa('.user_item', managedList);
-                    const managedCount = allManagedUsers.length;
-                    if (this.ui.managedCount) {
-                        this.ui.managedCount.textContent = String(managedCount);
-                        console.log(this.LOG, '[USER_LIST] Woman online:', managedCount);
-                    } else {
-                        console.warn(this.LOG, '[USER_LIST] Men online::', this.sel.users.managedCount);
-                    }
-
-                    // Update host users count - count actual DOM elements in host container
-                    if (this.ui.hostContainer) {
-                        // Count ALL users in host (should be only males now)
-                        const hostUsers = this.qsa('.user_item', this.ui.hostContainer);
-                        const hostCount = hostUsers.length;
-                        if (this.ui.hostCount) {
-                            this.ui.hostCount.textContent = String(hostCount);
-                            console.log(this.LOG, '[USER_LIST] Updated host counter to:', hostCount, 'users');
-                        } else {
-                            console.warn(this.LOG, '[USER_LIST] hostCount element not found - selector:', this.sel.users.hostCount);
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, '[USER_LIST] Process response error:', e);
+            if (!html || typeof html !== 'string') return;
+            console.log("\n========== START PARSING NEW USER LIST ==========");
+            if (html.includes('ca-hidden')) {
+                console.error(`RESPONSE CONTAINS HIDDEN USER ITEMS!!`);
             }
+
+            const context = isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
+            this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
+
+            // Get managed container (created once in init, never removed)
+            const managedList = this.getContainer();
+            if (!managedList) {
+                console.error(this.LOG, '[USER_LIST] Managed container not found - should have been created in init()');
+                return;
+            }
+
+            // Parse the HTML into a proper DOM structure
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+
+            // Find all female users using proper DOM queries
+            const users = this.qsa('.online_user .user_item', tempDiv);
+            console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
+
+            if (users.length === 0) {
+                console.error(`Something went wrong processing the user list. Skipping this round.`);
+                return;
+            }
+
+            // Move/update female users to managed container immediately
+            let loggedInCount = 0;
+            let updatedProfileCount = 0;
+            let loggedOffCount = 0;
+
+            const seenLoggedIn = new Set();
+
+            users.forEach(userEl => {
+                // Extract user data from DOM
+                const uid = this.getUserId(userEl);
+                const name = this.extractUsername(userEl) || uid;
+                const avatar = this.extractAvatar(userEl);
+                const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
+                const isAllowedRank = this._isAllowedRank(userEl);
+
+                const existingUser = this.UserStore.get(uid);
+                let newUser = existingUser;
+
+                seenLoggedIn.add(uid);
+
+                const hasChanged =
+                    !existingUser ||
+                    existingUser.name !== name ||
+                    existingUser.avatar !== avatar ||
+                    existingUser.isFemale !== isFemale ||
+                    existingUser.isLoggedIn !== true;
+
+                if (hasChanged) {
+                    // Upsert & mark logged-in
+                    newUser = this.UserStore.set({
+                        uid,
+                        name,
+                        avatar,
+                        isFemale,
+                        isLoggedIn: true,
+                    });
+
+                    // Login transition event
+                    if (!isInitialLoad && existingUser?.isLoggedIn !== true) {
+                        console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
+                        if (isFemale) {
+                            this.logLogin?.(newUser);
+                        }
+                    }
+
+                    if (!existingUser || existingUser.isLoggedIn !== true) {
+                        loggedInCount++;
+                        this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
+                    } else if (existingUser.isLoggedIn === true) {
+                        updatedProfileCount++;
+                        this.debug(this.LOG, `[USER_LIST] Updating metadata of existing user ${uid}`, newUser);
+                    }
+                }
+
+                // UI updates for female users
+                if (isFemale) {
+                    const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
+                    this._handleVisibilityOrGenderChange(el, newUser, isAllowedRank);
+                    userEl.remove();
+                    this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
+                }
+            });
+
+            // Only try to remove nodes if it wasnt the initial load ( after page reload all nodes are readded)
+
+            const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
+            for (const user of currentlyLoggedIn) {
+                const id = String(user.uid);
+                if (seenLoggedIn.has(id)) continue;
+
+                this.UserStore.setLoggedIn(id, false);
+
+                if (!isInitialLoad) {
+                    console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
+                } else {
+                    this.verbose(`[INIT] User ${user.name} (${user.uid}) initially logged out - no log entry`);
+                }
+
+                if (user.isFemale) {
+                    this.logLogoutToLogLine(user);
+                    if (!isInitialLoad) {
+                        const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
+                        this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
+                        if (elementToRemove) elementToRemove.remove();
+                        else console.error(`Couldn't remove user ${id} from managed container`);
+                    }
+                }
+
+                loggedOffCount++;
+            }
+
+            console.log(`%c [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} female users logged off`,
+                'color: #7ea9d1; font-weight: 600;', // soft blue
+                'color: inherit;',
+                'color: #6bbf73; font-weight: 500;', // soft green
+                'color: inherit;',
+                'color: #d8b35a; font-weight: 500;', // muted yellow/gold
+                'color: inherit;',
+                'color: #d66b6b; font-weight: 500;'  // soft red
+            );
+
+
+            // Clean up temporary DOM element
+            tempDiv.innerHTML = '';
+
+            // Update counters AFTER all processing is complete using requestAnimationFrame
+            // This ensures all DOM mutations have completed
+            requestAnimationFrame(() => {
+                if (!this.ui.managedCount) {
+                    this.ui.managedCount = this.qs(this.sel.users.managedCount);
+                }
+                if (!this.ui.hostCount) {
+                    this.ui.hostCount = this.qs(this.sel.users.hostCount);
+                }
+
+                // Update managed counter - count actual DOM elements
+                const allManagedUsers = this.qsa('.user_item', managedList);
+                const managedCount = allManagedUsers.length;
+                if (this.ui.managedCount) {
+                    this.ui.managedCount.textContent = String(managedCount);
+                    console.log(this.LOG, '[USER_LIST] Woman online:', managedCount);
+                } else {
+                    console.warn(this.LOG, '[USER_LIST] Men online::', this.sel.users.managedCount);
+                }
+
+                // Update host users count - count actual DOM elements in host container
+                if (this.ui.hostContainer) {
+                    // Count ALL users in host (should be only males now)
+                    const hostUsers = this.qsa('.user_item', this.ui.hostContainer);
+                    const hostCount = hostUsers.length;
+                    if (this.ui.hostCount) {
+                        this.ui.hostCount.textContent = String(hostCount);
+                        console.log(this.LOG, '[USER_LIST] Updated host counter to:', hostCount, 'users');
+                    } else {
+                        console.warn(this.LOG, '[USER_LIST] hostCount element not found - selector:', this.sel.users.hostCount);
+                    }
+                }
+            });
         }
 
         _handleVisibilityOrGenderChange(el, user, isAllowedRank) {
-            try {
-                this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${user.uid})`);
 
-                // Ensure UI elements for female users if rank allows
-                if (isAllowedRank) {
-                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) has allowed rank, ensuring broadcast checkbox`);
-                    this.ensureBroadcastCheckbox(el);
-                } else {
-                    this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) does not have allowed rank, skipping checkbox`);
-                }
+            this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${user.uid})`);
 
-                // Determine reply status
-                const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
-                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
-                this.ensureSentChip?.(user.uid, replied);
-            } catch (e) {
-                console.error(e);
+            // Ensure UI elements for female users if rank allows
+            if (isAllowedRank) {
+                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) has allowed rank, ensuring broadcast checkbox`);
+                this.ensureBroadcastCheckbox(el);
+            } else {
+                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) does not have allowed rank, skipping checkbox`);
             }
+
+            // Determine reply status
+            const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
+            this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
+            this.updateProfileChip?.(user.uid);
+
         }
 
         // Check if a user element is visible in the DOM
         isUserVisible(el) {
             try {
-                d
                 if (!el || el.nodeType !== 1) return false;
                 // Check if this node or any ancestor has ca-hidden class
                 if (el.classList?.contains('ca-hidden') || el.closest?.('.ca-hidden')) return false;
@@ -2751,10 +2755,13 @@ Private send interception
         }
 
         /* ---------- DOM find helper ---------- */
-        findUserElementById(id, root = document) {
-            if (!id) return null;
+        findUserElementById(uid, root = document) {
+            if (!uid) {
+                console.error(`.findUserElementById: id is empty`);
+                return null;
+            }
             try {
-                return root.querySelector(`.user_item[data-id="${id}"]`);
+                return root.querySelector(`.user_item[data-id="${uid}"]`);
             } catch (e) {
                 console.error('findUserElementById failed:', e);
                 return null;
@@ -2762,41 +2769,64 @@ Private send interception
         }
 
         /* ---------- Sent chip & badges ---------- */
-        ensureSentChip(uid, on) {
+        updateProfileChip(uid) {
+            const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
+            const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
+            console.log(`Updating profile chip for user ${uid} with ${unreadReceivedMessagesCount} unread received messages and ${sentMessagesCount} sent messages`);
             const userEl = this.findUserElementById(uid);
-            try {
-                if (!userEl) return;
 
-                let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
-                if (on) {
-                    // only apply if not already marked
-                    if (!userEl.classList.contains('chataddons-sent')) {
-                        userEl.classList.add('chataddons-sent');
-                        userEl.style.setProperty('outline', '2px solid #8bc34a66', 'important');
-                        userEl.style.setProperty('border-radius', '8px', 'important');
-                    }
-                    if (!chip) {
-                        chip = document.createElement('span');
-                        chip.className = this.sel.log.classes.ca_sent_chip.substring(1);
-                        chip.textContent = '✓';
-                        userEl.appendChild(chip);
-                    } else {
-                        chip.textContent = '✓';
-                    }
-                } else {
-                    // only apply if not already marked
-                    if (userEl.classList.contains('chataddons-sent')) {
-                        userEl.classList.remove('chataddons-sent');
-                        userEl.style.removeProperty('outline');
-                        userEl.style.removeProperty('border-radius');
-                    }
-                    if (chip?.parentNode) {
-                        chip.parentNode.removeChild(chip);
-                    }
-                }
-            } catch (e) {
-                console.error(e);
+            if (!userEl) {
+                console.error('updateProfileChip: user element not found for uid:', uid);
+                return;
             }
+
+
+            if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
+                console.log('Adding all read chip to user:', uid);
+                const chip = this._createChipForUserItem(userEl, uid);
+
+                userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
+                userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
+
+                chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_all_read));
+                chip.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_unread));
+                chip.textContent = '✓';
+            } else if (unreadReceivedMessagesCount > 0) {
+                console.log('Adding unread sent chip to user:', uid);
+                const chip = this._createChipForUserItem(userEl, uid);
+
+                userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
+                userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
+
+                chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_unread));
+                chip.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_sent_chip_all_read));
+                chip.textContent = `${unreadReceivedMessagesCount}`;
+            } else {
+                console.log(`Removing sent chip from user ${uid}`);
+                // only apply if no message have sent to the user.
+                if (userEl.classList.contains('chataddons-sent')) {
+                    userEl.classList.remove('chataddons-sent');
+                    userEl.style.removeProperty('outline');
+                    userEl.style.removeProperty('border-radius');
+                }
+                userEl.querySelector(this.sel.log.classes.ca_sent_chip)?.remove();
+            }
+        }
+
+        _createChipForUserItem(userEl, uid) {
+            console.log('Adding sent chip to user:', uid);
+            let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
+
+            if (!userEl.classList.contains('chataddons-sent')) {
+                userEl.classList.add('chataddons-sent');
+            }
+
+            if (!chip) {
+                chip = document.createElement('span');
+                chip.classList.add(this.getCleanSelector(this.sel.log.classes.ca_sent_chip));
+                userEl.appendChild(chip);
+            }
+            return chip;
         }
 
         // Is this row "replied" according to your truth source
@@ -4058,7 +4088,7 @@ Private send interception
             if (!src || !dst) return;
 
             for (const log of logs) {
-                log.debug(`Processing read status for log ${log.guid}`);
+                this.debug(`Processing read status for log ${log.guid}`);
                 const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, src);
                 dst.appendChild(el);
                 this.addRepliedBadgeToLog?.(log.guid);
