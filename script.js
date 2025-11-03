@@ -120,20 +120,33 @@
             return changedLogs;
         }
 
-        // ---- util: your parser unchanged ----
         parseLogDateToNumber(logDateStr) {
             try {
                 if (!logDateStr || typeof logDateStr !== 'string') return 0;
-                const parts = logDateStr.trim().split(/[\s\/:]+/);
+
+                // Accept "DD/MM HH:MM" or "DD/MM HH:MM:SS"
+                // Split on spaces, slashes, or colons → [day, month, hh, mm, (ss?)]
+                const parts = logDateStr.trim().split(/[\s/:]+/);
                 if (parts.length < 4) return 0;
-                const [day, month, hours, minutes] = parts.map(x => parseInt(x, 10));
-                if ([day, month, hours, minutes].some(isNaN)) return 0;
-                return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
+
+                const [day, month, hours, minutes, secondsMaybe] = parts.map(v => parseInt(v, 10));
+                if ([day, month, hours, minutes].some(Number.isNaN)) return 0;
+
+                const seconds = Number.isNaN(secondsMaybe) ? 0 : secondsMaybe;
+
+                // Build a sortable integer with seconds precision: MM DD HH MM SS
+                // (two digits each, but stored as a single number)
+                return (month * 100_000_000) +
+                    (day * 1_000_000) +
+                    (hours * 10_000) +
+                    (minutes * 100) +
+                    (seconds);
             } catch {
                 console.error(`Failed to parse log date: ${logDateStr}`);
                 return 0;
             }
         }
+
 
         list({order = 'desc'} = {}) {
             const arr = [...this._getAll()];
@@ -585,8 +598,8 @@
                     unreplied: '#ca-log-received-unreplied',
                     presence: '#ca-log-box-presence',
                     clear: '#ca-log-clear',
+                    other: '#ca-log-box-other'
                 },
-                other: '#ca-log-box-other',
                 // nav
                 nav: {
                     spec: '#ca-nav-specific',
@@ -677,6 +690,15 @@
                 cacheKey: this.USERS_KEY,
                 app: this
             });
+            if (!this.UserStore.get('system')) {
+                this.UserStore.set({
+                    uid: 'system',
+                    name: 'System',
+                    avatar: '',
+                    isFemale: false,
+                    isLoggedIn: true,
+                });
+            }
 
             // Activity log store (guid-indexed)
             this.ActivityLogStore = this.ActivityLogStore || new ActivityLogStore({
@@ -803,7 +825,7 @@
                 this.processUserListResponse(html);
 
                 const sysUser = {uid: 'system', name: 'System'};
-                this.logLine?.('event', `Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`, sysUser);
+                this.logLine('event', `Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`, sysUser);
 
             } catch (err) {
                 console.error('Error reloading user list:', err);
@@ -1028,12 +1050,8 @@ Private send interception
 
                         if (this._ca_pm_isTarget && capturedBody) {
                             this.addEventListener('readystatechange', () => {
-                                try {
-                                    if (this.readyState === 4 && this.status === 200) {
-                                        self.processPrivateSendResponse(this?.responseText || '', capturedBody);
-                                    }
-                                } catch (err) {
-                                    console.error(self.LOG, 'XHR readystate error:', err);
+                                if (this.readyState === 4 && this.status === 200) {
+                                    self.processPrivateSendResponse(this?.responseText || '', capturedBody);
                                 }
                             });
                         }
@@ -1354,7 +1372,7 @@ Private send interception
                 const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
                 const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
 
-                const isInitialFetch = this.UserStore.get(uid)?.lastRead === 0 || true;
+                const isInitialFetch = (this.UserStore.get(uid)?.lastRead === 0);
 
                 if (isInitialFetch) {
                     console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
@@ -1368,7 +1386,9 @@ Private send interception
                     }
 
                     // Only on initial fetch: skip too-old messages
-                    if (isInitialFetch && !this.isMessageNewer(item.log_date, false)) {
+                    if (isInitialFetch /* no watermark cutoff on first pass */) {
+                        // allow a backfill (you can still limit by count if you want)
+                    } else if (!this.isMessageNewer(item.log_date)) {
                         skipped.tooOld++;
                         console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
                         return false;
@@ -1425,7 +1445,6 @@ Private send interception
                 }
 
                 const now = Date.now();
-                this.verbose('Processing chat payload, length:', txt.length);
 
                 // tolerant parse & shape
                 let data;
@@ -2499,11 +2518,23 @@ Private send interception
                 const watermark = this.getGlobalWatermark();
                 if (!watermark) return true; // no watermark -> everything is "new"
 
-                const msgNum = this.parseLogDateToNumber(logDateStr);
-                const wmNum = this.parseLogDateToNumber(watermark);
+                // Normalize "DD/MM HH:MM" → "DD/MM HH:MM:SS" (append :00 if seconds missing)
+                const toHHMMSS = (ts) => {
+                    const s = String(ts || '').trim();
+                    if (!s) return '';
+                    // already has seconds?
+                    if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
+                    // has only HH:MM → append :00
+                    if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
+                    // unknown format → return as-is (parser will return 0)
+                    return s;
+                };
+
+                const msgNum = this.parseLogDateToNumber(toHHMMSS(logDateStr));
+                const wmNum = this.parseLogDateToNumber(toHHMMSS(watermark));
                 if (!msgNum) return false;
 
-                const isNewer = msgNum >= wmNum;
+                const isNewer = msgNum >= wmNum; // include equal → not missed at same second
                 this.verbose(this.LOG, 'Date comparison:', {
                     logDate: logDateStr, logDateNum: msgNum,
                     watermark, watermarkNum: wmNum, isNewer
@@ -2805,7 +2836,7 @@ Private send interception
             // Unread messages → move to top
             if (unreadReceivedMessagesCount > 0) {
                 this.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
-                const chip = this._createChipForUserItem(userEl, uid);
+                const chip = this._createChipForUserItem(userEl);
 
                 userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
                 userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
@@ -2822,7 +2853,7 @@ Private send interception
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
                 this.verbose('Adding all read chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
-                const chip = this._createChipForUserItem(userEl, uid);
+                const chip = this._createChipForUserItem(userEl);
 
                 userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
                 userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_unread_messages));
@@ -2846,7 +2877,7 @@ Private send interception
             }
         }
 
-        _createChipForUserItem(userEl, uid) {
+        _createChipForUserItem(userEl) {
             let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
 
             if (!userEl.classList.contains('chataddons-sent')) {
@@ -3596,16 +3627,29 @@ Private send interception
                 case 'dm-out':
                     targetContainer = this.ui.sentBox;
                     break;
-                case 'dm-in':
-                    targetContainer = this.ui.receivedMessagesBox;
+
+                case 'dm-in': {
+                    // ensure subsection refs are bound (in case the box was rebuilt)
+                    this.ui.unrepliedMessageBox = this.ui.unrepliedMessageBox || this.qs(this.sel.log.unreplied);
+                    this.ui.repliedMessageBox = this.ui.repliedMessageBox || this.qs(this.sel.log.replied);
+
+                    // unread → Not Replied, else → Replied
+                    targetContainer =
+                        activityLog.unread !== false
+                            ? this.ui.unrepliedMessageBox
+                            : this.ui.repliedMessageBox;
                     break;
+                }
+
                 case 'login':
                 case 'logout':
                     targetContainer = this.ui.presenceBox;
                     break;
+
                 case 'event':
                     targetContainer = this.ui.otherBox;
                     break;
+
                 default:
                     targetContainer = this.ui.receivedMessagesBox;
             }
@@ -3614,28 +3658,28 @@ Private send interception
 
             this.verbose(
                 `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
-                user, 'in target container', targetContainer
+                user,
+                'in target container',
+                targetContainer
             );
 
             // entry root
             const el = document.createElement('div');
-            const mappedKind = (kind === 'dm-out') ? 'send-ok' : kind; // keep collapse mapping
+            const mappedKind = kind === 'dm-out' ? 'send-ok' : kind; // keep collapse mapping
             el.className = 'ca-log-entry ' + ('ca-log-' + mappedKind);
             el.setAttribute('data-uid', String(user.uid));
             if (guid != null) el.setAttribute('data-guid', String(guid));
 
-            // timestamp (HH:MM or right part of "DD/MM HH:MM")
+            // timestamp
             const tsEl = document.createElement('span');
             tsEl.className = 'ca-log-ts';
-            tsEl.textContent = (String(ts).split(' ')[1] || String(ts));
+            tsEl.textContent = String(ts).split(' ')[1] || String(ts);
             el.appendChild(tsEl);
 
-            // dot
             const dot = document.createElement('span');
             dot.className = 'ca-log-dot';
             el.appendChild(dot);
 
-            // expand indicator for outgoing
             if (kind === 'dm-out') {
                 const exp = document.createElement('span');
                 exp.className = 'ca-expand-indicator';
@@ -3644,21 +3688,20 @@ Private send interception
                 el.appendChild(exp);
             }
 
-            // username
             const userSpan = document.createElement('span');
             userSpan.className = 'ca-log-user';
             userSpan.innerHTML = this.userLinkHTML(user);
             el.appendChild(userSpan);
 
-            // message text
             const html = this.buildLogHTML(kind, activityLog.content);
-            const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
+            const detailsHTML = this.decodeHTMLEntities
+                ? this.decodeHTMLEntities(html)
+                : html;
             const text = document.createElement('span');
             text.className = 'ca-log-text';
             text.innerHTML = detailsHTML;
             el.appendChild(text);
 
-            // dm link (existing)
             const dm = document.createElement('a');
             dm.className = 'ca-dm-link ca-dm-right';
             dm.href = '#';
@@ -3674,12 +3717,17 @@ Private send interception
             del.textContent = '✖';
             el.appendChild(del);
 
-            targetContainer.appendChild(el);
+            // Unread go to the top of "Not Replied"; replied can append.
+            if (kind === 'dm-in' && activityLog.unread !== false) {
+                targetContainer.insertBefore(el, targetContainer.firstChild || null);
+            } else {
+                targetContainer.appendChild(el);
+            }
 
-            // add replied marker if dm-in and already read
             if (kind === 'dm-in' && activityLog.unread === false) {
                 this.addRepliedBadgeToLog?.(activityLog.guid);
             }
+
             requestAnimationFrame(() => {
                 try {
                     targetContainer.scrollTop = targetContainer.scrollHeight;
@@ -4022,15 +4070,6 @@ Private send interception
             }
         }
 
-        getTimeStampInWebsiteFormat() {
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            return `${day}/${month} ${hours}:${minutes}`;
-        }
-
         initializeGlobalWatermark() {
             try {
                 const current = this.getGlobalWatermark();
@@ -4057,29 +4096,28 @@ Private send interception
             }
         }
 
-        /* ---------- Parse "DD/MM HH:MM" into comparable number (MMDDHHMM) ---------- */
         parseLogDateToNumber(logDateStr) {
+            // Delegate to the ActivityLogStore version to keep behavior consistent
             try {
-                if (!logDateStr || typeof logDateStr !== 'string') return 0;
-
-                // Example format: "23/10 11:25"
-                const parts = logDateStr.trim().split(/[\s\/:]+/);
-                if (parts.length < 4) return 0;
-
-                const day = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10);
-                const hours = parseInt(parts[2], 10);
-                const minutes = parseInt(parts[3], 10);
-
-                if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
-
-                // MMDDHHMM — good enough for comparing within the same year
-                return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Parse log_date error:', e, '— input:', logDateStr);
+                return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
+            } catch {
                 return 0;
             }
+        }
+
+        timeHHMMSS() {
+            const d = new Date();
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
+        }
+
+        getTimeStampInWebsiteFormat() {
+            const d = new Date();
+            const DD = String(d.getDate()).padStart(2, '0');
+            const MM = String(d.getMonth() + 1).padStart(2, '0');
+            return `${DD}/${MM} ${this.timeHHMMSS()}`;
         }
 
         processReadStatusForLogs(logs) {
