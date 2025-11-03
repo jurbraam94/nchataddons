@@ -2305,8 +2305,15 @@ Private send interception
 
                 // UI updates for female users
                 if (isFemale) {
-                    const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
-                    this.addUserItemAdditions(el, newUser, isAllowedRank);
+                    if (hasChanged || this.isInitialLoad) {
+                        const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
+
+                        // Ensure UI elements for female users if rank allows
+                        if (isAllowedRank) {
+                            this.ensureBroadcastCheckbox(el);
+                        }
+                    }
+                    this.updateProfileChip?.(newUser.uid);
                     userEl.remove();
                     this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
                 }
@@ -2387,18 +2394,6 @@ Private send interception
                 }
             });
             this.isInitialLoad = false;
-        }
-
-        addUserItemAdditions(el, user, isAllowedRank) {
-            const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
-            this.verbose(`[UserItemAdditions] User ${name} (${user.uid}) profile processing. replied status:`, replied, 'isAllowedRank (for broadcast)', isAllowedRank);
-
-            // Ensure UI elements for female users if rank allows
-            if (isAllowedRank) {
-                this.ensureBroadcastCheckbox(el);
-            }
-
-            this.updateProfileChip?.(user.uid);
         }
 
         /* ===================== CHAT TAP (partial) ===================== */
