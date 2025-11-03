@@ -230,84 +230,134 @@
         }
     }
 
-    /** Example Users store */
-    /** Users store (direct-to-store, like ActivityLogStore) */
+    /** Users store (array-backed, like ActivityLogStore) */
     class UsersStore {
         constructor({kv, cacheKey, app} = {}) {
             if (!kv) throw new Error('UsersStore requires a KeyValueStore');
             this.kv = kv;
             this.cacheKey = cacheKey;
-            this.app = app; // so we can call app.searchUserRemote
+            this.app = app; // for app.searchUserRemote
         }
 
-        // internal helpers: mirror ActivityLogStore’s pattern
-        _getIndex() {
+        // ---- storage helpers (arrays only) ----
+        _getAll() {
             const raw = this.kv.get(this.cacheKey);
-            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+            return Array.isArray(raw) ? raw : [];
         }
 
-        _setIndex(map) {
-            this.kv.set(this.cacheKey, map || {});
+        _save(userToEdit) {
+            if (!userToEdit?.uid) {
+                throw new Error('_save requires user.uid');
+            }
+
+            const users = this._getAll();
+            const uid = String(userToEdit.uid);
+
+            const updated =
+                users.some(u => String(u.uid) === uid)
+                    ? users.map(u => (String(u.uid) === uid ? userToEdit : u))
+                    : [...users, userToEdit];
+
+            this.kv.set(this.cacheKey, updated);
+            return userToEdit;
         }
 
+        _saveAll(usersToEdit) {
+            if (!Array.isArray(usersToEdit)) {
+                throw new Error('changedUsers expects an array');
+            }
+
+            const changedUsers = this._getAll().map(user => {
+                const existingUser = usersToEdit.find(u => String(u.uid) === String(user.uid));
+                if (existingUser) {
+                    return {...existingUser, ...user};
+                }
+                return user;
+            })
+
+            this.kv.set(this.cacheKey, changedUsers);
+            return changedUsers;
+        }
+
+        // ---- API (array) ----
         list() {
-            return Object.values(this._getIndex());
+            return [...this._getAll()];
         }
 
         get(uid) {
-            const idx = this._getIndex();
-            return idx[String(uid)] || null;
+            return this._getAll().find(u => String(u.uid) === String(uid)) || null;
         }
 
         has(uid) {
-            const idx = this._getIndex();
-            return !!idx[String(uid)];
+            return !!this.get(uid);
         }
 
-        upsert(user) {
-            if (!user || user.uid == null) return null;
-            const uid = String(user.uid);
-            const normalized = {
-                uid,
-                name: String(user.name ?? uid),
-                avatar: String(user.avatar ?? ''),
-                isFemale: !!user.isFemale,
-                ...(user.lastRead ? {lastRead: user.lastRead} : {}),
-                isLoggedIn: user.isLoggedIn
-            };
-            const idx = this._getIndex();
-            idx[uid] = {...(idx[uid] || {}), ...normalized};
-            this._setIndex(idx);
-            return idx[uid];
+        // Merge a single patch with existing (NO SAVE)
+        _mergeUser(newUser) {
+            if (!newUser || newUser.uid == null) {
+                console.error('_mergeUser requires patch.uid');
+            }
+            const existing = this.get(newUser.uid);
+            return existing ? {...existing, ...newUser} : {...newUser, unread: 0};
+        }
+
+        // Merge many patches with existing (NO SAVE)
+        _mergeUsers(changedUsers) {
+            if (!Array.isArray(changedUsers)) {
+                throw new Error('_mergeUsers expects an array');
+            }
+            return changedUsers
+                .filter(u => u && u.uid != null)
+                .map(u => this._mergeUser(u));
         }
 
         // alias used by call sites
+        upsert(user) {
+            return this.set(user);
+        }
+
         set(user) {
-            return this.upsert(user);
+            if (!user || user.uid == null) {
+                console.error('set() requires user.uid');
+                return null;
+            }
+            const merged = this._mergeUser(user);
+            this.app.verbose(`Saving merged user`, user);
+            return this._save(merged);
+        }
+
+        setAll(users) {
+            if (!Array.isArray(users)) {
+                console.error(`setAll expects an array, got ${typeof users}`);
+                return null;
+            }
+            const merged = this._mergeUsers(users);
+            this._saveAll(merged);
+            return merged;
         }
 
         setLastRead(uid, lastRead) {
-            const idx = this._getIndex();
-            const id = String(uid);
-            if (!idx[id]) return null;
-            idx[id].lastRead = lastRead;
-            this.set(idx[id]);
-            return idx[id];
+            const u = this.get(uid);
+            if (!u) return null;
+            const updated = {...u, lastRead};
+            return this.set(updated);
         }
 
         isLoggedIn(uid) {
-            return this.get(uid).isLoggedIn || false;
+            return !!(this.get(uid)?.isLoggedIn);
         }
 
         setLoggedIn(uid, status) {
             const user = this.get(uid);
-            user.isLoggedIn = status;
-            return this.set(user);
+            if (!user) {
+                console.log(`User ${uid} not found, cannot set isLoggedIn to ${status}`);
+                return null;
+            }
+            return this.set({...user, isLoggedIn: status});
         }
 
         getAllLoggedIn() {
-            return this.list()
-                .filter(id => id.isLoggedIn);
+            return this.list().filter(u => u.isLoggedIn === true);
         }
 
         getFemalesLoggedIn() {
@@ -317,7 +367,10 @@
         async getOrFetch(id) {
             let u = this.get(id);
             if (!u && this.app?.searchUserRemote) {
-                u = await this.app.searchUserRemote(String(id));
+                const fetched = await this.app.searchUserRemote(String(id));
+                if (fetched) {
+                    u = this.set({...fetched, uid: String(fetched.uid ?? id)});
+                }
             }
             return u || null;
         }
@@ -328,12 +381,12 @@
                 u => (u.name || String(u.uid)).toLowerCase() === needle
             );
             if (local.length) return local;
-            // (Optional) if you later add a remote-by-name endpoint, call it here.
+            // Optional: add remote-by-name lookup here later
             return [];
         }
 
         clear() {
-            this.kv.set(this.cacheKey, {});
+            this.kv.set(this.cacheKey, []);
         }
     }
 
@@ -415,9 +468,7 @@
                (If you later move these to class methods, remove these lambdas.) */
             this.qs = (sel, rootEl) => (rootEl || document).querySelector(sel);
             this.qsa = (sel, rootEl) => Array.from((rootEl || document).querySelectorAll(sel));
-            this.escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            }[c]));
+
             this.timeHHMM = () => {
                 const d = new Date();
                 return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -655,9 +706,6 @@
 
                 // Attach the click handler
                 refreshBtn.addEventListener('click', () => {
-                    console.log('Refreshing daata');
-
-
                     const formData = new URLSearchParams();
                     formData.append('token', utk);
                     fetch('system/panel/user_list.php', {
@@ -719,10 +767,9 @@
                 subtree: false,   // do NOT react to deeper/internal changes
             });
 
-            console.log('[Observer] Watching #chat_right_data for direct child changes');
+            this.verbose('[Observer] Watching #chat_right_data for direct child changes');
             this._chatRightObserver = observer;
         }
-
 
         /* ---------- Helpers ---------- */
         qs(s, r) {
@@ -761,10 +808,6 @@
                 console.error(e);
                 return null;
             }
-        }
-
-        escapeHTML(s) {
-            return String(s).replace(/[&<>"']/g, c => this._escapeMap[c]);
         }
 
         decodeHTMLEntities(s) {
@@ -870,7 +913,6 @@ Private send interception
         }
 
         installPrivateSendInterceptor() {
-            // fetch()
             try {
                 if (!this._pp_origFetch && typeof window.fetch === 'function') {
                     this._pp_origFetch = window.fetch;
@@ -1128,7 +1170,7 @@ Private send interception
                 })
                 .catch((err) => {
                     console.error(this.LOG, 'Fetch private notifications error:', err);
-                    return [];
+                    return null;
                 });
         }
 
@@ -1221,7 +1263,7 @@ Private send interception
                     })
                     .catch((err) => {
                         console.error(this.LOG, 'Fetch chat log error:', err);
-                        return '';
+                        return null;
                     });
             } catch (e) {
                 console.error(e);
@@ -1307,8 +1349,7 @@ Private send interception
 
                     // decode → escape → normalize whitespace
                     const rawContent = t?.log_content ? String(t.log_content) : '';
-                    const decodedContent = this.decodeHTMLEntities ? this.decodeHTMLEntities(rawContent) : rawContent;
-                    const content = (this.escapeHTML ? this.escapeHTML(decodedContent) : decodedContent).replace(/\s+/g, ' ').trim();
+                    const content = this.decodeHTMLEntities ? this.decodeHTMLEntities(rawContent) : rawContent;
 
                     // resolve user
                     const user = await this.UserStore.getOrFetch(fromId);
@@ -1517,24 +1558,24 @@ Private send interception
             }
         }
 
-        buildLogHTML(kind, user = {}, content) {
-            const text = typeof content === 'object' ? content?.text : content;
+        buildLogHTML(kind, content) {
+            const text = content;
             const status = typeof content === 'object' ? content?.status : null;
-            this.verbose(`Building log HTML with kind=${kind}, user=${user.uid}, content=${text}`, user);
+            this.verbose(`Building log HTML with kind=${kind},content=${text}`);
 
             switch (kind) {
                 case 'dm-in':
-                    return `“${this.escapeHTML(text || '')}”`;
+                    return `${text}`;
                 case 'dm-out':
-                    return `“${this.escapeHTML(text || '')}”`;
+                    return `${text}`;
                 case 'send-fail': // keep if you still log failures
-                    return `failed (${String(status || 0)}) — “${this.escapeHTML(text || '')}”`;
+                    return `failed (${String(status || 0)}) — ${text}`;
                 case 'login':
                     return `logged on`;
                 case 'logout':
                     return `logged off`;
                 default:
-                    return `${this.escapeHTML(text || '')}`;
+                    return `${text}`;
             }
         }
 
@@ -2067,7 +2108,6 @@ Private send interception
             }
         }
 
-
         /* Process initial user list that's already in the DOM on page load */
         processInitialUserList() {
             try {
@@ -2081,6 +2121,7 @@ Private send interception
 
                 // Get the HTML from the host container and process it using unified method
                 const htmlContent = this.ui.hostContainer.innerHTML;
+
                 if (htmlContent) {
                     this.processUserListResponse(htmlContent, true); // true = isInitialLoad
                 } else {
@@ -2113,9 +2154,13 @@ Private send interception
         processUserListResponse(html, isInitialLoad = false) {
             try {
                 if (!html || typeof html !== 'string') return;
+                console.log("\n========== START PARSING NEW USER LIST ==========");
+                if (html.includes('ca-hidden')) {
+                    console.error(`RESPONSE CONTAINS HIDDEN USER ITEMS!!`);
+                }
 
                 const context = isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
-                console.log(this.LOG, context, 'Processing user list response, length:', html.length);
+                this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
 
                 // Get managed container (created once in init, never removed)
                 const managedList = this.getContainer();
@@ -2129,92 +2174,90 @@ Private send interception
                 tempDiv.innerHTML = html;
 
                 // Find all female users using proper DOM queries
-                const users = this.qsa(`.user_item`, tempDiv);
-                console.log(this.LOG, '[USER_LIST] Found', users.length, 'female users in response HTML');
+                const users = this.qsa('.online_user .user_item', tempDiv);
+                console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
 
                 if (users.length === 0) {
-                    console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
+                    console.error(`Something went wrong processing the user list. Skipping this round.`);
+                    return;
                 }
 
-                // Track UIDs from the response for cleanup later
-                const responseUIDs = new Set();
-
                 // Move/update female users to managed container immediately
-                let addedCount = 0;
-                let updatedCount = 0;
-                let removedCount = 0;
+                let loggedInCount = 0;
+                let updatedProfileCount = 0;
+                let loggedOffCount = 0;
 
-                const usersList = this.UserStore.getAllLoggedIn();
+                const seenLoggedIn = new Set();
 
                 users.forEach(userEl => {
                     try {
+                        // Extract user data from DOM
                         const uid = this.getUserId(userEl);
-                        if (!uid) return;
-
-                        const index = usersList.map(function (item) {
-                            return item.uid
-                        }).indexOf(uid);
-
-                        usersList.splice(index, 1);
-
-                        responseUIDs.add(uid);
-
-                        // Extract user data
                         const name = this.extractUsername(userEl) || uid;
                         const avatar = this.extractAvatar(userEl);
                         const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
                         const isAllowedRank = this._isAllowedRank(userEl);
 
-                        const existingUser = this.UserStore?.get(uid);
-                        const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar || existingUser?.isLoggedIn !== true;
-                        let handleUserElement = false;
+                        const existingUser = this.UserStore.get(uid);
+                        let newUser = existingUser;
+
+                        seenLoggedIn.add(uid);
+
+                        const hasChanged =
+                            !existingUser ||
+                            existingUser.name !== name ||
+                            existingUser.avatar !== avatar ||
+                            existingUser.isFemale !== isFemale ||
+                            existingUser.isLoggedIn !== true;
 
                         if (hasChanged) {
-                            updatedCount++;
-                            handleUserElement = true;
-                            console.log(this.LOG, '[USER_LIST] Updating existing user', uid, name);
-                        } else if (!existingUser) {
-                            addedCount++;
-                            handleUserElement = true;
-                            console.log(this.LOG, '[USER_LIST] Adding non existing user', uid, name);
-                        }
+                            // Upsert & mark logged-in
+                            newUser = this.UserStore.set({
+                                uid,
+                                name,
+                                avatar,
+                                isFemale,
+                                isLoggedIn: true,
+                            });
 
-                        if (handleUserElement) {
-                            const user = this.UserStore.set(
-                                {
-                                    uid,
-                                    name,
-                                    avatar,
-                                    isFemale,
-                                    isLoggedIn: true,
-                                });
-
+                            // Login transition event
                             if (!isInitialLoad && existingUser?.isLoggedIn !== true) {
                                 console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
-
                                 if (isFemale) {
-                                    this.logLogin?.(user);
+                                    this.logLogin?.(newUser);
                                 }
                             }
 
-                            if (isFemale) {
-                                const el = this._updateOrCreateUserElement(managedList, userEl, user);
-                                this._handleVisibilityOrGenderChange(el, user, isAllowedRank);
-                                userEl.remove();
-
-                                this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
+                            if (!existingUser || existingUser.isLoggedIn !== true) {
+                                loggedInCount++;
+                                this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
+                            } else if (existingUser.isLoggedIn === true) {
+                                updatedProfileCount++;
+                                this.debug(this.LOG, `[USER_LIST] Updating metadata of existing user ${uid}`, newUser);
                             }
                         }
 
+                        // UI updates for female users
+                        if (isFemale) {
+                            const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
+                            this._handleVisibilityOrGenderChange(el, newUser, isAllowedRank);
+                            userEl.remove();
+                            this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
+                        }
                     } catch (err) {
                         console.error(err);
                         console.error(this.LOG, '[USER_LIST] Error processing user:', err);
                     }
                 });
 
-                usersList.forEach(user => {
-                    console.log(`Handling remaining user ${user.uid} (${user.name}) to logoff`);
-                    this.UserStore.setLoggedIn(user.uid, false);
+                // Only try to remove nodes if it wasnt the initial load ( after page reload all nodes are readded)
+
+                const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
+                for (const user of currentlyLoggedIn) {
+                    const id = String(user.uid);
+                    if (seenLoggedIn.has(id)) continue;
+
+                    this.UserStore.setLoggedIn(id, false);
 
                     if (!isInitialLoad) {
                         console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
@@ -2224,19 +2267,18 @@ Private send interception
 
                     if (user.isFemale) {
                         this.logLogoutToLogLine(user);
-
-                        const elementToRemove = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
-                        if (elementToRemove) {
-                            elementToRemove.remove();
-                        } else {
-                            console.error(`Couldn't remove user ${user.uid} from managed container`);
+                        if (!isInitialLoad) {
+                            const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
+                            this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
+                            if (elementToRemove) elementToRemove.remove();
+                            else console.error(`Couldn't remove user ${id} from managed container`);
                         }
                     }
 
-                    removedCount++;
-                })
+                    loggedOffCount++;
+                }
 
-                console.log(this.LOG, '[USER_LIST] Summary: Added', addedCount, ', Updated', updatedCount, ', Removed', removedCount, 'female users');
+                console.log(`[USER_LIST] Summary: Logged in ${loggedInCount} users, Logged off ${loggedOffCount} female users, Updated ${updatedProfileCount} profiles`);
 
                 // Clean up temporary DOM element
                 tempDiv.innerHTML = '';
@@ -2693,7 +2735,7 @@ Private send interception
         /* ---------- Mark sent + chips/sorting ---------- */
         markSent(uid) {
             try {
-                this.ensureSentChip(uid, !!this.REPLIED_CONVOS[uid]);
+                this.ensureSentChip(uid);
             } catch (e) {
                 console.error(e);
             }
@@ -3003,12 +3045,12 @@ Private send interception
                     const hostHeader = document.createElement('div');
                     hostHeader.className = 'ca-user-list-header';
                     hostHeader.innerHTML = `
-                <div class="ca-user-list-title">
-                    <span>💥 Online Users (Male)</span>
-                    <span class="ca-user-list-count" id="${this.getCleanSelector(this.sel.users.hostCount)}">0</span>
-                </div>
-                <div class="ca-user-list-toggle">▼</div>
-            `;
+                    <div class="ca-user-list-title">
+                        <span>💥 Online Users (Male)</span>
+                        <span class="ca-user-list-count" id="${this.getCleanSelector(this.sel.users.hostCount)}">0</span>
+                    </div>
+                    <div class="ca-user-list-toggle">▼</div>
+                `;
 
                     // Wrap chat_right_data
                     chatRightData.parentNode.insertBefore(hostWrapper, chatRightData);
@@ -3017,19 +3059,13 @@ Private send interception
                     const hostContent = document.createElement('div');
                     hostContent.className = 'ca-user-list-content';
 
-                    // Find and cache the .online_user container inside chat_right_data
-                    const onlineUser = this.qs('.online_user', chatRightData);
-                    if (onlineUser) {
-                        this.ui.hostContainer = onlineUser;
-                        console.log(this.LOG, '[createManagedUsersContainer] Cached host container (.online_user)');
-                    } else {
-                        console.warn(this.LOG, '[createManagedUsersContainer] .online_user not found, using chat_right_data as fallback');
-                        this.ui.hostContainer = chatRightData;
-                    }
-
                     hostContent.appendChild(chatRightData);
                     hostWrapper.appendChild(hostContent);
                     this.qs('.user_count', hostWrapper)?.remove();
+
+                    // Find and cache the .online_user container inside chat_right_data
+                    this.ui.hostContainer = hostWrapper;
+
                     // Wire collapse/expand
                     hostHeader.addEventListener('click', () => {
                         hostWrapper.classList.toggle('ca-collapsed');
@@ -3095,13 +3131,12 @@ Private send interception
                         if (onlineUserDiv) {
                             onlineUserDiv.innerHTML = '';
                             onlineUserDiv.id = this.getCleanSelector(this.sel.users.managedList);
-                            console.log(this.LOG, '[createManagedUsersContainer] Cleared and updated .online_user div');
+                            this.verbose(this.LOG, '[createManagedUsersContainer] Cleared and updated .online_user div');
                         } else {
                             console.error(this.LOG, '[createManagedUsersContainer] .online_user not found in clone');
                         }
                     }
                 }
-
 
                 // Insert BEFORE host wrapper
                 hostWrapper.parentElement.insertBefore(managedWrapper, hostWrapper);
@@ -3115,7 +3150,7 @@ Private send interception
                     });
                 }
 
-                console.log(this.LOG, 'Created managed users container by cloning host wrapper');
+                this.verbose(this.LOG, 'Created managed users container by cloning host wrapper');
 
                 // Wire click selection for the managed container
                 this.wireUserClickSelection();
@@ -3126,8 +3161,6 @@ Private send interception
                 console.error(e);
                 console.error(this.LOG, 'Create managed container error:', e);
             }
-
-
         }
 
         updateHostUsersCount() {
@@ -3255,9 +3288,8 @@ Private send interception
         }
 
         openSpecific() {
-            console.log(this.LOG, 'openSpecific() called');
             const pop = this.createSpecificPopup();
-            console.log(this.LOG, 'Specific popup element:', pop);
+            this.verbose(this.LOG, 'Specific popup element:', pop);
             if (pop) {
                 // Ensure it's visible and styled as modal
                 pop.style.display = 'block';
@@ -3406,12 +3438,12 @@ Private send interception
             try {
                 // Find the Broadcast button and append the Specific button next to it
                 const bcBtn = this.qs(this.sel.nav.bc);
-                console.log(this.LOG, 'Broadcast button found:', bcBtn);
+                this.verbose(this.LOG, 'Broadcast button found:', bcBtn);
                 if (!bcBtn) return;
 
                 // The ID should be 'ca-nav-specific' not 'a-nav-specific'
                 let specBtn = document.getElementById('ca-nav-specific');
-                console.log(this.LOG, 'Looking for specific button, found:', specBtn);
+                this.verbose(this.LOG, 'Looking for specific button, found:', specBtn);
 
                 if (!specBtn) {
                     specBtn = document.createElement('button');
@@ -3421,16 +3453,16 @@ Private send interception
                     specBtn.textContent = 'Specific';
                     // insert after Broadcast
                     bcBtn.insertAdjacentElement('afterend', specBtn);
-                    console.log(this.LOG, 'Created specific button:', specBtn);
+                    this.verbose(this.LOG, 'Created specific button:', specBtn);
                 }
                 this.ui.navSpec = specBtn;
                 if (!specBtn._wired) {
                     specBtn._wired = true;
                     specBtn.addEventListener('click', () => {
-                        console.log(this.LOG, 'Specific button clicked');
+                        this.verbose(this.LOG, 'Specific button clicked');
                         this.openSpecific();
                     });
-                    console.log(this.LOG, 'Wired specific button');
+                    this.verbose(this.LOG, 'Wired specific button');
                 }
             } catch (e) {
                 console.error(this.LOG, 'Error in addSpecificNavButton:', e);
@@ -3611,14 +3643,14 @@ Private send interception
             }
         }
 
-        renderLogEntry(entry, user) {
+        renderLogEntry(activityLog, user) {
             // entry: { ts, kind, content, uid, guid, unread }
-            if (!entry || !user || !user.uid) {
-                console.error(this.LOG, 'renderLogEntry: Invalid args', {entry, user});
+            if (!activityLog || !user || !user.uid) {
+                console.error(this.LOG, 'renderLogEntry: Invalid args', {entry: activityLog, user});
                 return;
             }
 
-            const {ts, kind, content, guid} = entry;
+            const {ts, kind, content, guid} = activityLog;
 
             // pick target
             let targetContainer = null;
@@ -3627,7 +3659,7 @@ Private send interception
                     targetContainer = this.ui.sentBox;
                     break;
                 case 'dm-in': {
-                    const isUnread = (entry.unread !== false); // missing ⇒ unread
+                    const isUnread = (activityLog.unread !== false); // missing ⇒ unread
                     const preferred = isUnread ? this.ui.unrepliedMessageBox : this.ui.repliedMessageBox;
                     targetContainer = preferred || this.ui.receivedMessagesBox;
                     break;
@@ -3681,7 +3713,7 @@ Private send interception
             el.appendChild(userSpan);
 
             // message text
-            const html = this.buildLogHTML(kind, user || {}, content);
+            const html = this.buildLogHTML(kind, activityLog.content);
             const detailsHTML = this.decodeHTMLEntities ? this.decodeHTMLEntities(html) : html;
             const text = document.createElement('span');
             text.className = 'ca-log-text';
@@ -3700,8 +3732,8 @@ Private send interception
             targetContainer.appendChild(el);
 
             // add replied marker if dm-in and already read
-            if (kind === 'dm-in' && entry.unread === false) {
-                this.AppendIfNotYetMarkedReplied?.(entry.guid);
+            if (kind === 'dm-in' && activityLog.unread === false) {
+                this.AppendIfNotYetMarkedReplied?.(activityLog.guid);
             }
             requestAnimationFrame(() => {
                 try {
@@ -3757,15 +3789,14 @@ Private send interception
 
 
         userLinkHTML(user) {
-            const esc = this.escapeHTML;
             return `<a href="#"
             class="ca-user-link"
             title="Open profile"
-            data-uid="${esc(String(user.uid || ''))}"
-            data-name="${esc(String(user.name || ''))}"
+            data-uid="${user.uid}"
+            data-name="${user.name}"
             data-action="open-profile"
-            data-avatar="${esc(String(user.avatar || ''))}">
-            <strong>${esc(user.name || '?')}</strong>
+            data-avatar="${user.avatar}">
+            <strong>${user.name || "??"}</strong>
           </a>`;
         }
 
@@ -3912,11 +3943,10 @@ Private send interception
                 const msg = document.createElement('div');
                 msg.className = 'ca-log-text';
 
-                const safe = this.escapeHTML(String(text || ''));
                 if (type === 'broadcast') {
-                    msg.innerHTML = safe + ' <span class="ca-badge-bc">BROADCAST</span>';
+                    msg.innerHTML = text + ' <span class="ca-badge-bc">BROADCAST</span>';
                 } else {
-                    msg.innerHTML = safe;
+                    msg.innerHTML = text;
                 }
 
                 entry.appendChild(ts);
@@ -4140,28 +4170,6 @@ Private send interception
                 console.error(`${this.sel.log.classes.ca_log_entry}[data-uid="${uid}"] not found`);
             }
             return el;
-        }
-
-        MarkAndRenderOrMoveRepliedMessage(logEntryEl, uid, timestamp) {
-            const targetContainerEl = this.determineTargetMessagesContainer(uid, timestamp);
-            if (!targetContainerEl) {
-                console.error(this.LOG || '[321ChatAddons]', 'Unreplied/Replied containers not found');
-                return;
-            }
-
-            this.debug(`Marking and rendering/moving replied message for ${uid} at ${timestamp} an logEntryElL`, logEntryEl);
-
-            if (targetContainerEl === this.ui.unrepliedMessageBox) {
-                this.debug('Message is new and unreplied. Appending it to the unreplied box.', this.ui.unrepliedMessageBox);
-                this.ui.unrepliedMessageBox.appendChild(logEntryEl);
-            } else if (this.ui.unrepliedMessageBox.contains(logEntryEl) && targetContainerEl === this.ui.repliedMessageBox) {
-                this.debug('Removing unreplied message from unreplied container to recreate it in the replied container');
-                this.ui.unrepliedMessageBox.removeChild(logEntryEl);
-                // NOT NEEDED HERE I THINK: this.markConversationAsReplied(uid);
-            } else if (targetContainerEl === this.ui.repliedMessageBox) {
-                this.debug(`Moving message from unreplied container to replied container`);
-                this.ui.repliedMessageBox.appendChild(logEntryEl);
-            }
         }
 
         destroy() {
