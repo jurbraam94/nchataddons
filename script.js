@@ -241,6 +241,14 @@
             return this.setAll(allUnreadMessagesForUid);
         }
 
+        remove(guid) {
+            if (!guid) return false;
+            const all = this._getAll();
+            const next = all.filter(l => String(l.guid) !== String(guid));
+            this.kv.set(this.cacheKey, next);
+            return next.length !== all.length;
+        }
+
         clear() {
             this.kv.set(this.cacheKey, []);
         }
@@ -516,9 +524,9 @@
             /* ========= Audio Autoplay Gate (policy-safe) ========= */
             this._audioGate = {
                 userInteracted: false,
-                pending: null,     // Set<HTMLAudioElement>
-                origPlay: null,    // original HTMLAudioElement.prototype.play
-                onInteract: null,  // bound handler
+                pending: null,
+                origPlay: null,
+                onInteract: null,
                 installed: false
             };
 
@@ -578,6 +586,7 @@
                     presence: '#ca-log-box-presence',
                     clear: '#ca-log-clear',
                 },
+                other: '#ca-log-box-other',
                 // nav
                 nav: {
                     spec: '#ca-nav-specific',
@@ -739,31 +748,15 @@
             const bar = document.getElementById('right_panel_bar');
 
             if (bar) {
-                // Create the new refresh button
                 const refreshBtn = document.createElement('div');
                 refreshBtn.className = 'panel_option';
                 refreshBtn.title = 'Refresh users';
                 refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
 
                 // Attach the click handler
-                refreshBtn.addEventListener('click', () => {
-                    const formData = new URLSearchParams();
-                    formData.append('token', utk);
-                    fetch('system/panel/user_list.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: formData.toString(),
-                        credentials: 'same-origin', // include cookies
-                    })
-                        .then(res => res.text())
-                        .then(html => {
-                            this.processUserListResponse(html);
-                        })
-                        .catch(err => console.error('Error reloading user list:', err))
-                        .finally(() => refreshBtn.classList.remove('loading'));
+                refreshBtn.addEventListener('click', async () => {
+                    await this.refreshUserList();
+                    refreshBtn.classList.remove('loading');
                 });
 
                 // Find the first existing button (e.g., users_option) to insert before
@@ -775,7 +768,46 @@
 
             this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
             this.watchChatRightForHostChanges();
+
+            // Prevent multiple intervals if init() can be called again
+            if (this._refreshInterval) clearInterval(this._refreshInterval);
+
+            // Schedule every 30 seconds
+            this._refreshInterval = setInterval(async () => {
+                try {
+                    await this.refreshUserList();
+                } catch (err) {
+                    console.error("Error refreshing user list:", err);
+                }
+            }, 30000);
+
             return this;
+        }
+
+        async refreshUserList() {
+            const formData = new URLSearchParams();
+            formData.append('token', utk);
+
+            try {
+                const res = await fetch('system/panel/user_list.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData.toString(),
+                    credentials: 'same-origin', // include cookies
+                });
+
+                const html = await res.text();
+                this.processUserListResponse(html);
+
+                const sysUser = {uid: 'system', name: 'System'};
+                this.logLine?.('event', `Refreshed user list at ${this.timeHHMM?.() || new Date().toLocaleTimeString()}`, sysUser);
+
+            } catch (err) {
+                console.error('Error reloading user list:', err);
+            }
         }
 
         watchChatRightForHostChanges() {
@@ -1583,6 +1615,8 @@ Private send interception
                     return `logged on`;
                 case 'logout':
                     return `logged off`;
+                case 'event':
+                    return `<span class="ca-log-text">${text || 'Event'}</span>`;
                 default:
                     return `${text}`;
             }
@@ -1627,8 +1661,9 @@ Private send interception
                 this.ui.sentBox,
                 this.ui.receivedMessagesBox,
                 this.ui.presenceBox,
-                this.ui.unrepliedMessageBox,     // add
-                this.ui.repliedMessageBox        // add
+                this.ui.unrepliedMessageBox,
+                this.ui.repliedMessageBox,
+                this.ui.otherBox
             ];
             boxes.forEach(box => {
                 if (!box || box._caGenericWired) return;
@@ -1700,10 +1735,27 @@ Private send interception
                     this.openProfileOnHost(uid);
                     return;
                 }
+
                 if (action === 'open-dm') {
                     this.verbose('_onLogClickGeneric: Opening DM for user:', user);
                     e.preventDefault();
                     this.applyLegacyAndOpenDm(user);
+                    return;
+                }
+
+                if (action === 'delete-log') {
+                    e.preventDefault();
+                    const guid = entry.getAttribute('data-guid');
+                    if (!guid) return;
+
+                    // remove from store (if the method exists) and from DOM
+                    try {
+                        this.ActivityLogStore?.remove?.(guid);
+                    } catch (_) {
+                    }
+                    entry.remove();
+
+                    // nothing else to do
                     return;
                 }
 
@@ -2315,19 +2367,14 @@ Private send interception
         }
 
         _handleVisibilityOrGenderChange(el, user, isAllowedRank) {
-            this.verbose(`[_handleVisibilityOrGenderChange] Processing female user ${name} (${user.uid})`);
+            const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
+            this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) profile processeing. replied status:`, replied, 'isAllowedRank (for broadcast)', isAllowedRank);
 
             // Ensure UI elements for female users if rank allows
             if (isAllowedRank) {
-                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) has allowed rank, ensuring broadcast checkbox`);
                 this.ensureBroadcastCheckbox(el);
-            } else {
-                this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) does not have allowed rank, skipping checkbox`);
             }
 
-            // Determine reply status
-            const replied = this.UserStore.setHasRepliedUpToLog(user.uid);
-            this.verbose(`[_handleVisibilityOrGenderChange] User ${name} (${user.uid}) replied status:`, replied);
             this.updateProfileChip?.(user.uid);
         }
 
@@ -2411,7 +2458,10 @@ Private send interception
                 (typeof o.pico === 'string' ? (Number(o.pico) || 0) : 0);
             const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
             const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
-            this.verbose(`pload:`, pload, `plogs:`, plogs);
+
+            if (pload.length || plogs.length) {
+                this.verbose(`pload:`, pload, `plogs:`, plogs);
+            }
             return {
                 last: typeof o.last === 'string' ? o.last : '',
                 pico: picoNum,
@@ -2742,11 +2792,10 @@ Private send interception
         updateProfileChip(uid) {
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
-            console.log(`Updating profile chip for user ${uid} with ${unreadReceivedMessagesCount} unread received messages and ${sentMessagesCount} sent messages`);
-
             const userEl = this.findUserElementById(uid);
             if (!userEl) {
-                console.error('updateProfileChip: user element not found for uid:', uid);
+                console.warn('updateProfileChip: user element not found for uid:', uid);
+                console.warn('This is probably because the user is not online anymore.');
                 return;
             }
 
@@ -2755,7 +2804,7 @@ Private send interception
 
             // Unread messages → move to top
             if (unreadReceivedMessagesCount > 0) {
-                console.log('Adding unread sent chip to user:', uid);
+                this.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 const chip = this._createChipForUserItem(userEl, uid);
 
                 userEl.classList.remove(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
@@ -2772,7 +2821,7 @@ Private send interception
 
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                console.log('Adding all read chip to user:', uid);
+                this.verbose('Adding all read chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 const chip = this._createChipForUserItem(userEl, uid);
 
                 userEl.classList.add(this.getCleanSelector(this.sel.log.classes.ca_replied_messages));
@@ -2787,7 +2836,7 @@ Private send interception
 
                 // No sent messages → remove chip
             } else {
-                console.log(`Removing sent chip from user ${uid}`);
+                this.verbose('Removing sent chip from user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 if (userEl.classList.contains('chataddons-sent')) {
                     userEl.classList.remove('chataddons-sent');
                     userEl.style.removeProperty('outline');
@@ -2798,7 +2847,6 @@ Private send interception
         }
 
         _createChipForUserItem(userEl, uid) {
-            console.log('Adding sent chip to user:', uid);
             let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
 
             if (!userEl.classList.contains('chataddons-sent')) {
@@ -2935,6 +2983,13 @@ Private send interception
                        class="ca-log-box ${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}"
                        aria-live="polite"></div>
                 </div>
+                 <div class="ca-section ca-log-section">
+              <hr class="ca-divider">
+              <div class="ca-section-title"><span>Other Logs</span></div>
+              <div id="${this.getCleanSelector(this.sel.log.other)}"
+                   class="ca-log-box ${this.getCleanSelector(this.sel.log.classes.ca_box_scrollable)}"
+                   aria-live="polite"></div>
+            </div>
               </div>`;
 
 
@@ -3401,7 +3456,8 @@ Private send interception
             this.ui.managedCount = this.qs(this.sel.users.managedCount);
             this.ui.hostWrapper = this.qs(this.sel.users.hostWrapper);
             this.ui.hostCount = this.qs(this.sel.users.hostCount);
-            // hostContainer needs special logic in getHostContainer()
+
+            this.ui.otherBox = this.qs(this.sel.log.other);
         }
 
         _wirePanelNav() {
@@ -3540,20 +3596,20 @@ Private send interception
                 case 'dm-out':
                     targetContainer = this.ui.sentBox;
                     break;
-                case 'dm-in': {
-                    const isUnread = (activityLog.unread !== false); // missing ⇒ unread
-                    const preferred = isUnread ? this.ui.unrepliedMessageBox : this.ui.repliedMessageBox;
-                    targetContainer = preferred || this.ui.receivedMessagesBox;
+                case 'dm-in':
+                    targetContainer = this.ui.receivedMessagesBox;
                     break;
-                }
                 case 'login':
                 case 'logout':
                     targetContainer = this.ui.presenceBox;
                     break;
+                case 'event':
+                    targetContainer = this.ui.otherBox;
+                    break;
                 default:
                     targetContainer = this.ui.receivedMessagesBox;
-                    break;
             }
+
             if (!targetContainer) return;
 
             this.verbose(
@@ -3602,7 +3658,7 @@ Private send interception
             text.innerHTML = detailsHTML;
             el.appendChild(text);
 
-            // dm link
+            // dm link (existing)
             const dm = document.createElement('a');
             dm.className = 'ca-dm-link ca-dm-right';
             dm.href = '#';
@@ -3610,7 +3666,14 @@ Private send interception
             dm.textContent = 'dm';
             el.appendChild(dm);
 
-            // insert
+            const del = document.createElement('a');
+            del.className = 'ca-del-link';
+            del.href = '#';
+            del.setAttribute('data-action', 'delete-log');
+            del.title = 'Delete this log entry';
+            del.textContent = '✖';
+            el.appendChild(del);
+
             targetContainer.appendChild(el);
 
             // add replied marker if dm-in and already read
@@ -3895,7 +3958,7 @@ Private send interception
                 if (!chatRight) return;
 
                 const rect = chatRight.getBoundingClientRect();
-                let h = rect?.height;
+                let h = rect?.height - 45;
 
                 if (!h || h <= 0) {
                     h = chatRight.offsetHeight || chatRight.clientHeight || 0;

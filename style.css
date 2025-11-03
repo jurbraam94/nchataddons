@@ -826,10 +826,12 @@
 .ca-log-box-presence,
 #ca-log-box-sent,
 #ca-log-box-received,
-#ca-log-box-presence {
+#ca-log-box-presence,
+#ca-log-box-other { /* NEW */
     overflow-y: auto !important;
     overflow-x: hidden !important;
 }
+
 
 /* Presence log box within fixed-height section - show exactly 5 lines */
 .ca-log-section .ca-log-box {
@@ -1211,6 +1213,15 @@
     display: none;
 }
 
-/*#ca-host-users-wrapper .user_item[data-gender="2"] {*/
-/*    display: none !important;*/
-/*}*/
+.ca-del-link {
+    margin-left: 6px;
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.ca-del-link:hover {
+    color: #f87171; /* soft red on hover */
+    text-decoration: none;
+}
