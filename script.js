@@ -2505,14 +2505,34 @@ Private send interception
                 const watermark = this.getGlobalWatermark();
                 if (!watermark) return true; // no watermark -> everything is "new"
 
-                const msgNum = this.parseLogDateToNumber(this.timeHHMMSS(logDateStr));
-                const wmNum = this.parseLogDateToNumber(this.timeHHMMSS(watermark));
-                if (!msgNum) return false;
+                // Ensure both sides are in "DD/MM HH:MM:SS"
+                const msgTs = this.normalizeApiDate
+                    ? this.normalizeApiDate(String(logDateStr || ''))
+                    : String(logDateStr || '');
+                const wmTs = this.normalizeApiDate
+                    ? this.normalizeApiDate(String(watermark || ''))
+                    : String(watermark || '');
 
-                const isNewer = msgNum >= wmNum; // include equal → not missed at same second
+                const msgNum = this.parseLogDateToNumber(msgTs);
+                const wmNum = this.parseLogDateToNumber(wmTs);
+
+                if (!msgNum) {
+                    this.verbose(this.LOG, 'Date comparison: unable to parse log date', {logDateStr, msgTs});
+                    return false;
+                }
+                if (!wmNum) {
+                    // If the watermark is unparsable, be safe and treat the message as new.
+                    this.verbose(this.LOG, 'Date comparison: unparsable watermark, treating as newer', {
+                        watermark,
+                        wmTs
+                    });
+                    return true;
+                }
+
+                const isNewer = msgNum >= wmNum; // include equal second
                 this.verbose(this.LOG, 'Date comparison:', {
-                    logDate: logDateStr, logDateNum: msgNum,
-                    watermark, watermarkNum: wmNum, isNewer
+                    logDate: logDateStr, normalizedLogDate: msgTs, logDateNum: msgNum,
+                    watermark, normalizedWatermark: wmTs, watermarkNum: wmNum, isNewer
                 });
                 return isNewer;
             } catch (e) {
