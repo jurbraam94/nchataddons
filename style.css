@@ -675,7 +675,7 @@
     overflow-y: auto;
     padding: 8px;
     display: flex;
-    flex-direction: column-reverse; /* normal flow, newest at bottom */
+    flex-direction: column; /* normal flow, newest at bottom */
     gap: 6px;
     font-size: 12px;
     line-height: 1.35;
@@ -724,7 +724,7 @@
 /* Fixed layout for subsections - unreplied at top, replied at bottom */
 #ca-log-box-received {
     display: flex !important;
-    flex-direction: column-reverse !important;
+    flex-direction: column !important;
     padding: 0 !important;
 }
 
@@ -754,7 +754,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column;
     gap: 6px;
 }
 
