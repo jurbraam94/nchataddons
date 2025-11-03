@@ -238,7 +238,6 @@
             this.kv = kv;
             this.cacheKey = cacheKey;
             this.app = app; // so we can call app.searchUserRemote
-            this._runtimeLoggedIn = Object.create(null); // runtime-only login flags
         }
 
         // internal helpers: mirror ActivityLogStore’s pattern
@@ -273,7 +272,8 @@
                 name: String(user.name ?? uid),
                 avatar: String(user.avatar ?? ''),
                 isFemale: !!user.isFemale,
-                ...(user.lastRead ? {lastRead: user.lastRead} : {})
+                ...(user.lastRead ? {lastRead: user.lastRead} : {}),
+                isLoggedIn: user.isLoggedIn
             };
             const idx = this._getIndex();
             idx[uid] = {...(idx[uid] || {}), ...normalized};
@@ -295,20 +295,20 @@
             return idx[id];
         }
 
-        // runtime-only login state (not persisted)
         isLoggedIn(uid) {
-            return !!this._runtimeLoggedIn[String(uid)];
+            return this.get(uid).isLoggedIn || false;
         }
 
         setLoggedIn(uid, status) {
             const id = String(uid);
-            this._runtimeLoggedIn[id] = !!status;
-            return this.get(id) || {uid: id};
+            const user = this.get(id);
+            user.isLoggedIn = status;
+            return this.set(user);
         }
 
         getAllLoggedIn() {
-            return Object.keys(this._runtimeLoggedIn)
-                .filter(id => this._runtimeLoggedIn[id])
+            return this.list()
+                .filter(id => id.isLoggedIn)
                 .map(id => this.get(id) || {uid: id});
         }
 
@@ -2168,7 +2168,7 @@ Private send interception
                         const isAllowedRank = this._isAllowedRank(userEl);
 
                         const existingUser = this.UserStore?.get(uid);
-                        const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar || existingUser?.loggedIn !== true;
+                        const hasChanged = existingUser?.name !== name || existingUser?.avatar !== avatar || existingUser?.isLoggedIn !== true;
                         let handleUserElement = false;
 
                         if (hasChanged) {
@@ -2191,7 +2191,7 @@ Private send interception
                                     isLoggedIn: true,
                                 });
 
-                            if (!isInitialLoad && existingUser?.loggedIn !== true) {
+                            if (!isInitialLoad && existingUser?.isLoggedIn !== true) {
                                 console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
 
                                 if (isFemale) {
