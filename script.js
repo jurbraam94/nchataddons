@@ -11,9 +11,9 @@
 
     /** Key/Value store backed by localStorage */
     class KeyValueStore {
-        constructor({namespace = ""} = {}) {
+        constructor({namespace = "", storage} = {}) {
             this.ns = namespace ? namespace + ":" : "";
-            this.storage = localStorage; // assume available
+            this.storage = storage || localStorage;
         }
 
         _key(k) {
@@ -124,29 +124,25 @@
             try {
                 if (!logDateStr || typeof logDateStr !== 'string') return 0;
 
-                // Accept "DD/MM HH:MM" or "DD/MM HH:MM:SS"
-                // Split on spaces, slashes, or colons → [day, month, hh, mm, (ss?)]
-                const parts = logDateStr.trim().split(/[\s/:]+/);
+                // Example format: "23/10 11:25"
+                const parts = logDateStr.trim().split(/[\s\/:]+/);
                 if (parts.length < 4) return 0;
 
-                const [day, month, hours, minutes, secondsMaybe] = parts.map(v => parseInt(v, 10));
-                if ([day, month, hours, minutes].some(Number.isNaN)) return 0;
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                const hours = parseInt(parts[2], 10);
+                const minutes = parseInt(parts[3], 10);
 
-                const seconds = Number.isNaN(secondsMaybe) ? 0 : secondsMaybe;
+                if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
 
-                // Build a sortable integer with seconds precision: MM DD HH MM SS
-                // (two digits each, but stored as a single number)
-                return (month * 100_000_000) +
-                    (day * 1_000_000) +
-                    (hours * 10_000) +
-                    (minutes * 100) +
-                    (seconds);
-            } catch {
-                console.error(`Failed to parse log date: ${logDateStr}`);
+                // MMDDHHMM — good enough for comparing within the same year
+                return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
+            } catch (e) {
+                console.error(e);
+                console.error(this.LOG, 'Parse log_date error:', e, '— input:', logDateStr);
                 return 0;
             }
         }
-
 
         list({order = 'desc'} = {}) {
             const arr = [...this._getAll()];
@@ -294,8 +290,12 @@
             return Array.isArray(raw) ? raw : [];
         }
 
-        hasRepliedUpToLog(uid) {
-            return this.get(uid)?.hasRepliedUpToLog !== 0;
+        getHasRepliedUpToLog(uid) {
+            return this.get(uid)?.hasRepliedUpToLog
+        }
+
+        hasSentMessageToUser(uid) {
+            return this.getHasRepliedUpToLog(uid) !== 0;
         }
 
         _save(userToEdit) {
@@ -393,10 +393,10 @@
             return merged;
         }
 
-        setLastRead(uid, lastRead) {
+        setHasRepliedUpToLog(uid, hasRepliedUpToLog) {
             const u = this.get(uid);
             if (!u) return null;
-            const updated = {...u, lastRead};
+            const updated = {...u, hasRepliedUpToLog};
             return this.set(updated);
         }
 
@@ -479,6 +479,30 @@
         }
     }
 
+    /** Storage shim that never persists anything (Block mode) */
+    class NullStorage {
+        getItem(_) {
+            return null;
+        }
+
+        setItem(_, __) {
+        }
+
+        removeItem(_) {
+        }
+
+        clear() {
+        }
+
+        key(_) {
+            return null;
+        }
+
+        get length() {
+            return 0;
+        }
+    }
+
     /** Main App that composes stores */
     class App {
         constructor() {
@@ -487,6 +511,10 @@
             this.FEMALE_CODE = '2';
 
             // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
+            this.STORAGE_COOKIE = '321chataddons.storageMode';
+            this.STORAGE_KEY_PREFIX = '321chataddons.';
+            this.DEBUG_COOKIE = '321chataddons.debug';
+            this.VERBOSE_COOKIE = '321chataddons.verbose';
             this.DEBUG_MODE_KEY = '321chataddons.debugMode';
             this.VERBOSE_MODE_KEY = '321chataddons.verboseMode';
             this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
@@ -678,9 +706,28 @@
         async init(options = {}) {
             this.options = options || {};
 
-            // --- Wire up stores so they’re actually used ---
-            // Key/value store used all over the App (watermark, tracking, etc.)
-            this.Store = this.Store || new KeyValueStore();
+            const debug_cookie = this._getCookie(this.DEBUG_COOKIE);
+            if (debug_cookie != null) {
+                this.debugMode = (debug_cookie === 'true');
+            } else {
+                const stored = localStorage.getItem(this.DEBUG_MODE_KEY);
+                this.debugMode = (stored === 'true');
+            }
+
+            const verbose_cookie = this._getCookie(this.VERBOSE_COOKIE);
+            if (verbose_cookie != null) {
+                this.verboseMode = (verbose_cookie === 'true');
+            } else {
+                const stored = localStorage.getItem(this.VERBOSE_MODE_KEY);
+                this.verboseMode = (stored === 'true');
+            }
+
+
+            this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
+            if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
+
+            // Key/value store used all over the App — now with custom backend
+            this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
 
             // Load debug mode from storage
             try {
@@ -754,6 +801,7 @@
             this.buildPanel();
             this.addSpecificNavButton();
             this._bindStaticRefs();
+            this._installStorageToggleButton();
             this._attachLogClickHandlers();  // Attach handlers AFTER refs are bound
 
             if (this.Drafts) {
@@ -811,6 +859,89 @@
             return this;
         }
 
+        /* ---------- Cookie helpers ---------- */
+        _getCookie(name) {
+            try {
+                const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
+                return m ? decodeURIComponent(m[1]) : null;
+            } catch {
+                return null;
+            }
+        }
+
+        _setCookie(name, value, days = 400) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
+        }
+
+        _delCookie(name) {
+            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+        }
+
+        /* ---------- Mode: 'allow' | 'wipe' | 'block' ---------- */
+        _readStorageMode() {
+            const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
+            return (v === 'wipe' || v === 'block') ? v : 'allow';
+        }
+
+        _writeStorageMode(mode) {
+            this._setCookie(this.STORAGE_COOKIE, mode);
+        }
+
+        /* ---------- Pick storage backend ---------- */
+        _chooseStorage(mode) {
+            if (mode === 'block') return new NullStorage();
+            return localStorage;
+        }
+
+        /* ---------- Clear only our own keys (for 'wipe' on each load) ---------- */
+        _clearOwnLocalStorage() {
+            console.warn(`CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED`);
+            try {
+                const pref = this.STORAGE_KEY_PREFIX;
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const k = localStorage.key(i) || '';
+                    if (k.startsWith(pref)) localStorage.removeItem(k);
+                }
+            } catch (e) {
+                console.error('wipe failed', e);
+            }
+        }
+
+        /* ---------- UI: storage toggle button ---------- */
+        _installStorageToggleButton() {
+            const nav = this.qs('.ca-nav');
+            if (!nav || nav._caStorageBtnWired) return;
+
+            const btn = document.createElement('button');
+            btn.id = 'ca-storage-toggle';
+            btn.className = 'ca-nav-btn ca-nav-btn-secondary';
+            const render = () => {
+                const label = this.NO_LS_MODE === 'allow' ? 'Storage: Allow'
+                    : this.NO_LS_MODE === 'wipe' ? 'Storage: Wipe'
+                        : 'Storage: Block';
+                btn.textContent = label;
+                btn.title = 'Click to cycle between Allow → Wipe on load → Block writes';
+            };
+            btn.addEventListener('click', () => {
+                this.NO_LS_MODE = (this.NO_LS_MODE === 'allow') ? 'wipe'
+                    : (this.NO_LS_MODE === 'wipe') ? 'block'
+                        : 'allow';
+                this._writeStorageMode(this.NO_LS_MODE);
+                // If user switches to wipe, clear now too to be consistent
+                if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
+                // Rebind Store to new backend for 'block'/'allow' immediately
+                this.Store = new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
+                render();
+                this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
+            });
+
+            render();
+            nav.appendChild(btn);
+            nav._caStorageBtnWired = true;
+        }
+
         // ===== Refresh Users loop =====
         async startRefreshUsersLoop({
                                         intervalMs = 60000,    // default 60s
@@ -865,7 +996,7 @@
                     // clear the UI container
                     if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
 
-                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMMSS()}`);
+                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
                     this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
                 } catch (err) {
                     console.error("Error clearing event logs:", err);
@@ -905,7 +1036,7 @@
 
                 const html = await res.text();
                 this.processUserListResponse(html);
-                this.logEventLine(`Refreshed user list at ${this.timeHHMMSS()}`);
+                this.logEventLine(`Refreshed user list at ${this.timeHHMM()}`);
 
             } catch (err) {
                 console.error('Error reloading user list:', err);
@@ -1042,7 +1173,7 @@ Private send interception
             console.log(this.LOG, 'Intercepted native message send to', dmSentToUser?.name || targetId, '(ID:', targetId, ')');
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
-            this.UserStore.set({uid: dmSentToUser.uid, hasRepliedUpToLog: logData.log_id});
+            this.UserStore.setHasRepliedUpToLog(logData.log_id);
 
             const repliedAt = this.getTimeStampInWebsiteFormat();
             const affectedLogs = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
@@ -1404,108 +1535,103 @@ Private send interception
 
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, response) {
+
+            this.debug('Processing private log response for user:', uid);
+
+            if (!response || typeof response !== 'string' || response.trim() === '') {
+                console.warn(this.LOG, 'Empty response for conversation', uid);
+                return;
+            }
+
+            let conversationChatLog;
             try {
-                this.debug('Processing private log response for user:', uid);
+                conversationChatLog = this.parseJSONOrEmpty(response);
+                conversationChatLog = this.toPrivateChatLogResponse(conversationChatLog);
+            } catch (e) {
+                const prev = String(response || '').slice(0, 200);
+                console.warn(this.LOG, 'Parse failed for conversation', uid, '— preview:', prev);
+                return;
+            }
 
-                if (!response || typeof response !== 'string' || response.trim() === '') {
-                    console.warn(this.LOG, 'Empty response for conversation', uid);
-                    return;
+            // update CHAT_CTX.last from private response
+            try {
+                if (conversationChatLog && conversationChatLog.last) {
+                    this.state = this.state || {};
+                    this.state.CHAT_CTX = this.state.CHAT_CTX || {};
+                    this.state.CHAT_CTX.last = String(conversationChatLog.last);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+
+            let items = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
+                : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
+            if (!items.length) {
+                console.log(`No new logs for user ${uid}`);
+                return;
+            }
+
+
+            let newMessages = 0;
+            const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
+            const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
+
+            const isInitialFetch = !this.UserStore.hasSentMessageToUser(myUserId);
+
+            if (isInitialFetch) {
+                console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
+            }
+
+            items = items.filter(item => {
+                // Always skip messages sent by myself
+                if (myUserId && String(item.user_id) === myUserId) {
+                    skipped.fromMe++;
+                    return false;
                 }
 
-                let conversationChatLog;
-                try {
-                    conversationChatLog = this.parseJSONOrEmpty(response);
-                    conversationChatLog = this.toPrivateChatLogResponse(conversationChatLog);
-                } catch (e) {
-                    const prev = String(response || '').slice(0, 200);
-                    console.warn(this.LOG, 'Parse failed for conversation', uid, '— preview:', prev);
-                    return;
+                // Only on initial fetch: skip too-old messages
+                if (isInitialFetch && !this.isMessageNewer(item.log_date)) {
+                    skipped.tooOld++;
+                    console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
+                    return false;
                 }
 
-                // update CHAT_CTX.last from private response
-                try {
-                    if (conversationChatLog && conversationChatLog.last) {
-                        this.state = this.state || {};
-                        this.state.CHAT_CTX = this.state.CHAT_CTX || {};
-                        this.state.CHAT_CTX.last = String(conversationChatLog.last);
-                    }
-                } catch (e) {
-                    console.error(e);
-                }
+                // Keep everything else
+                return true;
+            }).sort((a, b) => (b.log_id) - (a.log_id));
 
-                let items = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
-                    : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
-                if (!items.length) {
-                    console.log(`No new logs for user ${uid}`);
-                    return;
-                }
+            console.log(`Parsing new messages`, items);
+            this.debug(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
+            //TODOL: change to last read log to set lastp
+            //this.UserStore.setHasRepliedUpToLog(uid, items[items.length - 1]?.log_id);
 
+            for (let i = 0; i < items.length; i++) {
+                const t = items[i];
+                const fromId = (t?.user_id != null) ? String(t.user_id) : null;
+                const logId = (t?.log_id != null) ? String(t.log_id) : null;
 
-                let newMessages = 0;
-                const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
-                const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
+                // decode → escape → normalize whitespace
+                const rawContent = t?.log_content ? String(t.log_content) : '';
+                const content = this.decodeHTMLEntities ? this.decodeHTMLEntities(rawContent) : rawContent;
 
-                const isInitialFetch = (this.UserStore.get(uid)?.lastRead === 0);
+                // resolve user
+                const user = await this.UserStore.getOrFetch(fromId);
 
-                if (isInitialFetch) {
-                    console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
-                }
+                // render
+                this.logLine('dm-in', content, user, logId);
+                this.updateProfileChip(user.uid);
 
-                items = items.filter(item => {
-                    // Always skip messages sent by myself
-                    if (myUserId && String(item.user_id) === myUserId) {
-                        skipped.fromMe++;
-                        return false;
-                    }
+                newMessages++;
+            }
 
-                    // Only on initial fetch: skip too-old messages
-                    if (isInitialFetch /* no watermark cutoff on first pass */) {
-                        // allow a backfill (you can still limit by count if you want)
-                    } else if (!this.isMessageNewer(item.log_date)) {
-                        skipped.tooOld++;
-                        console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
-                        return false;
-                    }
+            if (skipped.fromMe || skipped.alreadyShown || skipped.tooOld) {
+                console.log(this.LOG, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
+            }
 
-                    // Keep everything else
-                    return true;
-                }).sort((a, b) => (b.log_id) - (a.log_id));
-
-                console.log(`Parsing new messages`, items);
-                this.debug(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
-                this.UserStore.setLastRead(uid, items[items.length - 1]?.log_id);
-
-                for (let i = 0; i < items.length; i++) {
-                    const t = items[i];
-                    const fromId = (t?.user_id != null) ? String(t.user_id) : null;
-                    const logId = (t?.log_id != null) ? String(t.log_id) : null;
-
-                    // decode → escape → normalize whitespace
-                    const rawContent = t?.log_content ? String(t.log_content) : '';
-                    const content = this.decodeHTMLEntities ? this.decodeHTMLEntities(rawContent) : rawContent;
-
-                    // resolve user
-                    const user = await this.UserStore.getOrFetch(fromId);
-
-                    // render
-                    this.logLine('dm-in', content, user, logId);
-                    this.updateProfileChip(user.uid);
-
-                    newMessages++;
-                }
-
-                if (skipped.fromMe || skipped.alreadyShown || skipped.tooOld) {
-                    console.log(this.LOG, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
-                }
-
-                if (newMessages > 0) {
-                    console.log(this.LOG, 'User', uid, '—', newMessages, 'new message' + (newMessages !== 1 ? 's' : ''));
-                } else {
-                    console.log(this.LOG, 'User', uid, '— no new messages (all older than watermark or from me)');
-                }
-            } catch (err) {
-                console.error(err);
-                console.error(this.LOG, 'Process private messages error:', err);
+            if (newMessages > 0) {
+                console.log(this.LOG, 'User', uid, '—', newMessages, 'new message' + (newMessages !== 1 ? 's' : ''));
+            } else {
+                console.log(this.LOG, 'User', uid, '— no new messages (all older than watermark or from me)');
             }
         }
 
@@ -1633,21 +1759,11 @@ Private send interception
                         (async () => {
                             for (let i = 0; i < toFetch.length; i++) {
                                 const conversation = toFetch[i];
-                                try {
-                                    console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
-                                    const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
-                                    try {
-                                        await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
-                                        // sync pcount (site increments this on each poll)
-                                        this.setLastPcountFor(conversation.uid, this.state.CHAT_CTX.pcount);
-                                    } catch (err) {
-                                        console.error(err);
-                                        console.error(this.LOG, 'Process messages error:', err);
-                                    }
-                                } catch (err) {
-                                    console.error(err);
-                                    console.error(this.LOG, 'Fetch error for conversation', conversation.uid, '—', err);
-                                }
+                                console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
+                                const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
+                                await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
+                                // sync pcount (site increments this on each poll)
+                                this.setLastPcountFor(conversation.uid, this.state.CHAT_CTX.pcount);
                             }
                         })();
                     } catch (err) {
@@ -1985,7 +2101,7 @@ Private send interception
             for (let i = 0; i < list.length; i++) {
                 const el = list[i].el, uid = list[i].uid;
                 if (!this._isAllowedRank?.(el)) continue;
-                if (this.UserStore.hasRepliedUpToLog(uid)) {
+                if (this.UserStore.hasSentMessageToUser(uid)) {
                     console.log(`Skipping message to ${el.name} (already replied)`);
                     continue;
                 }
@@ -2499,47 +2615,41 @@ Private send interception
             };
         }
 
+        ToHourMinuteSecondFormat(ts) {
+            const s = String(ts || '').trim();
+            if (!s) return '';
+            // already has seconds?
+            if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
+            // has only HH:MM → append :00
+            if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
+            // unknown format → return as-is (parser will return 0)
+            return s;
+        };
+
         /* ---------- Time & watermark comparison ---------- */
         isMessageNewer(logDateStr) {
-            try {
-                const watermark = this.getGlobalWatermark();
-                if (!watermark) return true; // no watermark -> everything is "new"
-
-                // Ensure both sides are in "DD/MM HH:MM:SS"
-                const msgTs = this.normalizeApiDate
-                    ? this.normalizeApiDate(String(logDateStr || ''))
-                    : String(logDateStr || '');
-                const wmTs = this.normalizeApiDate
-                    ? this.normalizeApiDate(String(watermark || ''))
-                    : String(watermark || '');
-
-                const msgNum = this.parseLogDateToNumber(msgTs);
-                const wmNum = this.parseLogDateToNumber(wmTs);
-
-                if (!msgNum) {
-                    this.verbose(this.LOG, 'Date comparison: unable to parse log date', {logDateStr, msgTs});
-                    return false;
-                }
-                if (!wmNum) {
-                    // If the watermark is unparsable, be safe and treat the message as new.
-                    this.verbose(this.LOG, 'Date comparison: unparsable watermark, treating as newer', {
-                        watermark,
-                        wmTs
-                    });
-                    return true;
-                }
-
-                const isNewer = msgNum >= wmNum; // include equal second
-                this.verbose(this.LOG, 'Date comparison:', {
-                    logDate: logDateStr, normalizedLogDate: msgTs, logDateNum: msgNum,
-                    watermark, normalizedWatermark: wmTs, watermarkNum: wmNum, isNewer
-                });
-                return isNewer;
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Date comparison error:', e);
-                return false;
+            const watermark = this.getGlobalWatermark();
+            if (!watermark) {
+                console.warn(`.isMessageNewer() - watermark not found`);
+                return true;
             }
+
+            const msgNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(logDateStr));
+            const wmNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(watermark));
+            console.log(this.LOG, 'Date comparison:', {
+                logDate: logDateStr, logDateNum: msgNum,
+                watermark, watermarkNum: wmNum
+            });
+            if (!msgNum) {
+                throw new Error(`Invalid MsgNum: ${msgNum}`);
+            }
+
+            const isNewer = msgNum >= wmNum; // include equal → not missed at same second
+            console.log(this.LOG, 'Date comparison:', {
+                logDate: logDateStr, logDateNum: msgNum,
+                watermark, watermarkNum: wmNum, isNewer
+            });
+            return isNewer;
         }
 
         /* ---------- Body normalization ---------- */
@@ -3505,55 +3615,41 @@ Private send interception
 
         _wireDebugCheckbox() {
             if (!this.ui.debugCheckbox) return;
-
-            // Set initial state from loaded debugMode
             this.ui.debugCheckbox.checked = this.debugMode;
 
             this.ui.debugCheckbox.addEventListener('change', (e) => {
                 this.debugMode = e.target.checked;
 
-                // Save to both Store and raw localStorage for immediate availability on reload
                 try {
+                    // Persist everywhere
+                    this._setCookie(this.DEBUG_COOKIE, String(this.debugMode));
                     localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
-                    if (this.Store) {
-                        this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
-                    }
+                    if (this.Store) this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
                 } catch (err) {
                     console.error('Failed to save debug mode:', err);
                 }
 
-                if (this.debugMode) {
-                    console.log(this.LOG, '[DEBUG] Debug mode enabled');
-                } else {
-                    console.log(this.LOG, 'Debug mode disabled');
-                }
+                console.log(this.LOG, this.debugMode ? '[DEBUG] Debug mode enabled' : 'Debug mode disabled');
             });
         }
 
         _wireVerboseCheckbox() {
             if (!this.ui.verboseCheckbox) return;
-
-            // Set initial state from loaded verboseMode
             this.ui.verboseCheckbox.checked = this.verboseMode;
 
             this.ui.verboseCheckbox.addEventListener('change', (e) => {
                 this.verboseMode = e.target.checked;
 
-                // Save to both Store and raw localStorage for immediate availability on reload
                 try {
+                    // Persist everywhere
+                    this._setCookie(this.VERBOSE_COOKIE, String(this.verboseMode));
                     localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
-                    if (this.Store) {
-                        this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
-                    }
+                    if (this.Store) this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
                 } catch (err) {
                     console.error('Failed to save verbose mode:', err);
                 }
 
-                if (this.verboseMode) {
-                    console.log(this.LOG, '[VERBOSE] Verbose mode enabled');
-                } else {
-                    console.log(this.LOG, 'Verbose mode disabled');
-                }
+                console.log(this.LOG, this.verboseMode ? '[VERBOSE] Verbose mode enabled' : 'Verbose mode disabled');
             });
         }
 
@@ -4110,19 +4206,18 @@ Private send interception
             }
         }
 
-        timeHHMMSS() {
+        timeHHMM() {
             const d = new Date();
             const hh = String(d.getHours()).padStart(2, '0');
             const mm = String(d.getMinutes()).padStart(2, '0');
-            const ss = String(d.getSeconds()).padStart(2, '0');
-            return `${hh}:${mm}:${ss}`;
+            return `${hh}:${mm}`;
         }
 
         getTimeStampInWebsiteFormat() {
             const d = new Date();
             const DD = String(d.getDate()).padStart(2, '0');
             const MM = String(d.getMonth() + 1).padStart(2, '0');
-            return `${DD}/${MM} ${this.timeHHMMSS()}`;
+            return `${DD}/${MM} ${this.timeHHMM()}`;
         }
 
         processReadStatusForLogs(logs) {
