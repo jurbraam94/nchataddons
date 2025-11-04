@@ -124,7 +124,6 @@
             try {
                 if (!logDateStr || typeof logDateStr !== 'string') return 0;
 
-                // Example format: "23/10 11:25"
                 const parts = logDateStr.trim().split(/[\s\/:]+/);
                 if (parts.length < 4) return 0;
 
@@ -135,7 +134,6 @@
 
                 if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
 
-                // MMDDHHMM — good enough for comparing within the same year
                 return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
             } catch (e) {
                 console.error(e);
@@ -164,6 +162,10 @@
             );
             this.app.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
             return result;
+        }
+
+        hasSentMessageToUser(uid) {
+            return this.getAllSentMessagesByUserId(uid).length > 0;
         }
 
         getAllReceivedMessagesByUserId(uid, onlyUnread = false) {
@@ -290,12 +292,8 @@
             return Array.isArray(raw) ? raw : [];
         }
 
-        getHasRepliedUpToLog(uid) {
-            return this.get(uid)?.hasRepliedUpToLog
-        }
-
-        hasSentMessageToUser(uid) {
-            return this.getHasRepliedUpToLog(uid) !== 0;
+        parsedDmInUpToLog(uid) {
+            return this.get(uid)?.parsedDmInUpToLog !== 0;
         }
 
         _save(userToEdit) {
@@ -353,7 +351,7 @@
             const existing = this.get(newUser.uid);
             return existing ? {...existing, ...newUser} : {
                 ...newUser,
-                hasRepliedUpToLog: 0,
+                parsedDmInUpToLog: 0,
                 isIncludedForBroadcast: true
             };
         }
@@ -393,11 +391,31 @@
             return merged;
         }
 
-        setHasRepliedUpToLog(uid, hasRepliedUpToLog) {
+        setParsedDmInUpToLog(uid, parsedDmInUpToLog) {
             const u = this.get(uid);
-            if (!u) return null;
-            const updated = {...u, hasRepliedUpToLog};
+            if (!u) {
+                console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
+                return null;
+            }
+            const updated = {...u, parsedDmInUpToLog};
             return this.set(updated);
+        }
+
+        getParsedDmInUpToLog(uid) {
+            const u = this.get(uid);
+            if (!u) {
+                console.error(`User ${uid} not found, cannot get parsedDmInUpToLog`);
+                return null;
+            }
+            return u.parsedDmInUpToLog;
+        }
+
+        hasParsedDmAlready(uid) {
+            const u = this.get(uid);
+            if (!u) {
+                console.error(`User ${uid} not found, cannot check hasParsedDmAlready`);
+            }
+            return u.parsedDmInUpToLog !== 0;
         }
 
         isLoggedIn(uid) {
@@ -1173,7 +1191,8 @@ Private send interception
             console.log(this.LOG, 'Intercepted native message send to', dmSentToUser?.name || targetId, '(ID:', targetId, ')');
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
-            this.UserStore.setHasRepliedUpToLog(logData.log_id);
+            // TODO: user this log_id to determine which messages below it can be set to read in stead of using date
+            // this.UserStore.setHasRepliedUpToLog(logData.log_id);
 
             const repliedAt = this.getTimeStampInWebsiteFormat();
             const affectedLogs = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
@@ -1475,7 +1494,7 @@ Private send interception
                     priv: String(uid),
                     pcount: params.get('pcount'),
                     last: params.get('last'),
-                    lastp: this.UserStore.get(uid)?.hasRepliedUpToLog || 0
+                    lastp: this.UserStore.getParsedDmInUpToLog(uid)
                 };
 
                 // carry over CHAT_CTX if present
@@ -1535,7 +1554,6 @@ Private send interception
 
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, response) {
-
             this.debug('Processing private log response for user:', uid);
 
             if (!response || typeof response !== 'string' || response.trim() === '') {
@@ -1556,8 +1574,6 @@ Private send interception
             // update CHAT_CTX.last from private response
             try {
                 if (conversationChatLog && conversationChatLog.last) {
-                    this.state = this.state || {};
-                    this.state.CHAT_CTX = this.state.CHAT_CTX || {};
                     this.state.CHAT_CTX.last = String(conversationChatLog.last);
                 }
             } catch (e) {
@@ -1571,16 +1587,22 @@ Private send interception
                 return;
             }
 
-
-            let newMessages = 0;
-            const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
             const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-
-            const isInitialFetch = !this.UserStore.hasSentMessageToUser(myUserId);
+            const isInitialFetch = !this.UserStore.hasParsedDmAlready(uid);
 
             if (isInitialFetch) {
                 console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
             }
+
+            // find the item with the highest numeric log_id
+            const highestItem = items.reduce((max, cur) => {
+                const curId = Number(cur?.log_id);
+                const maxId = Number(max?.log_id);
+                return curId > maxId ? cur : max;
+            }, items[0]);
+
+            let newMessages = 0;
+            const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
 
             items = items.filter(item => {
                 // Always skip messages sent by myself
@@ -1594,16 +1616,18 @@ Private send interception
                     skipped.tooOld++;
                     console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
                     return false;
+                } else if (this.UserStore.getParsedDmInUpToLog(uid) >= item.log_id) {
+                    skipped.alreadyShown++;
+                    console.log(`Already shown message ${item.log_id} from user ${uid}`);
+                    return false;
                 }
 
                 // Keep everything else
                 return true;
             }).sort((a, b) => (b.log_id) - (a.log_id));
-
+            this.UserStore.setParsedDmInUpToLog(uid, highestItem.log_id);
             console.log(`Parsing new messages`, items);
             this.debug(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
-            //TODOL: change to last read log to set lastp
-            //this.UserStore.setHasRepliedUpToLog(uid, items[items.length - 1]?.log_id);
 
             for (let i = 0; i < items.length; i++) {
                 const t = items[i];
@@ -1685,96 +1709,90 @@ Private send interception
 
         /* ============ Chat payload processing ============ */
         caProcessChatPayload(txt, params) {
+            if (!txt || typeof txt !== 'string' || txt.trim() === '') {
+                console.warn(this.LOG, 'Empty or invalid chat payload response');
+                return;
+            }
+
+            const now = Date.now();
+
+            // tolerant parse & shape
+            let data;
             try {
-                if (!txt || typeof txt !== 'string' || txt.trim() === '') {
-                    console.warn(this.LOG, 'Empty or invalid chat payload response');
-                    return;
-                }
-
-                const now = Date.now();
-
-                // tolerant parse & shape
-                let data;
-                try {
-                    data = this.parseJSONOrEmpty(txt);
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Chat payload: JSON parse failed — preview:', String(txt).slice(0, 200));
-                    return;
-                }
-                data = this.toChatLogResponse(data);
-
-                // update CHAT_CTX.last from public chat response
-                try {
-                    if (data && data.last) this.state.CHAT_CTX.last = String(data.last);
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Update CHAT_CTX.last error:', e);
-                }
-
-                // 🔗 NEW: if server already sent private logs in this payload, handle them now.
-                if (Array.isArray(data.plogs) && data.plogs.length > 0) {
-                    this.handleChatLogPlogs(data);
-                    return;
-                }
-
-                const pico = Number(data && data.pico);
-
-                // Only process when pico > 0 OR every 30s for refresh
-                const timeSinceLastCheck = now - (this._cp_lastCheck || 0);
-                const shouldProcess = (pico > 0) || (timeSinceLastCheck >= this._cp_CHECK_INTERVAL);
-                if (!shouldProcess) return;
-
-                this._cp_lastCheck = now;
-
-                // No private messages or they are already in this payload
-                if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
-
-                // throttle actual PM fetches when pico > 0
-                if (this._cp_lastPN && (now - this._cp_lastPN) <= this._cp_PN_INTERVAL) {
-                    this.verbose(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
-                    return;
-                }
-                this._cp_lastPN = now;
-
-                console.log(this.LOG, 'Private messages count (pico):', pico, '— checking for new messages');
-                if (typeof this.caUpdatePrivateConversationsList !== 'function') return;
-
-                this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
-                    try {
-                        privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-                        this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
-
-                        const toFetch = privateConversations
-                            .filter(pc => pc.unread > 0)
-                            .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
-
-                        if (!toFetch.length) {
-                            console.log(this.LOG, 'None of the conversations has new messages');
-                            return;
-                        }
-
-                        this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
-
-                        (async () => {
-                            for (let i = 0; i < toFetch.length; i++) {
-                                const conversation = toFetch[i];
-                                console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
-                                const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
-                                await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
-                                // sync pcount (site increments this on each poll)
-                                this.setLastPcountFor(conversation.uid, this.state.CHAT_CTX.pcount);
-                            }
-                        })();
-                    } catch (err) {
-                        console.error(err);
-                        console.error(this.LOG, 'List processing error:', err);
-                    }
-                });
+                data = this.parseJSONOrEmpty(txt);
             } catch (e) {
                 console.error(e);
-                console.error(this.LOG, 'Chat payload processing error:', e);
+                console.error(this.LOG, 'Chat payload: JSON parse failed — preview:', String(txt).slice(0, 200));
+                return;
             }
+            data = this.toChatLogResponse(data);
+
+            // update CHAT_CTX.last from public chat response
+            try {
+                if (data && data.last) this.state.CHAT_CTX.last = String(data.last);
+            } catch (e) {
+                console.error(e);
+                console.error(this.LOG, 'Update CHAT_CTX.last error:', e);
+            }
+
+            // 🔗 NEW: if server already sent private logs in this payload, handle them now.
+            if (Array.isArray(data.plogs) && data.plogs.length > 0) {
+                this.handleChatLogPlogs(data);
+                return;
+            }
+
+            const pico = Number(data && data.pico);
+
+            // Only process when pico > 0 OR every 30s for refresh
+            const timeSinceLastCheck = now - (this._cp_lastCheck || 0);
+            const shouldProcess = (pico > 0) || (timeSinceLastCheck >= this._cp_CHECK_INTERVAL);
+            if (!shouldProcess) return;
+
+            this._cp_lastCheck = now;
+
+            // No private messages or they are already in this payload
+            if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
+
+            // // throttle actual PM fetches when pico > 0
+            // if (this._cp_lastPN && (now - this._cp_lastPN) <= this._cp_PN_INTERVAL) {
+            //     console.log(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
+            //     return;
+            // }
+            // this._cp_lastPN = now;
+
+            console.log(this.LOG, 'Private messages count (pico):', pico, '— checking for new messages');
+
+            this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
+                try {
+                    privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
+                    this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
+
+                    const toFetch = privateConversations
+                        .filter(pc => pc.unread > 0)
+                        .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
+
+                    if (!toFetch.length) {
+                        console.log(this.LOG, 'None of the conversations has new messages');
+                        return;
+                    }
+
+                    this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+
+                    (async () => {
+                        for (let i = 0; i < toFetch.length; i++) {
+                            const conversation = toFetch[i];
+                            console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
+                            const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
+                            await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
+                            // sync pcount (site increments this on each poll)
+                            this.setLastPcountFor(conversation.uid, this.state.CHAT_CTX.pcount);
+                        }
+                    })();
+                } catch (err) {
+                    console.error(err);
+                    console.error(this.LOG, 'List processing error:', err);
+                }
+            });
         }
 
         /* ============ Fetch/XHR interceptors ============ */
@@ -3704,7 +3722,6 @@ Private send interception
         }
 
         renderLogEntry(activityLog, user) {
-            // entry: { ts, kind, content, uid, guid, unread }
             if (!activityLog || !user || !user.uid) {
                 console.error(this.LOG, 'renderLogEntry: Invalid args', {entry: activityLog, user});
                 return;
@@ -3833,7 +3850,7 @@ Private send interception
         }
 
         saveLogEntry(ts, kind, content, uid, guid) {
-            if (kind === 'login' || kind === 'logout') return; // presence not persisted
+            if (kind === 'login' || kind === 'logout') return;
             const entry = {
                 ts, kind, content, uid, guid,
                 unread: (kind === 'dm-in') ? true : undefined
