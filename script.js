@@ -137,7 +137,7 @@
                 return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
             } catch (e) {
                 console.error(e);
-                console.error(this.LOG, 'Parse log_date error:', e, '— input:', logDateStr);
+                console.error(this.app.LOG, 'Parse log_date error:', e, '— input:', logDateStr);
                 return 0;
             }
         }
@@ -539,7 +539,6 @@
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
             this.USERS_KEY = '321chataddons.users';
-            this.LAST_PCOUNT_MAP_KEY = '321chataddons.lastPcountPerConversation';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 
             /* ========= App State ========= */
@@ -548,12 +547,9 @@
                 READY: false,
                 isPruning: false,
                 CHAT_CTX: {
-                    caction: '', last: '', lastp: '', room: '', notify: '', curset: '', pcount: 0
+                    caction: '', room: '', notify: '', curset: ''
                 }
             };
-
-            // runtime maps (populated in init from storage)
-            this.LAST_PCOUNT_MAP = {};   // { [uid]: number }
 
             /* ========= UI Refs ========= */
             this.ui = {
@@ -812,8 +808,6 @@
             // Initialize watermark once
             this.initializeGlobalWatermark();
 
-            this.LAST_PCOUNT_MAP = this._loadLastPcountMap();
-
             // build panel + wire refs + handlers
             this.buildPanel();
             this.addSpecificNavButton();
@@ -935,10 +929,9 @@
             btn.id = 'ca-storage-toggle';
             btn.className = 'ca-nav-btn ca-nav-btn-secondary';
             const render = () => {
-                const label = this.NO_LS_MODE === 'allow' ? 'Storage: Allow'
+                btn.textContent = this.NO_LS_MODE === 'allow' ? 'Storage: Allow'
                     : this.NO_LS_MODE === 'wipe' ? 'Storage: Wipe'
                         : 'Storage: Block';
-                btn.textContent = label;
                 btn.title = 'Click to cycle between Allow → Wipe on load → Block writes';
             };
             btn.addEventListener('click', () => {
@@ -1484,23 +1477,12 @@ Private send interception
                     priv: String(uid),
                     pcount: params.get('pcount'),
                     last: params.get('last'),
-                    lastp: this.UserStore.getParsedDmInUpToLog(uid)
+                    lastp: this.UserStore.getParsedDmInUpToLog(uid),
+                    caction: String(this.state.CHAT_CTX.caction),
+                    room: String(this.state.CHAT_CTX.room),
+                    notify: String(this.state.CHAT_CTX.notify),
+                    curset: String(this.state.CHAT_CTX.curset)
                 };
-
-                // carry over CHAT_CTX if present
-                try {
-                    const CC = (this.state && this.state.CHAT_CTX) ? this.state.CHAT_CTX : null;
-                    if (CC) {
-                        if (CC.caction) bodyObj.caction = String(CC.caction);
-                        if (CC.room) bodyObj.room = String(CC.room);
-                        if (CC.notify) bodyObj.notify = String(CC.notify);
-                        if (CC.curset) bodyObj.curset = String(CC.curset);
-                        if (CC.pcount) bodyObj.pcount = String(CC.pcount);
-                    }
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Chat context error:', e);
-                }
 
                 this.verbose(`Fetch chatlog body: `, bodyObj);
 
@@ -1671,7 +1653,7 @@ Private send interception
 
                         const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
                         if (myUserId && String(uid) === myUserId) {
-                            console.verbose(`Skipping message from myself: ${uid}`);
+                            this.verbose(`Skipping message from myself: ${uid}`);
                             return false;
                         }
 
@@ -1743,13 +1725,6 @@ Private send interception
             // No private messages or they are already in this payload
             if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
 
-            // // throttle actual PM fetches when pico > 0
-            // if (this._cp_lastPN && (now - this._cp_lastPN) <= this._cp_PN_INTERVAL) {
-            //     console.log(this.LOG, 'Private messages: throttled — last check', Math.round((now - this._cp_lastPN) / 1000), 's ago');
-            //     return;
-            // }
-            // this._cp_lastPN = now;
-
             console.log(this.LOG, 'Private messages count (pico):', pico, '— checking for new messages');
 
             this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
@@ -1774,8 +1749,6 @@ Private send interception
                             console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
                             const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
                             await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
-                            // sync pcount (site increments this on each poll)
-                            this.setLastPcountFor(conversation.uid, this.state.CHAT_CTX.pcount);
                         }
                     })();
                 } catch (err) {
@@ -1921,12 +1894,12 @@ Private send interception
             ];
             boxes.forEach(box => {
                 if (!box || box._caGenericWired) return;
-                box.addEventListener('click', (e) => this._onLogClickGeneric(e, box));
+                box.addEventListener('click', (e) => this._onLogClickGeneric(e));
                 box._caGenericWired = true;
             });
         }
 
-        async _onLogClickGeneric(e, box) {
+        async _onLogClickGeneric(e) {
             try {
                 // Find the clicked log entry
                 const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
@@ -2506,33 +2479,23 @@ Private send interception
 
         caUpdateChatCtxFromBody(searchParams) {
             try {
-                if (this.caUpdateChatCtxFromBody._initialized) return;
+                if (this.caUpdateChatCtxFromBody._initialized) {
+                    this.verbose(`CHAT_CTX already initialized`);
+                    return;
+                }
 
-                const ca = searchParams.get('caction'), lp = searchParams.get('lastp'), la = searchParams.get('last'),
+                const ca = searchParams.get('caction'),
                     rm = searchParams.get('room'),
-                    nf = searchParams.get('notify'), cs = searchParams.get('curset'), pc = searchParams.get('pcount');
-
-                this.state = this.state || {};
-                this.state.CHAT_CTX = this.state.CHAT_CTX || {
-                    caction: '',
-                    last: '',
-                    lastp: '',
-                    room: '',
-                    notify: '',
-                    curset: '',
-                    pcount: 0
-                };
+                    nf = searchParams.get('notify'),
+                    cs = searchParams.get('curset');
 
                 if (ca) this.state.CHAT_CTX.caction = String(ca);
-                if (lp) this.state.CHAT_CTX.lastp = String(lp);
                 if (rm) this.state.CHAT_CTX.room = String(rm);
                 if (nf) this.state.CHAT_CTX.notify = String(nf);
                 if (cs) this.state.CHAT_CTX.curset = String(cs);
 
+                this.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
                 this.caUpdateChatCtxFromBody._initialized = true;
-
-                this.state.CHAT_CTX.pcount = String(pc);
-                this.state.CHAT_CTX.last = String(la);
             } catch (e) {
                 console.error(e);
                 console.error(this.LOG, 'Chat context initialization error:', e);
@@ -2872,31 +2835,6 @@ Private send interception
             // Clean up temporary DOM element
             tmp.innerHTML = '';
             return out;
-        }
-
-        /* ---------- Last pcount map ---------- */
-        _loadLastPcountMap() {
-            try {
-                const raw = this.Store.get(this.LAST_PCOUNT_MAP_KEY);
-                return raw ? (raw || {}) : {};
-            } catch (e) {
-                console.error(e);
-                return {};
-            }
-        }
-
-        _saveLastPcountMap(map) {
-            this.Store.set(this.LAST_PCOUNT_MAP_KEY, map || {});
-        }
-
-        setLastPcountFor(uid, pc) {
-            try {
-                if (!uid) return;
-                this.LAST_PCOUNT_MAP[uid] = Number(pc) || 0;
-                this._saveLastPcountMap(this.LAST_PCOUNT_MAP);
-            } catch (e) {
-                console.error(e);
-            }
         }
 
         /* ---------- DOM find helper ---------- */
@@ -3665,8 +3603,6 @@ Private send interception
                 if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
                 this.ActivityLogStore?.clear();
                 this.UserStore?.clear();
-                this.LAST_PCOUNT_MAP = {};
-                this._saveLastPcountMap(this.LAST_PCOUNT_MAP);
                 const timestamp = this.getTimeStampInWebsiteFormat();
                 this.verbose('Resetting watermark to:', timestamp);
                 this.setGlobalWatermark(timestamp);
@@ -3674,22 +3610,6 @@ Private send interception
                 // Re-attach event handlers since we replaced the HTML
                 this._attachLogClickHandlers?.();
             });
-        }
-
-        addRepliedBadgeToLog(guid) {
-            const logEl = this.qs(`.ca-log-entry[data-guid="${guid}"]`, this.ui.receivedMessagesBox);
-            if (!logEl) {
-                console.error('Failed to find log entry for:', guid);
-                return;
-            }
-
-            if (!logEl.querySelector('.ca-log-entry-replied')) {
-                const badge = document.createElement('span');
-                badge.className = 'ca-badge-replied';
-                badge.title = 'Already replied';
-                badge.textContent = '✓';
-                logEl.appendChild(badge);
-            }
         }
 
         renderLogEntry(activityLog, user) {
@@ -3806,10 +3726,6 @@ Private send interception
                 targetContainer.insertBefore(el, targetContainer.firstChild || null);
             } else {
                 targetContainer.appendChild(el);
-            }
-
-            if (kind === 'dm-in' && activityLog.unread === false) {
-                this.addRepliedBadgeToLog?.(activityLog.guid);
             }
 
             requestAnimationFrame(() => {
@@ -4230,7 +4146,6 @@ Private send interception
                 this.debug(`Processing read status for log ${log.guid}`);
                 const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, src);
                 dst.appendChild(el);
-                this.addRepliedBadgeToLog?.(log.guid);
             }
         }
 
