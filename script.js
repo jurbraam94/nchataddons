@@ -577,7 +577,6 @@
             this._rafId = null;                   // requestAnimationFrame id
             this._lastSendAt = 0;                 // throttle PM sending
             this.PRESENCE_LOG_THROTTLE = 5000;    // ms
-            this._lastPresenceLog = Object.create(null); // { key: ts }
 
             // chat payload throttles
             this._cp_lastCheck = 0;               // last time processed public chat payload
@@ -971,11 +970,7 @@
             this._refreshUsersRunning = false;
 
             if (runImmediately) {
-                try {
-                    await this.refreshUserList();
-                } catch (err) {
-                    console.error("Error refreshing user list (initial):", err);
-                }
+                await this.refreshUserList();
             }
 
             this._refreshUsersTimerId = setInterval(async () => {
@@ -1041,24 +1036,19 @@
             const formData = new URLSearchParams();
             formData.append('token', utk);
 
-            try {
-                const res = await fetch('system/panel/user_list.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: formData.toString(),
-                    credentials: 'same-origin', // include cookies
-                });
+            const res = await fetch('system/panel/user_list.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData.toString(),
+                credentials: 'same-origin', // include cookies
+            });
 
-                const html = await res.text();
-                this.processUserListResponse(html);
-                this.logEventLine(`Refreshed user list at ${this.timeHHMM()}`);
-
-            } catch (err) {
-                console.error('Error reloading user list:', err);
-            }
+            const html = await res.text();
+            this.processUserListResponse(html);
+            this.logEventLine(`Refreshed user list at ${this.timeHHMMSS()}`);
         }
 
         watchChatRightForHostChanges() {
@@ -1902,22 +1892,6 @@ Private send interception
             }
         }
 
-        logLogin(user) {
-            const now = Date.now();
-            const key = `login_${user.uid}`;
-            if (this._lastPresenceLog[key] && (now - this._lastPresenceLog[key]) < this.PRESENCE_LOG_THROTTLE) return;
-            this._lastPresenceLog[key] = now;
-            this.logLine('login', null, user);
-        }
-
-        logLogoutToLogLine(user) {
-            const now = Date.now();
-            const key = `logout_${user.uid}`;
-            if (this._lastPresenceLog[key] && (now - this._lastPresenceLog[key]) < this.PRESENCE_LOG_THROTTLE) return;
-            this._lastPresenceLog[key] = now;
-            this.logLine('logout', null, user);
-        }
-
         buildProfileUrlForId(uid) {
             try {
                 if (!uid) return '';
@@ -2375,6 +2349,7 @@ Private send interception
             let loggedInCount = 0;
             let updatedProfileCount = 0;
             let loggedOffCount = 0;
+            let newProfileCount = 0;
 
             const seenLoggedIn = new Set();
 
@@ -2386,21 +2361,27 @@ Private send interception
                 const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
                 const isAllowedRank = this._isAllowedRank(userEl);
 
-                const existingUser = this.UserStore.get(uid);
-                let newUser = existingUser;
+                let user = this.UserStore.get(uid);
+                let IsNewOrUpdatedProfile = false;
+                seenLoggedIn.add(uid)
 
-                seenLoggedIn.add(uid);
+                if (!user) {
+                    this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
+                    newProfileCount++;
+                    IsNewOrUpdatedProfile = true;
+                } else if (user.name !== name ||
+                    user.avatar !== avatar ||
+                    user.isFemale !== isFemale ||
+                    user.isLoggedIn !== true) {
+                    this.debug(this.LOG, `[USER_LIST] Updating metadata of existing user ${uid}`, user);
+                    updatedProfileCount++;
+                    IsNewOrUpdatedProfile = true;
+                }
 
-                const hasChanged =
-                    !existingUser ||
-                    existingUser.name !== name ||
-                    existingUser.avatar !== avatar ||
-                    existingUser.isFemale !== isFemale ||
-                    existingUser.isLoggedIn !== true;
+                if (IsNewOrUpdatedProfile) {
+                    const newLogin = user?.isLoggedIn !== true || !user;
 
-                if (hasChanged) {
-                    // Upsert & mark logged-in
-                    newUser = this.UserStore.set({
+                    user = this.UserStore.set({
                         uid,
                         name,
                         avatar,
@@ -2408,40 +2389,30 @@ Private send interception
                         isLoggedIn: true,
                     });
 
-                    // Login transition event
-                    if (!this.isInitialLoad && existingUser?.isLoggedIn !== true) {
+                    if (newLogin && !this.isInitialLoad) {
+                        loggedInCount++;
                         console.log(this.LOG, `[LOGIN] ✅ ${name} (${uid}) logging in`);
                         if (isFemale) {
-                            this.logLogin?.(newUser);
+                            this.logLine('login', null, user);
                         }
-                    }
-
-                    if (!existingUser || existingUser.isLoggedIn !== true) {
-                        loggedInCount++;
-                        this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
-                    } else if (existingUser.isLoggedIn === true) {
-                        updatedProfileCount++;
-                        this.debug(this.LOG, `[USER_LIST] Updating metadata of existing user ${uid}`, newUser);
                     }
                 }
 
-                // UI updates for female users
-                if (isFemale) {
-                    if (hasChanged || this.isInitialLoad) {
-                        const el = this._updateOrCreateUserElement(managedList, userEl, newUser);
+                if (isFemale && (this.isInitialLoad || IsNewOrUpdatedProfile)) {
+                    const el = this._updateOrCreateUserElement(managedList, userEl, user);
 
-                        // Ensure UI elements for female users if rank allows
-                        if (isAllowedRank) {
-                            this.ensureBroadcastCheckbox(el);
-                        }
+                    // Ensure UI elements for female users if rank allows
+                    if (isAllowedRank) {
+                        this.ensureBroadcastCheckbox(el);
                     }
-                    this.updateProfileChip?.(newUser.uid);
+
+                    this.updateProfileChip?.(user.uid);
                     userEl.remove();
                     this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
                 }
             });
 
-            // Only try to remove nodes if it wasnt the initial load ( after page reload all nodes are readded)
+            // Only try to remove nodes if it wasn't the initial load (after page reload, all nodes are readded)
             const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
             for (const user of currentlyLoggedIn) {
                 const id = String(user.uid);
@@ -2456,8 +2427,8 @@ Private send interception
                 }
 
                 if (user.isFemale) {
-                    this.logLogoutToLogLine(user);
                     if (!this.isInitialLoad) {
+                        this.logLine('logout', null, user);
                         const elementToRemove = this.qs(`.user_item[data-id="${id}"]`, managedList);
                         this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
                         if (elementToRemove) elementToRemove.remove();
@@ -2471,7 +2442,7 @@ Private send interception
             }
 
             console.log(
-                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
+                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${newProfileCount} new users added%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
                 'color: #7ea9d1; font-weight: 600;',
                 'color: inherit;',
                 'color: #6bbf73; font-weight: 500;',
@@ -4228,6 +4199,14 @@ Private send interception
             const hh = String(d.getHours()).padStart(2, '0');
             const mm = String(d.getMinutes()).padStart(2, '0');
             return `${hh}:${mm}`;
+        }
+
+        timeHHMMSS() {
+            const d = new Date();
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
         }
 
         getTimeStampInWebsiteFormat() {
