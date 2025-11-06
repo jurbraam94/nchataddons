@@ -372,6 +372,7 @@
                 console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
                 return null;
             }
+            this.app.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
             const updated = {...u, parsedDmInUpToLog};
             return this.set(updated);
         }
@@ -1345,91 +1346,68 @@ Private send interception
                 return;
             }
 
-            let conversationChatLog;
-            conversationChatLog = JSON.parse(String(response));
-            conversationChatLog = this.toPrivateChatLogResponse(conversationChatLog);
+            let conversationChatLog = this.toPrivateChatLogResponse(JSON.parse(String(response)));
 
             // update CHAT_CTX.last from private response
             if (conversationChatLog && conversationChatLog.last) {
                 this.state.CHAT_CTX.last = String(conversationChatLog.last);
             }
 
-            let items = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
+            let privateChatLogs = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
                 : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
-            if (!items.length) {
-                console.log(`No new logs for user ${uid}`);
+
+            if (!privateChatLogs.length) {
+                console.log(`No new private chat logs for user ${uid}`);
                 return;
             }
-
-            const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-            const isInitialFetch = !this.UserStore.hasParsedDmAlready(uid);
-
-            if (isInitialFetch) {
-                console.log(`Initial fetch for user private conversation ${uid}, using watermark date ${this.getGlobalWatermark()} to only get new logs starting from the page load.`);
-            }
-
-            // find the item with the highest numeric log_id
-            const highestItem = items.reduce((max, cur) => {
-                const curId = Number(cur?.log_id);
-                const maxId = Number(max?.log_id);
-                return curId > maxId ? cur : max;
-            }, items[0]);
 
             let newMessages = 0;
             const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
 
-            items = items.filter(item => {
+            const user = await this.UserStore.getOrFetch(uid);
+            if (!user) {
+                console.error(`[DM] Could not resolve user ${uid} for getting private messages.`);
+                return
+            }
+
+            let parsedDmInUpToLog = user.parsedDmInUpToLog
+
+            console.log(`Parsing new messages`, privateChatLogs);
+            for (const item of privateChatLogs) {
                 // Always skip messages sent by myself
-                if (myUserId && String(item.user_id) === myUserId) {
+                if (item.user_id === user_id) {
                     skipped.fromMe++;
-                    return false;
+                    continue;
                 }
 
                 // Only on initial fetch: skip too-old messages
-                if (isInitialFetch && !this.isMessageNewer(item.log_date)) {
+                if (!this.UserStore.hasParsedDmAlready(uid) && !this.isMessageNewer(item.log_date)) {
                     skipped.tooOld++;
-                    console.log(`Is initial fetch, skipping too old message ${item.log_id} from user ${uid}`);
-                    return false;
-                } else if (this.UserStore.getParsedDmInUpToLog(uid) >= item.log_id) {
-                    skipped.alreadyShown++;
-                    console.log(`Already shown message ${item.log_id} from user ${uid}`);
-                    return false;
+                    console.log(`Is initial fetch, watermark date from page load is ${this.getGlobalWatermark()} and current message is older, skipping too old message ${item.log_id} from user ${uid}`);
+                    continue;
                 }
 
-                // Keep everything else
-                return true;
-            }).sort((a, b) => (b.log_id) - (a.log_id));
-            this.UserStore.setParsedDmInUpToLog(uid, highestItem.log_id);
-            console.log(`Parsing new messages`, items);
-            this.debug(`Setting last read for user ${uid} to ${items[0]?.log_id || 0}`);
+                // Skip anything we've already shown (compare numerically)
+                if (item.log_id <= parsedDmInUpToLog) {
+                    skipped.alreadyShown++;
+                    console.log(`Already shown message ${item.log_id} from user ${uid}`);
+                    continue;
+                }
 
-            for (let i = 0; i < items.length; i++) {
-                const t = items[i];
-                const fromId = (t?.user_id != null) ? String(t.user_id) : null;
-                const logId = (t?.log_id != null) ? String(t.log_id) : null;
-
-                // decode → escape → normalize whitespace
-                const rawContent = t?.log_content ? String(t.log_content) : '';
-                const content = this.decodeHTMLEntities ? this.decodeHTMLEntities(rawContent) : rawContent;
-
-                // resolve user
-                const user = await this.UserStore.getOrFetch(fromId);
-
-                // render
-                this.logLine('dm-in', content, user, logId);
+                this.logLine('dm-in', this.decodeHTMLEntities(item.log_content), user, item.log_id);
                 this.updateProfileChip(user.uid);
-
                 newMessages++;
+
+                // Track max
+                if (item.log_id > parsedDmInUpToLog) {
+                    user.parsedDmInUpToLog = item.log_id;
+                }
             }
+
+            this.UserStore.setParsedDmInUpToLog(uid, parsedDmInUpToLog);
 
             if (skipped.fromMe || skipped.alreadyShown || skipped.tooOld) {
-                console.log(this.LOG, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
-            }
-
-            if (newMessages > 0) {
-                console.log(this.LOG, 'User', uid, '—', newMessages, 'new message' + (newMessages !== 1 ? 's' : ''));
-            } else {
-                console.log(this.LOG, 'User', uid, '— no new messages (all older than watermark or from me)');
+                console.log(this.LOG, 'Processed messages from user with uid', uid, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
             }
         }
 
@@ -1479,8 +1457,6 @@ Private send interception
                 console.warn(this.LOG, 'Empty or invalid chat payload response');
                 return;
             }
-
-            const now = Date.now();
 
             // tolerant parse & shape
             const data = this.toChatLogResponse(JSON.parse(String(txt)));
