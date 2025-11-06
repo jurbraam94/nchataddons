@@ -1328,7 +1328,7 @@ Private send interception
                     return res.text();
                 })
                 .then((txt) => {
-                    this.verbose(this.LOG, 'caFetchChatLogFor received a response succesfully');
+                    this.verbose(this.LOG, 'caFetchChatLogFor received a response successfully');
                     return txt;
                 })
                 .catch((err) => {
