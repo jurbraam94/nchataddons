@@ -21,42 +21,23 @@
         }
 
         has(key) {
-            try {
-                return this.storage.getItem(this._key(key)) !== null;
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
+            return this.storage.getItem(this._key(key)) !== null;
         }
 
         get(key) {
-            try {
-                const raw = this.storage.getItem(this._key(key));
-                if (raw == null) return null;
-                const trimmed = String(raw).trim();
-                if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
-                    try {
-                        return JSON.parse(trimmed);
-                    } catch {
-                        return raw;
-                    }
-                }
-                return raw;
-            } catch (e) {
-                console.error(e);
-                return null;
+            const raw = this.storage.getItem(this._key(key));
+            if (raw == null) return null;
+            const trimmed = String(raw).trim();
+            if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
+                return JSON.parse(trimmed);
             }
+            return raw;
         }
 
         set(key, value) {
-            try {
-                const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
-                this.storage.setItem(this._key(key), toStore);
-                return true;
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
+            const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
+            this.storage.setItem(this._key(key), toStore);
+            return true;
         }
     }
 
@@ -121,25 +102,19 @@
         }
 
         parseLogDateToNumber(logDateStr) {
-            try {
-                if (!logDateStr || typeof logDateStr !== 'string') return 0;
+            if (!logDateStr || typeof logDateStr !== 'string') return 0;
 
-                const parts = logDateStr.trim().split(/[\s\/:]+/);
-                if (parts.length < 4) return 0;
+            const parts = logDateStr.trim().split(/[\s\/:]+/);
+            if (parts.length < 4) return 0;
 
-                const day = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10);
-                const hours = parseInt(parts[2], 10);
-                const minutes = parseInt(parts[3], 10);
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10);
+            const hours = parseInt(parts[2], 10);
+            const minutes = parseInt(parts[3], 10);
 
-                if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
+            if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
 
-                return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
-            } catch (e) {
-                console.error(e);
-                console.error(this.app.LOG, 'Parse log_date error:', e, '— input:', logDateStr);
-                return 0;
-            }
+            return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
         }
 
         list({order = 'desc'} = {}) {
@@ -570,15 +545,7 @@
             };
 
             /* ========= Flags / Scheduling ========= */
-            this._rafId = null;                   // requestAnimationFrame id
             this._lastSendAt = 0;                 // throttle PM sending
-            this.PRESENCE_LOG_THROTTLE = 5000;    // ms
-
-            // chat payload throttles
-            this._cp_lastCheck = 0;               // last time processed public chat payload
-            this._cp_lastPN = 0;                  // last time fetched private messages
-            this._cp_CHECK_INTERVAL = 30_000;     // 30s
-            this._cp_PN_INTERVAL = 10_000;     // 10s
 
             /* ========= Observers & Listeners (refs only) ========= */
             this._onDocClick = null;
@@ -735,7 +702,6 @@
                 this.verboseMode = (stored === 'true');
             }
 
-
             this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
 
@@ -743,22 +709,12 @@
             this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
 
             // Load debug mode from storage
-            try {
-                const storedDebugMode = localStorage.getItem(this.DEBUG_MODE_KEY);
-                this.debugMode = storedDebugMode === 'true';
-            } catch (err) {
-                console.error('Failed to load debug mode:', err);
-                this.debugMode = false;
-            }
+            const storedDebugMode = localStorage.getItem(this.DEBUG_MODE_KEY);
+            this.debugMode = storedDebugMode === 'true';
 
             // Load verbose mode from storage
-            try {
-                const storedVerboseMode = localStorage.getItem(this.VERBOSE_MODE_KEY);
-                this.verboseMode = storedVerboseMode === 'true';
-            } catch (err) {
-                console.error('Failed to load verbose mode:', err);
-                this.verboseMode = false;
-            }
+            const storedVerboseMode = localStorage.getItem(this.VERBOSE_MODE_KEY);
+            this.verboseMode = storedVerboseMode === 'true';
 
             this.debug('Initializing app with options:', options);
 
@@ -872,12 +828,8 @@
 
         /* ---------- Cookie helpers ---------- */
         _getCookie(name) {
-            try {
-                const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
-                return m ? decodeURIComponent(m[1]) : null;
-            } catch {
-                return null;
-            }
+            const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
+            return m ? decodeURIComponent(m[1]) : null;
         }
 
         _setCookie(name, value, days = 400) {
@@ -909,14 +861,10 @@
         /* ---------- Clear only our own keys (for 'wipe' on each load) ---------- */
         _clearOwnLocalStorage() {
             console.warn(`CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED`);
-            try {
-                const pref = this.STORAGE_KEY_PREFIX;
-                for (let i = localStorage.length - 1; i >= 0; i--) {
-                    const k = localStorage.key(i) || '';
-                    if (k.startsWith(pref)) localStorage.removeItem(k);
-                }
-            } catch (e) {
-                console.error('wipe failed', e);
+            const pref = this.STORAGE_KEY_PREFIX;
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i) || '';
+                if (k.startsWith(pref)) localStorage.removeItem(k);
             }
         }
 
@@ -969,13 +917,7 @@
             this._refreshUsersTimerId = setInterval(async () => {
                 if (this._refreshUsersRunning) return;
                 this._refreshUsersRunning = true;
-                try {
-                    await this.refreshUserList();
-                } catch (err) {
-                    console.error("Error refreshing user list (interval):", err);
-                } finally {
-                    this._refreshUsersRunning = false;
-                }
+                await this.refreshUserList();
             }, this._refreshUsersIntervalMs);
         }
 
@@ -995,18 +937,14 @@
             this.stopClearEventLogLoop?.(); // clear any previous loop
 
             const clearEvents = () => {
-                try {
-                    // clear all "event" entries from localStorage
-                    const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
+                // clear all "event" entries from localStorage
+                const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
 
-                    // clear the UI container
-                    if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
+                // clear the UI container
+                if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
 
-                    this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
-                    this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
-                } catch (err) {
-                    console.error("Error clearing event logs:", err);
-                }
+                this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
+                this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
             };
 
             if (runImmediately) clearEvents();
@@ -1100,49 +1038,27 @@
         }
 
         safeMatches(n, sel) {
-            try {
-                return !!(n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(sel));
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
+            return !!(n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(sel));
         }
 
         safeQuery(n, sel) {
-            try {
-                return n && n.querySelector ? n.querySelector(sel) : null;
-            } catch (e) {
-                console.error(e);
-                return null;
-            }
+            return n && n.querySelector ? n.querySelector(sel) : null;
         }
 
         decodeHTMLEntities(s) {
-            try {
-                const txt = document.createElement('textarea');
-                txt.innerHTML = String(s);
-                return txt.value;
-            } catch (e) {
-                console.error(e);
-                return String(s);
-            }
+            const txt = document.createElement('textarea');
+            txt.innerHTML = String(s);
+            return txt.value;
         }
 
         /* =========================
 Private send interception
 ========================= */
         isPrivateProcessUrl(u) {
-            try {
-                if (!u) return false;
-                let s = String(u);
-                try {
-                    s = new URL(s, location.origin).pathname;
-                } catch {
-                }
-                return s.indexOf('system/action/private_process.php') !== -1;
-            } catch {
-                return false;
-            }
+            if (!u) return false;
+            let s = String(u);
+            s = new URL(s, location.origin).pathname;
+            return s.indexOf('system/action/private_process.php') !== -1;
         }
 
         processPrivateSendResponse(responseText, requestBody) {
@@ -1150,13 +1066,7 @@ Private send interception
             if (!responseText || typeof responseText !== 'string') return;
 
             let data;
-            try {
-                data = this.parseJSONOrEmpty(responseText);
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Private process parse error:', e);
-                return;
-            }
+            data = JSON.parse(String(responseText));
 
             data = this.toPrivateSendResponse(data);
 
@@ -1184,114 +1094,43 @@ Private send interception
         }
 
         installPrivateSendInterceptor() {
-            try {
-                if (!this._pp_origFetch && typeof window.fetch === 'function') {
-                    this._pp_origFetch = window.fetch;
-                    const self = this;
 
-                    window.fetch = function (...args) {
-                        const req = args[0];
-                        const init = args[1] || null;
-                        const url = (req && typeof req === 'object' && 'url' in req) ? req.url : String(req || '');
+            if (!this._pp_xhrOpen) this._pp_xhrOpen = XMLHttpRequest.prototype.open;
+            if (!this._pp_xhrSend) this._pp_xhrSend = XMLHttpRequest.prototype.send;
 
-                        let capturedBody = '';
-                        try {
-                            if (self.isPrivateProcessUrl(url)) {
-                                capturedBody = self.normalizeBodyToQuery(init && init.body);
-                            }
-                        } catch (err) {
-                            console.error(err);
-                        }
+            const self = this;
 
-                        const p = self._pp_origFetch.apply(this, args);
+            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                this._ca_pm_isTarget = self.isPrivateProcessUrl(url);
+                return self._pp_xhrOpen.apply(this, [method, url, ...rest]);
+            };
 
-                        try {
-                            if (self.isPrivateProcessUrl(url) && capturedBody) {
-                                p.then((res) => {
-                                    try {
-                                        res.clone().text().then(txt => self.processPrivateSendResponse(txt, capturedBody));
-                                    } catch (err) {
-                                        console.error(self.LOG, 'Clone response error:', err);
-                                    }
-                                    return res;
-                                });
-                            }
-                        } catch (e) {
-                            console.error(e);
-                        }
-
-                        return p;
-                    };
+            XMLHttpRequest.prototype.send = function (...sendArgs) {
+                let capturedBody = '';
+                if (this._ca_pm_isTarget && sendArgs && sendArgs.length) {
+                    capturedBody = self.normalizeBodyToQuery(sendArgs[0]);
                 }
-            } catch (e) {
-                console.error(e);
-            }
 
-            // XMLHttpRequest
-            try {
-                if (!this._pp_xhrOpen) this._pp_xhrOpen = XMLHttpRequest.prototype.open;
-                if (!this._pp_xhrSend) this._pp_xhrSend = XMLHttpRequest.prototype.send;
-
-                const self = this;
-
-                XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-                    try {
-                        this._ca_pm_isTarget = self.isPrivateProcessUrl(url);
-                    } catch (e) {
-                        console.error(e);
-                    }
-                    return self._pp_xhrOpen.apply(this, [method, url, ...rest]);
-                };
-
-                XMLHttpRequest.prototype.send = function (...sendArgs) {
-                    try {
-                        let capturedBody = '';
-                        try {
-                            if (this._ca_pm_isTarget && sendArgs && sendArgs.length) {
-                                capturedBody = self.normalizeBodyToQuery(sendArgs[0]);
-                            }
-                        } catch (err) {
-                            console.error(err);
+                if (this._ca_pm_isTarget && capturedBody) {
+                    this.addEventListener('readystatechange', () => {
+                        if (this.readyState === 4 && this.status === 200) {
+                            self.processPrivateSendResponse(this?.responseText || '', capturedBody);
                         }
+                    });
+                }
 
-                        if (this._ca_pm_isTarget && capturedBody) {
-                            this.addEventListener('readystatechange', () => {
-                                if (this.readyState === 4 && this.status === 200) {
-                                    self.processPrivateSendResponse(this?.responseText || '', capturedBody);
-                                }
-                            });
-                        }
-                    } catch (e) {
-                        console.error(e);
-                    }
-
-                    return self._pp_xhrSend.apply(this, sendArgs);
-                };
-            } catch (e) {
-                console.error(e);
-            }
+                return self._pp_xhrSend.apply(this, sendArgs);
+            };
         }
 
         uninstallPrivateSendInterceptor() {
-            try {
-                if (this._pp_origFetch) {
-                    window.fetch = this._pp_origFetch;
-                    this._pp_origFetch = null;
-                }
-            } catch (e) {
-                console.error(e);
+            if (this._pp_xhrOpen) {
+                XMLHttpRequest.prototype.open = this._pp_xhrOpen;
+                this._pp_xhrOpen = null;
             }
-            try {
-                if (this._pp_xhrOpen) {
-                    XMLHttpRequest.prototype.open = this._pp_xhrOpen;
-                    this._pp_xhrOpen = null;
-                }
-                if (this._pp_xhrSend) {
-                    XMLHttpRequest.prototype.send = this._pp_xhrSend;
-                    this._pp_xhrSend = null;
-                }
-            } catch (e) {
-                console.error(e);
+            if (this._pp_xhrSend) {
+                XMLHttpRequest.prototype.send = this._pp_xhrSend;
+                this._pp_xhrSend = null;
             }
         }
 
@@ -1299,35 +1138,29 @@ Private send interception
        Private notifications & conversations
        ====================================== */
         caParsePrivateNotify(html) {
-            try {
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
-                const out = [];
-                for (let i = 0; i < nodes.length; i++) {
-                    const el = nodes[i];
-                    const info = el.querySelector('.fmenu_name.gprivate');
-                    if (!info) continue;
-                    const id = (info.getAttribute('data') || '').trim();
-                    const name = (info.getAttribute('value') || '').trim();
-                    const av = (info.getAttribute('data-av') || '').trim();
-                    const cntEl = el.querySelector('.ulist_notify .pm_notify');
-                    let unread = 0;
-                    if (cntEl) {
-                        const t = (cntEl.textContent || '').trim();
-                        unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
-                    }
-                    out.push({uid: id, name, avatar: av, unread});
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
+            const out = [];
+            for (let i = 0; i < nodes.length; i++) {
+                const el = nodes[i];
+                const info = el.querySelector('.fmenu_name.gprivate');
+                if (!info) continue;
+                const id = (info.getAttribute('data') || '').trim();
+                const name = (info.getAttribute('value') || '').trim();
+                const av = (info.getAttribute('data-av') || '').trim();
+                const cntEl = el.querySelector('.ulist_notify .pm_notify');
+                let unread = 0;
+                if (cntEl) {
+                    const t = (cntEl.textContent || '').trim();
+                    unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
                 }
-                // Clean up temporary DOM element
-                tmp.innerHTML = '';
-                this.verbose(this.LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
-                return out;
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Parse private notifications error:', e);
-                return [];
+                out.push({uid: id, name, avatar: av, unread});
             }
+            // Clean up temporary DOM element
+            tmp.innerHTML = '';
+            this.verbose(this.LOG, 'Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
+            return out;
         }
 
         async searchUserRemote(uid) {
@@ -1336,48 +1169,42 @@ Private send interception
 
             console.log(`Starting remote search for profile with uid ${uid}`);
 
-            try {
-                const body = new URLSearchParams({
-                    token,
-                    get_profile: uid,
-                    cp: "chat"
-                }).toString();
+            const body = new URLSearchParams({
+                token,
+                get_profile: uid,
+                cp: "chat"
+            }).toString();
 
-                const response = await fetch('/system/box/profile.php', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': '*/*',
-                        'X-CA-OWN': '1'
-                    },
-                    body
-                });
+            const response = await fetch('/system/box/profile.php', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': '*/*',
+                    'X-CA-OWN': '1'
+                },
+                body
+            });
 
-                const html = await response.text();
-                let user = this.caParseProfile(html);
+            const html = await response.text();
+            let user = this.caParseProfile(html);
 
-                // If we successfully parsed the profile, save and return it
-                if (user.name && user.avatar) {
-                    if (this.UserStore?.set) {
-                        user = this.UserStore.set({
-                            ...user,
-                            uid
-                        });
-                    }
-
-                    // Return the parsed user object
-                    return user;
+            // If we successfully parsed the profile, save and return it
+            if (user.name && user.avatar) {
+                if (this.UserStore?.set) {
+                    user = this.UserStore.set({
+                        ...user,
+                        uid
+                    });
                 }
 
-                // No valid profile found
-                return null;
-
-            } catch (err) {
-                console.error(this.LOG, 'Fetch profile error:', err);
-                return null;
+                // Return the parsed user object
+                return user;
             }
+
+            // No valid profile found
+            return null;
         }
 
         caParseProfile(html) {
@@ -1441,87 +1268,72 @@ Private send interception
 
         caUpdatePrivateConversationsList() {
             return this.caFetchPrivateNotify().then((privateConversations) => {
-                try {
-                    privateConversations = privateConversations || [];
-                    this.verbose(this.LOG, 'Private conversations:', privateConversations.length);
-                    // sort: unread desc, then name asc
-                    privateConversations.sort((a, b) => {
-                        const au = a.unread || 0, bu = b.unread || 0;
-                        if (bu !== au) return bu - au;
-                        const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
-                        return an < bn ? -1 : an > bn ? 1 : 0;
-                    });
-                    return privateConversations;
-                } catch (e) {
-                    console.error(e);
-                    console.error(this.LOG, 'Update private list error:', e);
-                    return privateConversations || [];
-                }
+                privateConversations = privateConversations || [];
+                this.verbose(this.LOG, 'Private conversations:', privateConversations.length);
+                // sort: unread desc, then name asc
+                privateConversations.sort((a, b) => {
+                    const au = a.unread || 0, bu = b.unread || 0;
+                    if (bu !== au) return bu - au;
+                    const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
+                    return an < bn ? -1 : an > bn ? 1 : 0;
+                });
+                return privateConversations;
             });
         }
 
         /* Carry over site chat context and fetch private chat_log for uid */
         caFetchChatLogFor(uid, params) {
-            try {
-                const token = this.getToken();
-                if (!token || !uid) {
-                    console.error(`.caFetchChatLogFor() called with invalid arguments:`, uid, params);
-                    return Promise.resolve('');
-                }
-
-                const bodyObj = {
-                    token,
-                    cp: 'chat',
-                    fload: '1',
-                    preload: '0',
-                    priv: String(uid),
-                    pcount: params.get('pcount'),
-                    last: params.get('last'),
-                    lastp: this.UserStore.getParsedDmInUpToLog(uid),
-                    caction: String(this.state.CHAT_CTX.caction),
-                    room: String(this.state.CHAT_CTX.room),
-                    notify: String(this.state.CHAT_CTX.notify),
-                    curset: String(this.state.CHAT_CTX.curset)
-                };
-
-                this.verbose(`Fetch chatlog body: `, bodyObj);
-
-                // Debug log (sanitized)
-                try {
-                    const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
-                    this.verbose(this.LOG, 'caFetchChatLogFor uid=', uid, ' body:', bodyLog);
-                } catch (err) {
-                    console.error(err);
-                }
-
-                const body = new URLSearchParams(bodyObj).toString();
-
-                return fetch('/system/action/chat_log.php?timestamp=234284923', {
-                    method: 'POST', credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': 'application/json, text/javascript, */*; q=0.01',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CA-OWN': '1'
-                    },
-                    body
-                })
-                    .then((res) => {
-                        this.verbose(this.LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
-                        return res.text();
-                    })
-                    .then((txt) => {
-                        this.verbose(this.LOG, 'caFetchChatLogFor received a response succesfully');
-                        return txt;
-                    })
-                    .catch((err) => {
-                        this.verbose(this.LOG, 'Fetch chat log error:', err);
-                        return null;
-                    });
-            } catch (e) {
-                console.error(e);
+            const token = this.getToken();
+            if (!token || !uid) {
+                console.error(`.caFetchChatLogFor() called with invalid arguments:`, uid, params);
                 return Promise.resolve('');
             }
+
+            const bodyObj = {
+                token,
+                cp: 'chat',
+                fload: '1',
+                preload: '0',
+                priv: String(uid),
+                pcount: params.get('pcount'),
+                last: params.get('last'),
+                lastp: this.UserStore.getParsedDmInUpToLog(uid),
+                caction: String(this.state.CHAT_CTX.caction),
+                room: String(this.state.CHAT_CTX.room),
+                notify: String(this.state.CHAT_CTX.notify),
+                curset: String(this.state.CHAT_CTX.curset)
+            };
+
+            this.verbose(`Fetch chatlog body: `, bodyObj);
+
+            // Debug log (sanitized)
+            const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
+            this.verbose(this.LOG, 'caFetchChatLogFor uid=', uid, ' body:', bodyLog);
+
+            const body = new URLSearchParams(bodyObj).toString();
+
+            return fetch('/system/action/chat_log.php?timestamp=234284923', {
+                method: 'POST', credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CA-OWN': '1'
+                },
+                body
+            })
+                .then((res) => {
+                    this.verbose(this.LOG, 'caFetchChatLogFor: Response status:', res.status, res.statusText);
+                    return res.text();
+                })
+                .then((txt) => {
+                    this.verbose(this.LOG, 'caFetchChatLogFor received a response succesfully');
+                    return txt;
+                })
+                .catch((err) => {
+                    this.verbose(this.LOG, 'Fetch chat log error:', err);
+                    return null;
+                });
         }
 
         /* Parse & render the private chat log for a given user */
@@ -1534,22 +1346,12 @@ Private send interception
             }
 
             let conversationChatLog;
-            try {
-                conversationChatLog = this.parseJSONOrEmpty(response);
-                conversationChatLog = this.toPrivateChatLogResponse(conversationChatLog);
-            } catch (e) {
-                const prev = String(response || '').slice(0, 200);
-                console.warn(this.LOG, 'Parse failed for conversation', uid, '— preview:', prev);
-                return;
-            }
+            conversationChatLog = JSON.parse(String(response));
+            conversationChatLog = this.toPrivateChatLogResponse(conversationChatLog);
 
             // update CHAT_CTX.last from private response
-            try {
-                if (conversationChatLog && conversationChatLog.last) {
-                    this.state.CHAT_CTX.last = String(conversationChatLog.last);
-                }
-            } catch (e) {
-                console.error(e);
+            if (conversationChatLog && conversationChatLog.last) {
+                this.state.CHAT_CTX.last = String(conversationChatLog.last);
             }
 
             let items = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
@@ -1643,39 +1445,31 @@ Private send interception
         }
 
         async handleChatLogPlogs(payload) {
-            try {
-                const plogs = Array.isArray(payload?.plogs) ? payload.plogs : [];
-                if (!plogs.length) return;
+            const plogs = Array.isArray(payload?.plogs) ? payload.plogs : [];
+            if (!plogs.length) return;
 
-                for (const p of plogs) {
-                    try {
-                        const uid = String(p.user_id);
+            for (const p of plogs) {
+                const uid = String(p.user_id);
 
-                        const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-                        if (myUserId && String(uid) === myUserId) {
-                            this.verbose(`Skipping message from myself: ${uid}`);
-                            return false;
-                        }
-
-                        const user = await this.UserStore.getOrFetch(uid);
-                        if (!user) continue;
-
-                        // Normalize timestamp like "3/11 19:30" → "03/11 19:30:00"
-                        const ts = this.normalizeApiDate
-                            ? this.normalizeApiDate(p.log_date)
-                            : String(p.log_date || '');
-
-                        // Log as inbound private DM
-                        this.logLine('dm-in', String(p.log_content || ''), user, String(p.log_id), ts);
-
-                        // Update user’s chip status
-                        this.updateProfileChip?.(uid);
-                    } catch (err) {
-                        console.error('handleChatLogPlogs: entry failed:', err);
-                    }
+                const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
+                if (myUserId && String(uid) === myUserId) {
+                    this.verbose(`Skipping message from myself: ${uid}`);
+                    return false;
                 }
-            } catch (e) {
-                console.error('handleChatLogPlogs failed:', e);
+
+                const user = await this.UserStore.getOrFetch(uid);
+                if (!user) continue;
+
+                // Normalize timestamp like "3/11 19:30" → "03/11 19:30:00"
+                const ts = this.normalizeApiDate
+                    ? this.normalizeApiDate(p.log_date)
+                    : String(p.log_date || '');
+
+                // Log as inbound private DM
+                this.logLine('dm-in', String(p.log_content || ''), user, String(p.log_id), ts);
+
+                // Update user’s chip status
+                this.updateProfileChip?.(uid);
             }
         }
 
@@ -1689,38 +1483,15 @@ Private send interception
             const now = Date.now();
 
             // tolerant parse & shape
-            let data;
-            try {
-                data = this.parseJSONOrEmpty(txt);
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Chat payload: JSON parse failed — preview:', String(txt).slice(0, 200));
-                return;
-            }
-            data = this.toChatLogResponse(data);
+            const data = this.toChatLogResponse(JSON.parse(String(txt)));
 
-            // update CHAT_CTX.last from public chat response
-            try {
-                if (data && data.last) this.state.CHAT_CTX.last = String(data.last);
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Update CHAT_CTX.last error:', e);
-            }
-
-            // 🔗 NEW: if server already sent private logs in this payload, handle them now.
             if (Array.isArray(data.plogs) && data.plogs.length > 0) {
                 this.handleChatLogPlogs(data);
                 return;
             }
 
             const pico = Number(data && data.pico);
-
-            // Only process when pico > 0 OR every 30s for refresh
-            const timeSinceLastCheck = now - (this._cp_lastCheck || 0);
-            const shouldProcess = (pico > 0) || (timeSinceLastCheck >= this._cp_CHECK_INTERVAL);
-            if (!shouldProcess) return;
-
-            this._cp_lastCheck = now;
+            if (pico === 0) return;
 
             // No private messages or they are already in this payload
             if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
@@ -1728,33 +1499,27 @@ Private send interception
             console.log(this.LOG, 'Private messages count (pico):', pico, '— checking for new messages');
 
             this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
-                try {
-                    privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-                    this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
+                privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
+                this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
 
-                    const toFetch = privateConversations
-                        .filter(pc => pc.unread > 0)
-                        .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
+                const toFetch = privateConversations
+                    .filter(pc => pc.unread > 0)
+                    .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
 
-                    if (!toFetch.length) {
-                        console.log(this.LOG, 'None of the conversations has new messages');
-                        return;
-                    }
-
-                    this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
-
-                    (async () => {
-                        for (let i = 0; i < toFetch.length; i++) {
-                            const conversation = toFetch[i];
-                            console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
-                            const convoLog = await this.caFetchChatLogFor(conversation.uid, params);
-                            await this.caProcessPrivateLogResponse(conversation.uid, convoLog);
-                        }
-                    })();
-                } catch (err) {
-                    console.error(err);
-                    console.error(this.LOG, 'List processing error:', err);
+                if (!toFetch.length) {
+                    console.log(this.LOG, 'None of the conversations has new messages');
+                    return;
                 }
+
+                this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+
+                (async () => {
+                    for (let i = 0; i < toFetch.length; i++) {
+                        const conversation = toFetch[i];
+                        console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
+                        await this.caProcessPrivateLogResponse(conversation.uid, await this.caFetchChatLogFor(conversation.uid, params));
+                    }
+                })();
             });
         }
 
@@ -1763,82 +1528,53 @@ Private send interception
             this.debug('Installing network taps (fetch/XHR interceptors)');
 
             // XHR
-            try {
-                if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
-                if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
+            if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
+            if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
 
-                const self = this;
+            const self = this;
 
-                XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-                    try {
-                        this._ca_url = String(url || '');
-                    } catch (e) {
-                        console.error(e);
-                        this._ca_url = '';
-                    }
-                    return self._xhrOpen.apply(this, [method, url, ...rest]);
-                };
+            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                this._ca_url = String(url || '');
+                return self._xhrOpen.apply(this, [method, url, ...rest]);
+            };
 
-                XMLHttpRequest.prototype.send = function (...sendArgs) {
-                    let qs = null;
+            XMLHttpRequest.prototype.send = function (...sendArgs) {
+                let qs = null;
 
-                    try {
-                        const targetUrl = this._ca_url || '';
+                const targetUrl = this._ca_url || '';
 
-                        if (self.isChatLogUrl(targetUrl) && sendArgs && sendArgs[0].length) {
-                            if (sendArgs[0].indexOf('priv=1') !== -1) return;
+                if (self.isChatLogUrl(targetUrl) && sendArgs && sendArgs[0].length) {
+                    if (sendArgs[0].indexOf('priv=1') !== -1) return;
 
-                            qs = new URLSearchParams(sendArgs[0]);
-                            self.caUpdateChatCtxFromBody(qs);
+                    qs = new URLSearchParams(sendArgs[0]);
+                    self.caUpdateChatCtxFromBody(qs);
+                }
+
+                this.addEventListener('readystatechange', function () {
+                    const responseUrl = this.responseURL || this._ca_url || '';
+                    if (this.readyState === 4 && this.status === 200 && this.responseText) {
+                        if (self.isChatLogUrl(responseUrl)) {
+                            // ✅ Now you can access the right params for this XHR instance
+                            self.caProcessChatPayload(this.responseText, qs);
                         }
-
-                        this.addEventListener('readystatechange', function () {
-                            try {
-                                const responseUrl = this.responseURL || this._ca_url || '';
-                                if (this.readyState === 4 && this.status === 200 && this.responseText) {
-                                    if (self.isChatLogUrl(responseUrl)) {
-                                        // ✅ Now you can access the right params for this XHR instance
-                                        self.caProcessChatPayload(this.responseText, qs);
-                                    }
-                                    if (self.isUserListUrl(responseUrl)) {
-                                        self.processUserListResponse(this.responseText);
-                                    }
-                                }
-                            } catch (err) {
-                                console.error(self.LOG, 'XHR readystatechange error:', err);
-                            }
-                        });
-                    } catch (e) {
-                        console.error(e);
+                        if (self.isUserListUrl(responseUrl)) {
+                            self.processUserListResponse(this.responseText);
+                        }
                     }
+                });
 
-                    return self._xhrSend.apply(this, sendArgs);
-                };
-            } catch (e) {
-                console.error(e);
-            }
+                return self._xhrSend.apply(this, sendArgs);
+            };
         }
 
         uninstallNetworkTaps() {
-            try {
-                if (this._origFetch) {
-                    window.fetch = this._origFetch;
-                    this._origFetch = null;
-                }
-            } catch (e) {
-                console.error(e);
+            if (this._xhrOpen) {
+                XMLHttpRequest.prototype.open = this._xhrOpen;
+                this._xhrOpen = null;
             }
-            try {
-                if (this._xhrOpen) {
-                    XMLHttpRequest.prototype.open = this._xhrOpen;
-                    this._xhrOpen = null;
-                }
-                if (this._xhrSend) {
-                    XMLHttpRequest.prototype.send = this._xhrSend;
-                    this._xhrSend = null;
-                }
-            } catch (e) {
-                console.error(e);
+            if (this._xhrSend) {
+                XMLHttpRequest.prototype.send = this._xhrSend;
+                this._xhrSend = null;
             }
         }
 
@@ -1866,21 +1602,16 @@ Private send interception
         }
 
         buildProfileUrlForId(uid) {
-            try {
-                if (!uid) return '';
-                const sel = `a[href*="profile"][href*="${uid}"], a[href*="user"][href*="${uid}"]`;
-                const found = document.querySelector(sel);
-                if (found?.href) return found.href;
-                const fallbacks = [
-                    '/profile/' + uid,
-                    '/user/' + uid,
-                    '/system/profile.php?uid=' + uid,
-                ];
-                return fallbacks[0];
-            } catch (e) {
-                console.error(e);
-                return '';
-            }
+            if (!uid) return '';
+            const sel = `a[href*="profile"][href*="${uid}"], a[href*="user"][href*="${uid}"]`;
+            const found = document.querySelector(sel);
+            if (found?.href) return found.href;
+            const fallbacks = [
+                '/profile/' + uid,
+                '/user/' + uid,
+                '/system/profile.php?uid=' + uid,
+            ];
+            return fallbacks[0];
         }
 
         _attachLogClickHandlers() {
@@ -1900,63 +1631,59 @@ Private send interception
         }
 
         async _onLogClickGeneric(e) {
-            try {
-                // Find the clicked log entry
-                const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
-                if (!entry) return;
+            // Find the clicked log entry
+            const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
+            if (!entry) return;
 
-                // Route by data-action, if present
-                const actionEl = e.target.closest?.('[data-action]');
-                if (actionEl) {
-                    const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
+            // Route by data-action, if present
+            const actionEl = e.target.closest?.('[data-action]');
+            if (actionEl) {
+                const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
 
-                    if (action === 'toggle-expand') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
+                if (action === 'toggle-expand') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
 
-                        const expanded = entry.classList.toggle('ca-expanded');
+                    const expanded = entry.classList.toggle('ca-expanded');
 
-                        // keep the chevron + ARIA in sync
-                        const ind = entry.querySelector(this.sel.log.classes.ca_expand_indicator);
-                        if (ind) {
-                            ind.textContent = expanded ? '▴' : '▾';
-                            ind.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                        }
-                        return;
+                    // keep the chevron + ARIA in sync
+                    const ind = entry.querySelector(this.sel.log.classes.ca_expand_indicator);
+                    if (ind) {
+                        ind.textContent = expanded ? '▴' : '▾';
+                        ind.setAttribute('aria-expanded', expanded ? 'true' : 'false');
                     }
-
-                    if (action === 'open-profile') {
-                        e.preventDefault();
-                        this.openProfileOnHost(entry.getAttribute('data-uid') || '');
-                        return;
-                    }
-
-                    if (action === 'open-dm') {
-                        e.preventDefault();
-                        const uid = entry.getAttribute('data-uid') || '';
-                        this.applyLegacyAndOpenDm(this.UserStore?.get?.(uid));
-                        return;
-                    }
-
-                    if (action === 'delete-log') {
-                        e.preventDefault();
-                        const guid = entry.getAttribute('data-guid');
-                        if (guid) this.ActivityLogStore?.remove?.(guid);
-                        entry.remove();
-                        return;
-                    }
-
-                    // Unknown action → do nothing
                     return;
                 }
 
-                // No data-action: background click falls back to open profile
-                e.preventDefault();
-                this.openProfileOnHost(entry.getAttribute('data-uid') || '');
-            } catch (err) {
-                console.error('Log click handler error:', err);
+                if (action === 'open-profile') {
+                    e.preventDefault();
+                    this.openProfileOnHost(entry.getAttribute('data-uid') || '');
+                    return;
+                }
+
+                if (action === 'open-dm') {
+                    e.preventDefault();
+                    const uid = entry.getAttribute('data-uid') || '';
+                    this.applyLegacyAndOpenDm(this.UserStore?.get?.(uid));
+                    return;
+                }
+
+                if (action === 'delete-log') {
+                    e.preventDefault();
+                    const guid = entry.getAttribute('data-guid');
+                    if (guid) this.ActivityLogStore?.remove?.(guid);
+                    entry.remove();
+                    return;
+                }
+
+                // Unknown action → do nothing
+                return;
             }
+
+            // No data-action: background click falls back to open profile
+            e.preventDefault();
+            this.openProfileOnHost(entry.getAttribute('data-uid') || '');
         }
 
         resolveHostFn(name) {
@@ -1997,25 +1724,15 @@ Private send interception
         }
 
         safeSet(obj, key, value) {
-            try {
-                if (typeof obj?.[key] === 'undefined') return true; // nothing to do
-                obj[key] = value;
-                return true;
-            } catch (e) {
-                console.error(`safeSet failed: window.${key} =`, value, e);
-                return false;
-            }
+            if (typeof obj?.[key] === 'undefined') return true; // nothing to do
+            obj[key] = value;
+            return true;
         }
 
         safeCall(obj, key, ...args) {
-            try {
-                if (typeof obj?.[key] !== 'function') return true; // nothing to do
-                obj[key](...args);
-                return true;
-            } catch (e) {
-                console.error(`safeCall failed: window.${key}()`, e);
-                return false;
-            }
+            if (typeof obj?.[key] !== 'function') return true; // nothing to do
+            obj[key](...args);
+            return true;
         }
 
         openProfileOnHost(uid) {
@@ -2031,14 +1748,10 @@ Private send interception
             console.log(`Open profile on host for uid=${uid}`);
 
             if (getProfile) {
-                try {
-                    const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
-                    this.debug('openProfileOnHost: Calling getProfile with:', uidNum);
-                    getProfile(uidNum);
-                    this.debug('openProfileOnHost: getProfile call completed');
-                } catch (err) {
-                    console.error(`Failed to open profile for uid ${uid}`, err);
-                }
+                const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
+                this.debug('openProfileOnHost: Calling getProfile with:', uidNum);
+                getProfile(uidNum);
+                this.debug('openProfileOnHost: getProfile call completed');
             } else {
                 console.warn(`Host profile method not found; falling back to URL (uid: ${uid})`);
                 const url = this.buildProfileUrlForId(uid);
@@ -2046,19 +1759,6 @@ Private send interception
                 if (url) window.open(url, '_blank');
             }
         }
-
-        //
-        // /* ===================== RECIPIENT LISTS ===================== */
-        // async buildSpecificListAsync() {
-        //     if (!this.ui.sUser) return [];
-        //     const q = (this.ui.sUser.value || '').trim();
-        //     if (!q) return [];
-        //     // expects a Users store with getOrFetchByName
-        //     if (this.Users?.getOrFetchByName) {
-        //         return await this.Users.getOrFetchByName(q);
-        //     }
-        //     return []; // or throw if unavailable
-        // }
 
         buildBroadcastList() {
             const list = this.collectFemaleIds();
@@ -2111,12 +1811,8 @@ Private send interception
 
                 // try local, then remote search
                 let candidates = [];
-                try {
-                    if (this.UserStore?.getOrFetchByName) {
-                        candidates = await this.UserStore.getOrFetchByName(nameQ);
-                    }
-                } catch (e) {
-                    console.error(e);
+                if (this.UserStore?.getOrFetchByName) {
+                    candidates = await this.UserStore.getOrFetchByName(nameQ);
                 }
 
                 if (!Array.isArray(candidates) || candidates.length === 0) {
@@ -2127,17 +1823,11 @@ Private send interception
                 const target = candidates[0]; // first exact match
 
                 this.ui.sSend.disabled = true;
-                try {
-                    const r = await this.sendWithThrottle(target.uid, text);
-                    if (stat) stat.textContent = r && r.ok
-                        ? `Sent to ${target.name || target.uid}.`
-                        : `Failed (HTTP ${r ? r.status : 0}).`;
-                } catch (err) {
-                    if (stat) stat.textContent = 'Error sending.';
-                    //this.logSendFail?.(target.name || target.uid, target.uid, '', 'ERR', text);
-                } finally {
-                    this.ui.sSend.disabled = false;
-                }
+                const r = await this.sendWithThrottle(target.uid, text);
+                if (stat) stat.textContent = r && r.ok
+                    ? `Sent to ${target.name || target.uid}.`
+                    : `Failed (HTTP ${r ? r.status : 0}).`;
+
             });
         }
 
@@ -2210,81 +1900,59 @@ Private send interception
 
         /* ===================== USER CLICK SELECTION ===================== */
         wireUserClickSelection() {
-            try {
-                const c = this.getContainer();
-                if (!c) return;
-                if (c.getAttribute('data-ca-wired') === '1') return;
+            const c = this.getContainer();
+            if (!c) return;
+            if (c.getAttribute('data-ca-wired') === '1') return;
 
-                c.addEventListener('click', (e) => {
-                    try {
-                        const ignore = e.target.closest('a, button, input, label, .ca-ck-wrap, .ca-ck, .ca-sent-chip');
-                        if (ignore) return;
+            c.addEventListener('click', (e) => {
+                const ignore = e.target.closest('a, button, input, label, .ca-ck-wrap, .ca-ck, .ca-sent-chip');
+                if (ignore) return;
 
-                        let n = e.target;
-                        const userItemClass = this.sel.log.classes.user_item.substring(1);
-                        while (n && n !== c && !(n.classList && n.classList.contains(userItemClass))) n = n.parentNode;
-                        if (!n || n === c) return;
+                let n = e.target;
+                const userItemClass = this.sel.log.classes.user_item.substring(1);
+                while (n && n !== c && !(n.classList && n.classList.contains(userItemClass))) n = n.parentNode;
+                if (!n || n === c) return;
 
-                        const nm = this.extractUsername(n);
-                        if (!nm) return;
-                        const inp = this.qs(this.sel.specificPop.username);
-                        if (inp) {
-                            inp.value = nm;
-                            const ev = new Event('input', {bubbles: true, cancelable: true});
-                            inp.dispatchEvent(ev);
-                        }
-                    } catch (err) {
-                        console.error(err);
-                    }
-                }, false);
+                const nm = this.extractUsername(n);
+                if (!nm) return;
+                const inp = this.qs(this.sel.specificPop.username);
+                if (inp) {
+                    inp.value = nm;
+                    const ev = new Event('input', {bubbles: true, cancelable: true});
+                    inp.dispatchEvent(ev);
+                }
+            }, false);
 
-                c.setAttribute('data-ca-wired', '1');
-            } catch (e) {
-                console.error(e);
-            }
+            c.setAttribute('data-ca-wired', '1');
         }
 
         /* Update or create user element in managed container */
         _updateOrCreateUserElement(managedList, newEl, user) {
-            try {
-                const existingEl = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
-                if (existingEl) {
-                    // Update existing element
-                    existingEl.innerHTML = newEl.innerHTML;
-                    // Copy all attributes
-                    Array.from(newEl.attributes).forEach(attr => {
-                        existingEl.setAttribute(attr.name, attr.value);
-                    });
-                    this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, user.name);
-                    return existingEl;
-                } else {
-                    const clonedEl = newEl.cloneNode(true);
-                    managedList.appendChild(clonedEl);
-                    this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
-                    return clonedEl;
-                }
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, '[_updateOrCreateUserElement] Error:', e);
+            const existingEl = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
+            if (existingEl) {
+                // Update existing element
+                existingEl.innerHTML = newEl.innerHTML;
+                // Copy all attributes
+                Array.from(newEl.attributes).forEach(attr => {
+                    existingEl.setAttribute(attr.name, attr.value);
+                });
+                this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, user.name);
+                return existingEl;
+            } else {
+                const clonedEl = newEl.cloneNode(true);
+                managedList.appendChild(clonedEl);
+                this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
+                return clonedEl;
             }
         }
 
 
         /* Check if URL is user_list.php */
         isUserListUrl(u) {
-            try {
-                if (!u) return false;
-                let s = String(u);
-                try {
-                    s = new URL(s, location.origin).pathname;
-                } catch (err) {
-                    // URL parse failed, use original string
-                }
-                return s.indexOf('system/panel/user_list.php') !== -1;
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
+            if (!u) return false;
+            let s = String(u);
+            s = new URL(s, location.origin).pathname;
+            return s.indexOf('system/panel/user_list.php') !== -1;
         }
 
         /* Parse user_list.php HTML response and process users */
@@ -2464,52 +2132,30 @@ Private send interception
 
         /* ===================== CHAT TAP (partial) ===================== */
         isChatLogUrl(u) {
-            try {
-                if (!u) return false;
-                let s = String(u);
-                try {
-                    s = new URL(s, location.origin).pathname;
-                } catch {
-                }
-                return s.indexOf('system/action/chat_log.php') !== -1;
-            } catch {
-                return false;
-            }
+            if (!u) return false;
+            let s = String(u);
+            s = new URL(s, location.origin).pathname;
+            return s.indexOf('system/action/chat_log.php') !== -1;
         }
 
         caUpdateChatCtxFromBody(searchParams) {
-            try {
-                if (this.caUpdateChatCtxFromBody._initialized) {
-                    this.verbose(`CHAT_CTX already initialized`);
-                    return;
-                }
-
-                const ca = searchParams.get('caction'),
-                    rm = searchParams.get('room'),
-                    nf = searchParams.get('notify'),
-                    cs = searchParams.get('curset');
-
-                if (ca) this.state.CHAT_CTX.caction = String(ca);
-                if (rm) this.state.CHAT_CTX.room = String(rm);
-                if (nf) this.state.CHAT_CTX.notify = String(nf);
-                if (cs) this.state.CHAT_CTX.curset = String(cs);
-
-                this.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
-                this.caUpdateChatCtxFromBody._initialized = true;
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Chat context initialization error:', e);
+            if (this.caUpdateChatCtxFromBody._initialized) {
+                this.verbose(`CHAT_CTX already initialized`);
+                return;
             }
-        }
 
-        /** Safe JSON.parse that returns {} on failure */
-        parseJSONOrEmpty(str) {
-            try {
-                return JSON.parse(String(str));
-            } catch (e) {
-                console.error(e);
-                return null;
-            }
+            const ca = searchParams.get('caction'),
+                rm = searchParams.get('room'),
+                nf = searchParams.get('notify'),
+                cs = searchParams.get('curset');
+
+            if (ca) this.state.CHAT_CTX.caction = String(ca);
+            if (rm) this.state.CHAT_CTX.room = String(rm);
+            if (nf) this.state.CHAT_CTX.notify = String(nf);
+            if (cs) this.state.CHAT_CTX.curset = String(cs);
+
+            this.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
+            this.caUpdateChatCtxFromBody._initialized = true;
         }
 
         /** @param {any} x @returns {{log_id:string,log_date:string,user_id:string,user_name:string,user_tumb:string,log_content:string}} */
@@ -2606,25 +2252,16 @@ Private send interception
 
         /* ---------- Body normalization ---------- */
         normalizeBodyToQuery(body) {
-            try {
-                if (!body) return '';
-                if (typeof body === 'string') return body;
-                if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
-                if (typeof FormData !== 'undefined' && body instanceof FormData) {
-                    const usp = new URLSearchParams();
-                    body.forEach((v, k) => usp.append(k, typeof v === 'string' ? v : ''));
-                    return usp.toString();
-                }
-                if (typeof body === 'object') {
-                    try {
-                        return new URLSearchParams(body).toString();
-                    } catch (e) {
-                        console.error(e);
-                    }
-                }
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Body normalization error:', e);
+            if (!body) return '';
+            if (typeof body === 'string') return body;
+            if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
+            if (typeof FormData !== 'undefined' && body instanceof FormData) {
+                const usp = new URLSearchParams();
+                body.forEach((v, k) => usp.append(k, typeof v === 'string' ? v : ''));
+                return usp.toString();
+            }
+            if (typeof body === 'object') {
+                return new URLSearchParams(body).toString();
             }
             return '';
         }
@@ -2632,72 +2269,57 @@ Private send interception
         /* ---------- ID/Name/Avatar extraction ---------- */
         getUserId(el) {
             if (!el) return null;
-            try {
-                const ds = el.dataset || {};
-                let id = ds.uid || ds.userid || ds.user || ds.id;
+            const ds = el.dataset || {};
+            let id = ds.uid || ds.userid || ds.user || ds.id;
+            if (!id) {
+                let n = this.qs('[data-uid]', el);
+                if (n?.dataset?.uid) id = n.dataset.uid;
                 if (!id) {
-                    let n = this.qs('[data-uid]', el);
-                    if (n?.dataset?.uid) id = n.dataset.uid;
-                    if (!id) {
-                        n = this.qs('[data-userid]', el);
-                        if (n?.dataset?.userid) id = n.dataset.userid;
-                    }
-                    if (!id) {
-                        n = this.qs('[data-user]', el);
-                        if (n?.dataset?.user) id = n.dataset.user;
-                    }
-                    if (!id) {
-                        n = this.qs('[data-id]', el);
-                        if (n?.dataset?.id) id = n.dataset.id;
-                    }
+                    n = this.qs('[data-userid]', el);
+                    if (n?.dataset?.userid) id = n.dataset.userid;
                 }
                 if (!id) {
-                    let a = this.qs('a[href*="profile"]', el), m = a && a.href.match(/(?:\/profile\/|[?&]uid=)(\d+)/);
-                    if (m?.[1]) id = m[1];
-                    if (!id) {
-                        a = this.qs('a[href*="user"]', el);
-                        m = a && a.href.match(/(?:\/user\/|[?&]id=)(\d+)/);
-                        if (m?.[1]) id = m[1];
-                    }
+                    n = this.qs('[data-user]', el);
+                    if (n?.dataset?.user) id = n.dataset.user;
                 }
-                return id ? String(id) : null;
-            } catch (e) {
-                console.error(e);
-                return null;
+                if (!id) {
+                    n = this.qs('[data-id]', el);
+                    if (n?.dataset?.id) id = n.dataset.id;
+                }
             }
+            if (!id) {
+                let a = this.qs('a[href*="profile"]', el), m = a && a.href.match(/(?:\/profile\/|[?&]uid=)(\d+)/);
+                if (m?.[1]) id = m[1];
+                if (!id) {
+                    a = this.qs('a[href*="user"]', el);
+                    m = a && a.href.match(/(?:\/user\/|[?&]id=)(\d+)/);
+                    if (m?.[1]) id = m[1];
+                }
+            }
+            return id ? String(id) : null;
         }
 
         extractUsername(el) {
             if (!el) return '';
-            try {
-                const v = el.getAttribute('data-name');
-                if (v) return v.trim();
-                let n = this.qs('.user_name,.username,.name', el);
-                if (n?.textContent) return n.textContent.trim();
-                let t = el.getAttribute('title');
-                if (t) return t.trim();
-                const text = (el.textContent || '').trim();
-                if (!text) return '';
-                const parts = text.split(/\s+/).filter(Boolean);
-                if (!parts.length) return '';
-                parts.sort((a, b) => a.length - b.length);
-                return parts[0];
-            } catch (e) {
-                console.error(e);
-                return '';
-            }
+            const v = el.getAttribute('data-name');
+            if (v) return v.trim();
+            let n = this.qs('.user_name,.username,.name', el);
+            if (n?.textContent) return n.textContent.trim();
+            let t = el.getAttribute('title');
+            if (t) return t.trim();
+            const text = (el.textContent || '').trim();
+            if (!text) return '';
+            const parts = text.split(/\s+/).filter(Boolean);
+            if (!parts.length) return '';
+            parts.sort((a, b) => a.length - b.length);
+            return parts[0];
         }
 
         extractAvatar(el) {
-            try {
-                if (!el) return '';
-                const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
-                const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
-                return src ? src.trim() : '';
-            } catch (e) {
-                console.error(e);
-                return '';
-            }
+            if (!el) return '';
+            const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
+            const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
+            return src ? src.trim() : '';
         }
 
         /* ---------- Collect female IDs ---------- */
@@ -2721,11 +2343,7 @@ Private send interception
 
         /* ---------- Token + POST helpers ---------- */
         getToken() {
-            try {
-                if (typeof utk !== 'undefined' && utk) return utk;
-            } catch (e) {
-                console.error(e);
-            }
+            if (typeof utk !== 'undefined' && utk) return utk;
             const inp = this.qs('input[name="token"]');
             if (inp?.value) return inp.value;
             const sc = this.qsa('script');
@@ -2770,11 +2388,7 @@ Private send interception
                     body
                 }).then(res => res.text().then(txt => {
                     let parsed;
-                    try {
-                        parsed = JSON.parse(txt);
-                    } catch (e) {
-                        console.error(e);
-                    }
+                    parsed = JSON.parse(txt);
                     return {ok: res.ok, status: res.status, body: parsed || txt};
                 }));
             }, 15000);
@@ -2792,25 +2406,20 @@ Private send interception
                 search_order: '0'
             }).toString();
 
-            try {
-                const res = await fetch('/system/action/action_search.php', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': '*/*',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CA-OWN': '1'
-                    },
-                    body
-                });
+            const res = await fetch('/system/action/action_search.php', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept': '*/*',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CA-OWN': '1'
+                },
+                body
+            });
 
-                const html = await res.text();
-                return this.parseUserSearchHTML(html);
-            } catch (e) {
-                console.error('searchUsersRemote failed:', e);
-                return [];
-            }
+            const html = await res.text();
+            return this.parseUserSearchHTML(html);
         }
 
         parseUserSearchHTML(html) {
@@ -2843,12 +2452,7 @@ Private send interception
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
-            try {
-                return root.querySelector(`.user_item[data-id="${uid}"]`);
-            } catch (e) {
-                console.error('findUserElementById failed:', e);
-                return null;
-            }
+            return root.querySelector(`.user_item[data-id="${uid}"]`);
         }
 
         /* ---------- Sent chip & badges ---------- */
@@ -2926,63 +2530,45 @@ Private send interception
 
         /* ---------- Rank filter & selection checkbox ---------- */
         _isAllowedRank(el) {
-            try {
-                const rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
-                const roomRankIcon = this.safeQuery(el, '.list_rank');
-                const roomRank = roomRankIcon ? (roomRankIcon.getAttribute('data-r') || '') : '';
-                return (rankAttr === '1' || rankAttr === '50') && (roomRank !== '4');
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
+            const rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
+            const roomRankIcon = this.safeQuery(el, '.list_rank');
+            const roomRank = roomRankIcon ? (roomRankIcon.getAttribute('data-r') || '') : '';
+            return (rankAttr === '1' || rankAttr === '50') && (roomRank !== '4');
         }
 
         // more descriptive and self-contained
         ensureBroadcastCheckbox(el) {
-            try {
-                if (!el || el.nodeType !== 1) return;      // skip invalid
-                if (el.getAttribute('data-gender') !== this.FEMALE_CODE) return;
-                if (this.qs('.ca-ck-wrap', el)) return;    // already has one
-                if (!this._isAllowedRank?.(el)) return;
+            if (!el || el.nodeType !== 1) return;      // skip invalid
+            if (el.getAttribute('data-gender') !== this.FEMALE_CODE) return;
+            if (this.qs('.ca-ck-wrap', el)) return;    // already has one
+            if (!this._isAllowedRank?.(el)) return;
 
-                const uid = this.getUserId?.(el);
-                if (!uid) return;
+            const uid = this.getUserId?.(el);
+            if (!uid) return;
 
-                this._isMakingOwnChanges = true;
+            this._isMakingOwnChanges = true;
 
-                const wrap = document.createElement('label');
-                wrap.className = 'ca-ck-wrap';
-                wrap.title = 'Include in broadcast';
+            const wrap = document.createElement('label');
+            wrap.className = 'ca-ck-wrap';
+            wrap.title = 'Include in broadcast';
 
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.className = 'ca-ck';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'ca-ck';
 
-                cb.checked = this.UserStore.isIncludedForBroadcast(uid);
+            cb.checked = this.UserStore.isIncludedForBroadcast(uid);
 
-                wrap.appendChild(cb);
-                el.appendChild(wrap);
+            wrap.appendChild(cb);
+            el.appendChild(wrap);
 
-                // (optional) event hookup here if you don’t already wire at container level
-                cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
-
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setTimeout(() => {
-                    this._isMakingOwnChanges = false;
-                }, 0);
-            }
+            // (optional) event hookup here if you don’t already wire at container level
+            cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
         }
 
         handleCheckboxChange(e, uid /*, el */) {
-            try {
-                const include = !!e?.target?.checked;
-                this.UserStore?.includeUserForBroadcast?.(uid, include);
-                this.debug?.(`[BC] isIncludedForBroadcast → uid=${uid}, include=${include}`);
-            } catch (err) {
-                console.error('[BC] handleCheckboxChange failed:', err);
-            }
+            const include = !!e?.target?.checked;
+            this.UserStore?.includeUserForBroadcast?.(uid, include);
+            this.debug?.(`[BC] isIncludedForBroadcast → uid=${uid}, include=${include}`);
         }
 
         /* ---------- Panel UI ---------- */
@@ -3061,32 +2647,31 @@ Private send interception
         }
 
         createManagedUsersContainer() {
-            try {
-                // Check if already exists
-                const existing = this.qs('#ca-managed-wrapper');
-                if (existing) {
-                    console.log(this.LOG, 'Managed users container already exists');
-                    return;
-                }
+            // Check if already exists
+            const existing = this.qs('#ca-managed-wrapper');
+            if (existing) {
+                console.log(this.LOG, 'Managed users container already exists');
+                return;
+            }
 
-                // Find chat_right_data as the anchor point
-                const chatRightData = this.qs(this.sel.users.chatRight);
-                if (!chatRightData) {
-                    console.warn(this.LOG, 'chat_right_data not found, cannot create managed container');
-                    return;
-                }
+            // Find chat_right_data as the anchor point
+            const chatRightData = this.qs(this.sel.users.chatRight);
+            if (!chatRightData) {
+                console.warn(this.LOG, 'chat_right_data not found, cannot create managed container');
+                return;
+            }
 
-                // Wrap chat_right_data in collapsible container if not already wrapped
-                let hostWrapper = this.qs(this.sel.users.hostWrapper);
-                if (!hostWrapper) {
-                    hostWrapper = document.createElement('div');
-                    hostWrapper.id = this.getCleanSelector(this.sel.users.hostWrapper);
-                    hostWrapper.className = 'ca-user-list-container ca-collapsed'; // Start collapsed
+            // Wrap chat_right_data in collapsible container if not already wrapped
+            let hostWrapper = this.qs(this.sel.users.hostWrapper);
+            if (!hostWrapper) {
+                hostWrapper = document.createElement('div');
+                hostWrapper.id = this.getCleanSelector(this.sel.users.hostWrapper);
+                hostWrapper.className = 'ca-user-list-container ca-collapsed'; // Start collapsed
 
-                    // Create header for host container
-                    const hostHeader = document.createElement('div');
-                    hostHeader.className = 'ca-user-list-header';
-                    hostHeader.innerHTML = `
+                // Create header for host container
+                const hostHeader = document.createElement('div');
+                hostHeader.className = 'ca-user-list-header';
+                hostHeader.innerHTML = `
                     <div class="ca-user-list-title">
                         <span>💥 Online Users (Male)</span>
                         <span class="ca-user-list-count" id="${this.getCleanSelector(this.sel.users.hostCount)}">0</span>
@@ -3094,127 +2679,119 @@ Private send interception
                     <div class="ca-user-list-toggle">▼</div>
                 `;
 
-                    // Wrap chat_right_data
-                    chatRightData.parentNode.insertBefore(hostWrapper, chatRightData);
-                    hostWrapper.appendChild(hostHeader);
+                // Wrap chat_right_data
+                chatRightData.parentNode.insertBefore(hostWrapper, chatRightData);
+                hostWrapper.appendChild(hostHeader);
 
-                    const hostContent = document.createElement('div');
-                    hostContent.className = 'ca-user-list-content';
+                const hostContent = document.createElement('div');
+                hostContent.className = 'ca-user-list-content';
 
-                    hostContent.appendChild(chatRightData);
-                    hostWrapper.appendChild(hostContent);
-                    this.qs('.user_count', hostWrapper)?.remove();
+                hostContent.appendChild(chatRightData);
+                hostWrapper.appendChild(hostContent);
+                this.qs('.user_count', hostWrapper)?.remove();
 
-                    // Find and cache the .online_user container inside chat_right_data
-                    this.ui.hostContainer = hostWrapper;
+                // Find and cache the .online_user container inside chat_right_data
+                this.ui.hostContainer = hostWrapper;
 
-                    // Wire collapse/expand
-                    hostHeader.addEventListener('click', () => {
-                        hostWrapper.classList.toggle('ca-collapsed');
-                        hostWrapper.classList.toggle('ca-expanded');
-                    });
+                // Wire collapse/expand
+                hostHeader.addEventListener('click', () => {
+                    hostWrapper.classList.toggle('ca-collapsed');
+                    hostWrapper.classList.toggle('ca-expanded');
+                });
+            }
+
+            // Clone the entire host wrapper
+            const managedWrapper = hostWrapper.cloneNode(true);
+
+            // Update wrapper ID and make it expanded by default
+            managedWrapper.id = 'ca-managed-wrapper';
+            managedWrapper.className = 'ca-user-list-container ca-expanded';
+
+            // Update the header title and make it female-styled
+            const header = this.qs('.ca-user-list-header', managedWrapper);
+            if (header) {
+                header.className = 'ca-user-list-header ca-female-header';
+                const titleSpan = this.qs('.ca-user-list-title span:first-child', header);
+                if (titleSpan) {
+                    titleSpan.textContent = '💎 Managed Female Users';
                 }
+            }
 
-                // Clone the entire host wrapper
-                const managedWrapper = hostWrapper.cloneNode(true);
+            // Update the counter ID in the header
+            const headerCounter = this.qs('.ca-user-list-count', managedWrapper);
+            if (headerCounter) {
+                headerCounter.id = this.getCleanSelector(this.sel.users.managedCount);
+                headerCounter.textContent = '0';
+            }
 
-                // Update wrapper ID and make it expanded by default
-                managedWrapper.id = 'ca-managed-wrapper';
-                managedWrapper.className = 'ca-user-list-container ca-expanded';
+            // Find chat_right_data inside the clone
+            const clonedChatRight = this.qs('[id$="chat_right_data"]', managedWrapper);
+            if (clonedChatRight) {
+                clonedChatRight.id = 'ca-managed-chat-right-data';
 
-                // Update the header title and make it female-styled
-                const header = this.qs('.ca-user-list-header', managedWrapper);
-                if (header) {
-                    header.className = 'ca-user-list-header ca-female-header';
-                    const titleSpan = this.qs('.ca-user-list-title span:first-child', header);
-                    if (titleSpan) {
-                        titleSpan.textContent = '💎 Managed Female Users';
-                    }
-                }
+                // Find container_user inside and update its ID
+                const clonedContainerUser = this.qs('[id$="container_user"]', clonedChatRight);
+                if (clonedContainerUser) {
+                    clonedContainerUser.id = 'ca-managed-container-user';
 
-                // Update the counter ID in the header
-                const headerCounter = this.qs('.ca-user-list-count', managedWrapper);
-                if (headerCounter) {
-                    headerCounter.id = this.getCleanSelector(this.sel.users.managedCount);
-                    headerCounter.textContent = '0';
-                }
-
-                // Find chat_right_data inside the clone
-                const clonedChatRight = this.qs('[id$="chat_right_data"]', managedWrapper);
-                if (clonedChatRight) {
-                    clonedChatRight.id = 'ca-managed-chat-right-data';
-
-                    // Find container_user inside and update its ID
-                    const clonedContainerUser = this.qs('[id$="container_user"]', clonedChatRight);
-                    if (clonedContainerUser) {
-                        clonedContainerUser.id = 'ca-managed-container-user';
-
-                        // Update the "Online" text to "Female" in the user_count section
-                        const bcell = this.qs('.bcell', clonedContainerUser);
-                        if (bcell) {
-                            // Get the first text node
-                            for (let i = 0; i < bcell.childNodes.length; i++) {
-                                if (bcell.childNodes[i].nodeType === 3) { // Text node
-                                    bcell.childNodes[i].textContent = 'Female ';
-                                    break;
-                                }
+                    // Update the "Online" text to "Female" in the user_count section
+                    const bcell = this.qs('.bcell', clonedContainerUser);
+                    if (bcell) {
+                        // Get the first text node
+                        for (let i = 0; i < bcell.childNodes.length; i++) {
+                            if (bcell.childNodes[i].nodeType === 3) { // Text node
+                                bcell.childNodes[i].textContent = 'Female ';
+                                break;
                             }
                         }
+                    }
 
-                        // Update the counter in user_count section
-                        const countSpan = this.qs('.ucount', clonedContainerUser);
-                        if (countSpan) {
-                            countSpan.id = this.getCleanSelector(this.sel.users.managedCount);
-                            countSpan.textContent = '0';
-                        }
+                    // Update the counter in user_count section
+                    const countSpan = this.qs('.ucount', clonedContainerUser);
+                    if (countSpan) {
+                        countSpan.id = this.getCleanSelector(this.sel.users.managedCount);
+                        countSpan.textContent = '0';
+                    }
 
-                        // Find the .online_user div and clear it
-                        const onlineUserDiv = this.qs('.online_user', clonedContainerUser);
-                        if (onlineUserDiv) {
-                            onlineUserDiv.innerHTML = '';
-                            onlineUserDiv.id = this.getCleanSelector(this.sel.users.managedList);
-                            this.verbose(this.LOG, '[createManagedUsersContainer] Cleared and updated .online_user div');
-                        } else {
-                            console.error(this.LOG, '[createManagedUsersContainer] .online_user not found in clone');
-                        }
+                    // Find the .online_user div and clear it
+                    const onlineUserDiv = this.qs('.online_user', clonedContainerUser);
+                    if (onlineUserDiv) {
+                        onlineUserDiv.innerHTML = '';
+                        onlineUserDiv.id = this.getCleanSelector(this.sel.users.managedList);
+                        this.verbose(this.LOG, '[createManagedUsersContainer] Cleared and updated .online_user div');
+                    } else {
+                        console.error(this.LOG, '[createManagedUsersContainer] .online_user not found in clone');
                     }
                 }
-
-                // Insert BEFORE host wrapper
-                hostWrapper.parentElement.insertBefore(managedWrapper, hostWrapper);
-
-                // Wire collapse/expand for the managed wrapper
-                const managedHeader = this.qs('.ca-user-list-header', managedWrapper);
-                if (managedHeader) {
-                    managedHeader.addEventListener('click', () => {
-                        managedWrapper.classList.toggle('ca-collapsed');
-                        managedWrapper.classList.toggle('ca-expanded');
-                    });
-                }
-
-                this.verbose(this.LOG, 'Created managed users container by cloning host wrapper');
-
-                // Wire click selection for the managed container
-                this.wireUserClickSelection();
-
-                // Update host users count initially
-                this.updateHostUsersCount();
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'Create managed container error:', e);
             }
+
+            // Insert BEFORE host wrapper
+            hostWrapper.parentElement.insertBefore(managedWrapper, hostWrapper);
+
+            // Wire collapse/expand for the managed wrapper
+            const managedHeader = this.qs('.ca-user-list-header', managedWrapper);
+            if (managedHeader) {
+                managedHeader.addEventListener('click', () => {
+                    managedWrapper.classList.toggle('ca-collapsed');
+                    managedWrapper.classList.toggle('ca-expanded');
+                });
+            }
+
+            this.verbose(this.LOG, 'Created managed users container by cloning host wrapper');
+
+            // Wire click selection for the managed container
+            this.wireUserClickSelection();
+
+            // Update host users count initially
+            this.updateHostUsersCount();
         }
 
         updateHostUsersCount() {
-            try {
-                if (!this.ui.hostContainer) return;
+            if (!this.ui.hostContainer) return;
 
-                const maleUsers = this.qsa(`.user_item:not([data-gender="${this.FEMALE_CODE}"])`, this.ui.hostContainer);
-                if (this.ui.hostCount) {
-                    this.ui.hostCount.textContent = String(maleUsers.length);
-                }
-            } catch (e) {
-                console.error(e);
+            const maleUsers = this.qsa(`.user_item:not([data-gender="${this.FEMALE_CODE}"])`, this.ui.hostContainer);
+            if (this.ui.hostCount) {
+                this.ui.hostCount.textContent = String(maleUsers.length);
             }
         }
 
@@ -3455,37 +3032,33 @@ Private send interception
         }
 
         addSpecificNavButton() {
-            try {
-                // Find the Broadcast button and append the Specific button next to it
-                const bcBtn = this.qs(this.sel.nav.bc);
-                this.verbose(this.LOG, 'Broadcast button found:', bcBtn);
-                if (!bcBtn) return;
+            // Find the Broadcast button and append the Specific button next to it
+            const bcBtn = this.qs(this.sel.nav.bc);
+            this.verbose(this.LOG, 'Broadcast button found:', bcBtn);
+            if (!bcBtn) return;
 
-                // The ID should be 'ca-nav-specific' not 'a-nav-specific'
-                let specBtn = document.getElementById('ca-nav-specific');
-                this.verbose(this.LOG, 'Looking for specific button, found:', specBtn);
+            // The ID should be 'ca-nav-specific' not 'a-nav-specific'
+            let specBtn = document.getElementById('ca-nav-specific');
+            this.verbose(this.LOG, 'Looking for specific button, found:', specBtn);
 
-                if (!specBtn) {
-                    specBtn = document.createElement('button');
-                    specBtn.id = 'ca-nav-specific';
-                    specBtn.className = 'ca-nav-btn-secondary';
-                    specBtn.type = 'button';
-                    specBtn.textContent = 'Specific';
-                    // insert after Broadcast
-                    bcBtn.insertAdjacentElement('afterend', specBtn);
-                    this.verbose(this.LOG, 'Created specific button:', specBtn);
-                }
-                this.ui.navSpec = specBtn;
-                if (!specBtn._wired) {
-                    specBtn._wired = true;
-                    specBtn.addEventListener('click', () => {
-                        this.verbose(this.LOG, 'Specific button clicked');
-                        this.openSpecific();
-                    });
-                    this.verbose(this.LOG, 'Wired specific button');
-                }
-            } catch (e) {
-                console.error(this.LOG, 'Error in addSpecificNavButton:', e);
+            if (!specBtn) {
+                specBtn = document.createElement('button');
+                specBtn.id = 'ca-nav-specific';
+                specBtn.className = 'ca-nav-btn-secondary';
+                specBtn.type = 'button';
+                specBtn.textContent = 'Specific';
+                // insert after Broadcast
+                bcBtn.insertAdjacentElement('afterend', specBtn);
+                this.verbose(this.LOG, 'Created specific button:', specBtn);
+            }
+            this.ui.navSpec = specBtn;
+            if (!specBtn._wired) {
+                specBtn._wired = true;
+                specBtn.addEventListener('click', () => {
+                    this.verbose(this.LOG, 'Specific button clicked');
+                    this.openSpecific();
+                });
+                this.verbose(this.LOG, 'Wired specific button');
             }
         }
 
@@ -3547,14 +3120,10 @@ Private send interception
             this.ui.debugCheckbox.addEventListener('change', (e) => {
                 this.debugMode = e.target.checked;
 
-                try {
-                    // Persist everywhere
-                    this._setCookie(this.DEBUG_COOKIE, String(this.debugMode));
-                    localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
-                    if (this.Store) this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
-                } catch (err) {
-                    console.error('Failed to save debug mode:', err);
-                }
+                // Persist everywhere
+                this._setCookie(this.DEBUG_COOKIE, String(this.debugMode));
+                localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
+                if (this.Store) this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
 
                 console.log(this.LOG, this.debugMode ? '[DEBUG] Debug mode enabled' : 'Debug mode disabled');
             });
@@ -3567,14 +3136,10 @@ Private send interception
             this.ui.verboseCheckbox.addEventListener('change', (e) => {
                 this.verboseMode = e.target.checked;
 
-                try {
-                    // Persist everywhere
-                    this._setCookie(this.VERBOSE_COOKIE, String(this.verboseMode));
-                    localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
-                    if (this.Store) this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
-                } catch (err) {
-                    console.error('Failed to save verbose mode:', err);
-                }
+                // Persist everywhere
+                this._setCookie(this.VERBOSE_COOKIE, String(this.verboseMode));
+                localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
+                if (this.Store) this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
 
                 console.log(this.LOG, this.verboseMode ? '[VERBOSE] Verbose mode enabled' : 'Verbose mode disabled');
             });
@@ -3729,10 +3294,7 @@ Private send interception
             }
 
             requestAnimationFrame(() => {
-                try {
-                    targetContainer.scrollTop = targetContainer.scrollHeight;
-                } catch {
-                }
+                targetContainer.scrollTop = targetContainer.scrollHeight;
             });
         }
 
@@ -3794,83 +3356,60 @@ Private send interception
         _installAudioAutoplayGate() {
             if (this._audioGate.installed) return;
 
-            try {
-                const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
-                if (!proto || typeof proto.play !== 'function') return;
+            const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
+            if (!proto || typeof proto.play !== 'function') return;
 
-                const gate = this._audioGate;
-                gate.pending = new Set();
-                gate.origPlay = proto.play.bind(proto); // keep original bound correctly
-                gate.userInteracted = false;
+            const gate = this._audioGate;
+            gate.pending = new Set();
+            gate.origPlay = proto.play.bind(proto); // keep original bound correctly
+            gate.userInteracted = false;
 
-                // One shared handler that flips the gate and flushes
-                gate.onInteract = (_) => {
-                    if (gate.userInteracted) return;
-                    gate.userInteracted = true;
+            // One shared handler that flips the gate and flushes
+            gate.onInteract = (_) => {
+                if (gate.userInteracted) return;
+                gate.userInteracted = true;
 
-                    // Try to play any queued audio elements
-                    gate.pending.forEach((audioEl) => {
-                        try {
-                            const res = gate.origPlay.call(audioEl);
-                            if (res && typeof res.catch === 'function') {
-                                res.catch(() => { /* swallow */
-                                });
-                            }
-                        } catch (e) {
-                            try {
-                                console.error(e);
-                            } catch (_) {
-                            }
-                        }
-                    });
-                    gate.pending.clear();
-
-                    // Remove the capture listeners once opened
-                    window.removeEventListener('click', gate.onInteract, true);
-                    window.removeEventListener('keydown', gate.onInteract, true);
-                    window.removeEventListener('touchstart', gate.onInteract, true);
-                };
-
-                // Install capture listeners to detect first user gesture
-                window.addEventListener('click', gate.onInteract, true);
-                window.addEventListener('keydown', gate.onInteract, true);
-                window.addEventListener('touchstart', gate.onInteract, true);
-
-                // Patch play()
-                proto.play = function patchedPlay() {
-                    try {
-                        if (!gate.userInteracted) {
-                            // Queue and resolve immediately to avoid NotAllowedError surfacing
-                            gate.pending.add(this);
-                            return Promise.resolve();
-                        }
-
-                        const p = gate.origPlay.call(this);
-                        if (p && typeof p.catch === 'function') {
-                            p.catch(function (err) {
-                                // If policy still blocks (rare), re-queue and swallow
-                                const name = (err && (err.name || err)) ? String(err.name || err).toLowerCase() : '';
-                                if (name.includes('notallowed')) gate.pending.add(this);
-                            }.bind(this));
-                        }
-                        return p;
-                    } catch (e) {
-                        try {
-                            return gate.origPlay.call(this);
-                        } catch (e2) {
-                            console.error(e2);
-                            return Promise.resolve();
-                        }
+                // Try to play any queued audio elements
+                gate.pending.forEach((audioEl) => {
+                    const res = gate.origPlay.call(audioEl);
+                    if (res && typeof res.catch === 'function') {
+                        res.catch(() => { /* swallow */
+                        });
                     }
-                };
+                });
+                gate.pending.clear();
 
-                gate.installed = true;
-            } catch (e) {
-                try {
-                    console.error(e);
-                } catch (_) {
+                // Remove the capture listeners once opened
+                window.removeEventListener('click', gate.onInteract, true);
+                window.removeEventListener('keydown', gate.onInteract, true);
+                window.removeEventListener('touchstart', gate.onInteract, true);
+            };
+
+            // Install capture listeners to detect first user gesture
+            window.addEventListener('click', gate.onInteract, true);
+            window.addEventListener('keydown', gate.onInteract, true);
+            window.addEventListener('touchstart', gate.onInteract, true);
+
+            // Patch play()
+            proto.play = function patchedPlay() {
+                if (!gate.userInteracted) {
+                    // Queue and resolve immediately to avoid NotAllowedError surfacing
+                    gate.pending.add(this);
+                    return Promise.resolve();
                 }
-            }
+
+                const p = gate.origPlay.call(this);
+                if (p && typeof p.catch === 'function') {
+                    p.catch(function (err) {
+                        // If policy still blocks (rare), re-queue and swallow
+                        const name = (err && (err.name || err)) ? String(err.name || err).toLowerCase() : '';
+                        if (name.includes('notallowed')) gate.pending.add(this);
+                    }.bind(this));
+                }
+                return p;
+            };
+
+            gate.installed = true;
         }
 
         /** Restore original behavior and remove listeners */
@@ -3878,89 +3417,62 @@ Private send interception
             const gate = this._audioGate;
             if (!gate.installed) return;
 
-            try {
-                const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
-                if (proto && gate.origPlay) {
-                    proto.play = gate.origPlay; // restore original
-                }
-
-                if (gate.onInteract) {
-                    window.removeEventListener('click', gate.onInteract, true);
-                    window.removeEventListener('keydown', gate.onInteract, true);
-                    window.removeEventListener('touchstart', gate.onInteract, true);
-                }
-
-                if (gate.pending) gate.pending.clear();
-
-            } catch (e) {
-                try {
-                    console.error(e);
-                } catch (_) {
-                }
-            } finally {
-                gate.userInteracted = false;
-                gate.pending = null;
-                gate.origPlay = null;
-                gate.onInteract = null;
-                gate.installed = false;
+            const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
+            if (proto && gate.origPlay) {
+                proto.play = gate.origPlay; // restore original
             }
+
+            if (gate.onInteract) {
+                window.removeEventListener('click', gate.onInteract, true);
+                window.removeEventListener('keydown', gate.onInteract, true);
+                window.removeEventListener('touchstart', gate.onInteract, true);
+            }
+
+            if (gate.pending) gate.pending.clear();
         }
 
         /* ---------- 321ChatAddons: bottom log helpers ---------- */
         caGetLogBox() {
-            try {
-                const panel = this.qs(this.sel.panel) || document;
-                return panel.querySelector(this.sel.log.classes.ca_log_box);
-            } catch (e) {
-                console.error(e);
-                return null;
-            }
+            const panel = this.qs(this.sel.panel) || document;
+            return panel.querySelector(this.sel.log.classes.ca_log_box);
         }
 
         caAppendLog(type, text) {
-            try {
-                const box = this.caGetLogBox();
-                if (!box) return;
+            const box = this.caGetLogBox();
+            if (!box) return;
 
-                const entry = document.createElement('div');
-                entry.className = 'ca-log-entry ' + (type === 'broadcast' ? 'ca-log-broadcast' : (type === 'reset' ? 'ca-log-reset' : ''));
+            const entry = document.createElement('div');
+            entry.className = 'ca-log-entry ' + (type === 'broadcast' ? 'ca-log-broadcast' : (type === 'reset' ? 'ca-log-reset' : ''));
 
-                const ts = document.createElement('div');
-                ts.className = 'ca-log-ts';
-                ts.textContent = this.getTimeStampInWebsiteFormat();
-                const dot = document.createElement('div');
-                dot.className = 'ca-log-dot';
-                const msg = document.createElement('div');
-                msg.className = 'ca-log-text';
+            const ts = document.createElement('div');
+            ts.className = 'ca-log-ts';
+            ts.textContent = this.getTimeStampInWebsiteFormat();
+            const dot = document.createElement('div');
+            dot.className = 'ca-log-dot';
+            const msg = document.createElement('div');
+            msg.className = 'ca-log-text';
 
-                if (type === 'broadcast') {
-                    msg.innerHTML = text + ' <span class="ca-badge-bc">BROADCAST</span>';
-                } else {
-                    msg.innerHTML = text;
-                }
-
-                entry.appendChild(ts);
-                entry.appendChild(dot);
-                entry.appendChild(msg);
-
-                // Prepend so newest appears at top with column-reverse
-                box.insertBefore(entry, box.firstChild || null);
-            } catch (e) {
-                console.error(e);
+            if (type === 'broadcast') {
+                msg.innerHTML = text + ' <span class="ca-badge-bc">BROADCAST</span>';
+            } else {
+                msg.innerHTML = text;
             }
+
+            entry.appendChild(ts);
+            entry.appendChild(dot);
+            entry.appendChild(msg);
+
+            // Prepend so newest appears at top with column-reverse
+            box.insertBefore(entry, box.firstChild || null);
         }
 
         /* ---------- Click wiring for reset/broadcast logging ---------- */
         _handleDocumentClick(e) {
-            try {
-                const resetA = e.target && (e.target.closest && e.target.closest('.ca-pop .ca-reset-link, .ca-reset-link, .ca-reset'));
-                if (resetA) this.caAppendLog('reset', 'Tracking has been reset');
+            const resetA = e.target && (e.target.closest && e.target.closest('.ca-pop .ca-reset-link, .ca-reset-link, .ca-reset'));
+            if (resetA) this.caAppendLog('reset', 'Tracking has been reset');
 
-                const bcBtn = e.target && (e.target.closest && e.target.closest('#ca-bc-send'));
-                if (bcBtn) this.caAppendLog('broadcast', 'Message sent');
-            } catch (e) {
-                console.error(e);
-            }
+            const bcBtn = e.target && (e.target.closest && e.target.closest('#ca-bc-send'));
+            if (bcBtn) this.caAppendLog('broadcast', 'Message sent');
         }
 
         _wireLogClicks() {
@@ -3971,64 +3483,51 @@ Private send interception
 
         /* ---------- Keep original page sizing ---------- */
         applyInline() {
-            try {
-                const a = this.qsa('.pboxed');
-                for (let i = 0; i < a.length; i++) a[i].style.setProperty('height', '800px', 'important');
+            const a = this.qsa('.pboxed');
+            for (let i = 0; i < a.length; i++) a[i].style.setProperty('height', '800px', 'important');
 
-                const b = this.qsa('.pboxed .pcontent');
-                for (let j = 0; j < b.length; j++) b[j].style.setProperty('height', '610px', 'important');
-            } catch (e) {
-                console.error(e);
-            }
+            const b = this.qsa('.pboxed .pcontent');
+            for (let j = 0; j < b.length; j++) b[j].style.setProperty('height', '610px', 'important');
         }
 
         removeAds(root) {
-            try {
-                const scope = root && root.querySelectorAll ? root : document;
+            const scope = root && root.querySelectorAll ? root : document;
 
-                // Remove known widget containers
-                document.querySelectorAll('.coo-widget').forEach(e => e.remove());
+            // Remove known widget containers
+            document.querySelectorAll('.coo-widget').forEach(e => e.remove());
 
-                // Remove bit.ly anchors (but not those inside our panel)
-                const links = scope.querySelectorAll('a[href*="bit.ly"]');
-                if (!links || !links.length) return;
-                links.forEach(a => {
-                    if (a && !a.closest('#ca-panel') && a.parentNode) {
-                        a.parentNode.removeChild(a);
-                    }
-                });
-            } catch (e) {
-                console.error(e);
-            }
+            // Remove bit.ly anchors (but not those inside our panel)
+            const links = scope.querySelectorAll('a[href*="bit.ly"]');
+            if (!links || !links.length) return;
+            links.forEach(a => {
+                if (a && !a.closest('#ca-panel') && a.parentNode) {
+                    a.parentNode.removeChild(a);
+                }
+            });
         }
 
         adjustForFooter() {
-            try {
-                const panel = this.qs(this.sel.panel);
-                if (!panel) return;
+            const panel = this.qs(this.sel.panel);
+            if (!panel) return;
 
-                const chatRight = this.qs(this.sel.users.chatRight_elem);
-                if (!chatRight) return;
+            const chatRight = this.qs(this.sel.users.chatRight_elem);
+            if (!chatRight) return;
 
-                const rect = chatRight.getBoundingClientRect();
-                let h = rect?.height - 45;
+            const rect = chatRight.getBoundingClientRect();
+            let h = rect?.height - 45;
 
-                if (!h || h <= 0) {
-                    h = chatRight.offsetHeight || chatRight.clientHeight || 0;
-                }
-
-                if (h > 0) {
-                    h = Math.max(400, Math.min(h, 1200));
-                    panel.style.height = h + 'px';
-                    panel.style.maxHeight = h + 'px';
-                }
-
-                const logsSec = panel.querySelector('.ca-log-section');
-                if (logsSec) logsSec.style.paddingBottom = '';
-            } catch (e) {
-                console.error(e);
-                console.error(this.LOG, 'adjustForFooter error:', e);
+            if (!h || h <= 0) {
+                h = chatRight.offsetHeight || chatRight.clientHeight || 0;
             }
+
+            if (h > 0) {
+                h = Math.max(400, Math.min(h, 1200));
+                panel.style.height = h + 'px';
+                panel.style.maxHeight = h + 'px';
+            }
+
+            const logsSec = panel.querySelector('.ca-log-section');
+            if (logsSec) logsSec.style.paddingBottom = '';
         }
 
         _wireResize() {
@@ -4058,56 +3557,37 @@ Private send interception
 
         /* ---------- Global watermark helpers (uses this.Store) ---------- */
         getGlobalWatermark() {
-            try {
-                // expects this.Store with get(key)
-                return this.Store?.get(this.GLOBAL_WATERMARK_KEY) || '';
-            } catch (e) {
-                console.error(e);
-                return '';
-            }
+            // expects this.Store with get(key)
+            return this.Store?.get(this.GLOBAL_WATERMARK_KEY) || '';
         }
 
         setGlobalWatermark(dateStr) {
-            try {
-                if (dateStr) this.Store?.set(this.GLOBAL_WATERMARK_KEY, String(dateStr));
-            } catch (e) {
-                console.error(e);
-            }
+            if (dateStr) this.Store?.set(this.GLOBAL_WATERMARK_KEY, String(dateStr));
         }
 
         initializeGlobalWatermark() {
-            try {
-                const current = this.getGlobalWatermark();
-                this.verbose('Checking watermark... current value:', current || '(not set)');
+            const current = this.getGlobalWatermark();
+            this.verbose('Checking watermark... current value:', current || '(not set)');
 
-                if (current && current.length > 0) {
-                    this.verbose('Watermark already set:', current);
-                    return;
-                }
+            if (current && current.length > 0) {
+                this.verbose('Watermark already set:', current);
+                return;
+            }
 
-                const timestamp = this.getTimeStampInWebsiteFormat();
-                this.verbose('Setting initial watermark to:', timestamp);
-                this.setGlobalWatermark(timestamp);
+            const timestamp = this.getTimeStampInWebsiteFormat();
+            this.verbose('Setting initial watermark to:', timestamp);
+            this.setGlobalWatermark(timestamp);
 
-                const verify = this.getGlobalWatermark();
-                if (verify === timestamp) {
-                    this.verbose('Watermark successfully initialized:', timestamp);
-                } else {
-                    console.warn(this.LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
-                }
-            } catch (err) {
-                console.error(err);
-                console.error(this.LOG, 'Initialize watermark error:', err);
+            const verify = this.getGlobalWatermark();
+            if (verify === timestamp) {
+                this.verbose('Watermark successfully initialized:', timestamp);
+            } else {
+                console.warn(this.LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
             }
         }
 
         parseLogDateToNumber(logDateStr) {
-            // Delegate to the ActivityLogStore version to keep behavior consistent
-            try {
-                return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
-            } catch {
-                return 0;
-            }
+            return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
         }
 
         timeHHMM() {
