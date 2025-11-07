@@ -539,6 +539,7 @@
                 navBc: null,
                 debugCheckbox: null,
                 verboseCheckbox: null,
+                otherBox: null,
                 // User list containers
                 managedContainer: null,      // Wrapper div
                 managedList: null,           // Actual list (<div class="online_user">)
@@ -696,7 +697,6 @@
                     privateCenter: '#private_center',
                     privateTop: '#private_top',
                     privInput: '#priv_input'
-
                 },
                 // Debug checkboxes
                 debug: {
@@ -813,6 +813,9 @@
                 const globalChatEl = this.qs('#global_chat');
                 const chatHeadEl = this.qs('#chat_head');
                 const wrapFooterEl = this.qs('#wrap_footer');
+                const privateMenuEl = this.qs('#private_menu');
+                const privateCenterEl = this.qs('#private_center');
+                privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
                 main_wrapper.appendChild(globalChatEl);
                 main_wrapper.appendChild(wrapFooterEl);
@@ -1158,7 +1161,7 @@ Private send interception
                         if (this.readyState === 4 && this.status === 200) {
                             let data = self.toPrivateSendResponse(JSON.parse(String(this?.responseText)));
 
-                            if (!data || data.code !== 1) {
+                            if (!data) {
                                 console.error(`[PrivateSend] Could not parse response from native message send:`, data);
                                 return;
                             }
@@ -2510,7 +2513,7 @@ Private send interception
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
-            return root.querySelector(`.user_item[data-id="${uid}"]`);
+            return this.qs(`.user_item[data-id="${uid}"]`);
         }
 
         /* ---------- Sent chip & badges ---------- */
@@ -2518,6 +2521,8 @@ Private send interception
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
             const userEl = this.findUserElementById(uid);
+            console.log(userEl, unreadReceivedMessagesCount, sentMessagesCount);
+
             if (!userEl) {
                 console.warn('updateProfileChip: user element not found for uid:', uid);
                 console.warn('This is probably because the user is not online anymore.');
@@ -2525,7 +2530,10 @@ Private send interception
             }
 
             const container = userEl.parentElement;
-            if (!container) return;
+            if (!container) {
+                console.error('updateProfileChip: container not found for uid:', uid);
+                return;
+            }
 
             // Unread messages → move to top
             if (unreadReceivedMessagesCount > 0) {
@@ -2546,7 +2554,7 @@ Private send interception
 
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                this.verbose('Adding all read chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
+                console.log('Adding all read chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 const chip = this._createChipForUserItem(userEl);
 
                 userEl.classList.add(this.sel.raw.log.classes.ca_replied_messages);
@@ -2556,8 +2564,12 @@ Private send interception
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.textContent = '✓';
 
+                if (!userEl) {
+                    container.appendChild(userEl);
+                }
+
                 // --- Move user to bottom of container ---
-                container.appendChild(userEl);
+
 
                 // No sent messages → remove chip
             } else {
@@ -2567,7 +2579,7 @@ Private send interception
                     userEl.style.removeProperty('outline');
                     userEl.style.removeProperty('border-radius');
                 }
-                userEl.querySelector(this.sel.log.classes.ca_sent_chip)?.remove();
+                userEl.querySelector(this.sel.log.classes.ca_sent_chip_all_read)?.remove();
             }
         }
 
@@ -2576,12 +2588,14 @@ Private send interception
 
             if (!userEl.classList.contains('chataddons-sent')) {
                 userEl.classList.add('chataddons-sent');
+                console.log('Adding sent chip to user:', userEl.getAttribute('data-id'));
             }
 
             if (!chip) {
                 chip = document.createElement('span');
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip);
                 userEl.appendChild(chip);
+                console.log('Created sent chip for user:', userEl);
             }
             return chip;
         }
@@ -2663,7 +2677,10 @@ Private send interception
           <div class="ca-section ca-log-section">
                   <div class="ca-section-title">
                     <span>Logon/Logoff</span>
-                      <span class="clear-logs">Clear</span>
+                     <span class="clear-logs"
+                            data-kinds="login,logout"
+                            role="button" tabindex="0">Clear</span>
+                      
                   </div>
                   <div id="${this.sel.raw.log.presence}"
                        class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
@@ -2672,7 +2689,9 @@ Private send interception
                  <div class="ca-section ca-log-section">
               <div class="ca-section-title">
                 <span>Other Logs</span>
-                  <span class="clear-logs">Clear</span>
+                  <span class="clear-logs"
+                    data-kinds="event"
+                    role="button" tabindex="0">Clear</span>
               </div>
               <div id="${this.sel.raw.log.other}"
                    class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
@@ -2693,6 +2712,39 @@ Private send interception
             if (typeof this._attachLogClickHandlers === 'function') {
                 this._attachLogClickHandlers();
             }
+        }
+
+        _rebuildClearedBox({rebuild, clearBoxSelector}) {
+            // Find target box
+            const box = clearBoxSelector
+                ? this.qs(clearBoxSelector)
+                : null;
+
+            if (rebuild === 'received') {
+                // Rebuild the two subsections for Received
+                const target = box || this.ui?.receivedMessagesBox;
+                if (target) {
+                    target.innerHTML =
+                        '<div class="ca-log-subsection-unreplied-wrapper">' +
+                        '  <div class="ca-log-subsection-header">Not Replied</div>' +
+                        `  <div id="${this.sel.raw.log.unreplied}" class="${this.sel.raw.log.classes.ca_box_scrollable}"></div>` +
+                        '</div>' +
+                        '<div class="ca-log-subsection-replied-wrapper">' +
+                        '  <div class="ca-log-subsection-header">Replied</div>' +
+                        `  <div id="${this.sel.raw.log.replied}" class="${this.sel.raw.log.classes.ca_box_scrollable}"></div>` +
+                        '</div>';
+
+                    // Rebind subsection refs
+                    this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
+                    this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
+                }
+                return;
+            }
+
+            // Default: just clear the target box (auto-detect if not provided)
+            const targetBox = box
+                || (this.qs('.ca-log-box', (this.ui?.panel || document).querySelector('.ca-section-title')?.parentElement) || null);
+            if (targetBox) targetBox.innerHTML = '';
         }
 
 
@@ -2718,7 +2770,7 @@ Private send interception
                 <div class="ca-section ca-section-compact">
                   <div class="ca-section-title">
                       <span>Sent Messages</span>
-                      <span class="clear-logs">Clear</span>
+                      <span class="clear-logs" data-kinds="dm-out" role="button" tabindex="0">Clear</span>
                   </div>
                   <div id="${this.sel.raw.log.sent}"
                        class="ca-log-box ca-log-box-compact ${this.sel.raw.log.classes.ca_box_scrollable}"
@@ -2730,7 +2782,10 @@ Private send interception
                 <div class="ca-section ca-section-expand">
                   <div class="ca-section-title">
                     <span>Received Messages</span>
-                      <span class="clear-logs">Clear</span>
+                      <span class="clear-logs"
+                            data-kinds="dm-in"
+                            data-rebuild="received"
+                            role="button" tabindex="0">Clear</span>
                   </div>
                   <div id="${this.sel.raw.log.received}" 
                        class="ca-log-box ca-log-box-expand"
@@ -3303,35 +3358,122 @@ Private send interception
             });
         }
 
+// Maps log kinds to the UI boxes that should be emptied.
+        _boxesForKinds(kinds) {
+            const boxes = new Set();
+
+            const hasOut = kinds.includes('dm-out');
+            const hasIn = kinds.includes('dm-in');
+            const hasEvt = kinds.includes('event');
+            const hasPresence = kinds.includes('login') || kinds.includes('logout');
+
+            if (hasOut) {
+                boxes.add(this.ui.sentMessagesBox);
+            }
+
+            if (hasIn) {
+                // Received: just clear the inner sub-boxes; do NOT rebuild the outer structure.
+                boxes.add(this.ui.unrepliedMessageBox);
+                boxes.add(this.ui.repliedMessageBox);
+            }
+
+            if (hasPresence) {
+                boxes.add(this.ui.presenceBox);
+            }
+
+            if (hasEvt) {
+                boxes.add(this.ui.otherBox);
+            }
+
+            return Array.from(boxes);
+        }
+
         _wireLogClear() {
-            if (!this.ui.logClear) return;
-            this.ui.logClear.addEventListener('click', () => {
-                if (this.ui.sentMessagesBox) this.ui.sentMessagesBox.innerHTML = '';
-                // rebuild received with subsections
-                if (this.ui.receivedMessagesBox) {
-                    this.ui.receivedMessagesBox.innerHTML =
-                        '<div class="ca-log-subsection-unreplied-wrapper">' +
-                        '  <div class="ca-log-subsection-header">Not Replied</div>' +
-                        `  <div id="${this.sel.raw.log.unreplied}"></div>` +
-                        '</div>' +
-                        '<div class="ca-log-subsection-replied-wrapper">' +
-                        '  <div class="ca-log-subsection-header">Replied</div>' +
-                        `  <div id="${this.sel.raw.log.replied}"></div>` +
-                        '</div>';
+            // --- Global Clear (kept as-is; if you want, you can keep or remove this block) ---
+            if (this.ui && this.ui.logClear) {
+                this.ui.logClear.addEventListener('click', () => {
+                    if (this.ui.sentMessagesBox) this.ui.sentMessagesBox.innerHTML = '';
+                    if (this.ui.unrepliedMessageBox) this.ui.unrepliedMessageBox.innerHTML = '';
+                    if (this.ui.repliedMessageBox) this.ui.repliedMessageBox.innerHTML = '';
+                    if (this.ui.receivedMessagesBox && !this.ui.unrepliedMessageBox && !this.ui.repliedMessageBox) {
+                        // Only as a fallback if sub-box refs are not present
+                        this.ui.receivedMessagesBox.innerHTML = '';
+                    }
+                    if (this.ui.otherBox) this.ui.otherBox.innerHTML = '';
 
-                    // Re-bind refs to the new subsection containers
-                    this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
-                    this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
-                }
-                if (this.ui.presenceBox) this.ui.presenceBox.innerHTML = '';
-                this.ActivityLogStore?.clear();
-                this.UserStore?.clear();
-                const timestamp = this.getTimeStampInWebsiteFormat();
-                this.verbose('Resetting watermark to:', timestamp);
-                this.setGlobalWatermark(timestamp);
+                    if (!this.ActivityLogStore || typeof this.ActivityLogStore.clearByKind !== 'function') {
+                        console.error('[LOG] ActivityLogStore.clearByKind unavailable for global clear');
+                        return;
+                    }
+                    const removedIn = this.ActivityLogStore.clearByKind('dm-in') || 0;
+                    const removedOut = this.ActivityLogStore.clearByKind('dm-out') || 0;
+                    const removedFail = this.ActivityLogStore.clearByKind('send-fail') || 0;
+                    const removedEvents = this.ActivityLogStore.clearByKind('event') || 0;
+                    const removedLogin = this.ActivityLogStore.clearByKind('login') || 0;
+                    const removedLogout = this.ActivityLogStore.clearByKind('logout') || 0;
 
-                // Re-attach event handlers since we replaced the HTML
-                this._attachLogClickHandlers?.();
+                    console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
+                });
+            } else {
+                console.warn('[LOG] Global clear button not found (this.ui.logClear)');
+            }
+
+            // --- Per-section Clear (kind-driven; no rebuilds, no selectors) ---
+            const root = document;
+            const buttons = this.qsa('.ca-section-title .clear-logs', root);
+
+            if (!buttons || buttons.length === 0) {
+                console.warn('[LOG] No per-section clear buttons found (.clear-logs)');
+                return;
+            }
+
+            buttons.forEach((btn) => {
+                if (btn._caClearWired) return;
+                btn._caClearWired = true;
+
+                const handle = (e) => {
+                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+
+                    const kindsAttr = (btn.dataset?.kinds || '').trim();
+                    if (!kindsAttr) {
+                        console.warn('[LOG] Clear clicked but data-kinds is missing');
+                        return;
+                    }
+
+                    const kinds = Array.from(new Set(
+                        kindsAttr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+                    ));
+
+                    if (!this.ActivityLogStore || typeof this.ActivityLogStore.clearByKind !== 'function') {
+                        console.error('[LOG] ActivityLogStore.clearByKind unavailable for section clear');
+                        return;
+                    }
+
+                    let totalRemoved = 0;
+                    for (let i = 0; i < kinds.length; i++) {
+                        const k = kinds[i];
+                        const removed = this.ActivityLogStore.clearByKind(k) || 0;
+                        totalRemoved += removed;
+                    }
+
+                    const boxes = this._boxesForKinds(kinds);
+                    if (boxes.length === 0) {
+                        console.warn('[LOG] No UI boxes resolved for kinds:', kinds);
+                    } else {
+                        for (let i = 0; i < boxes.length; i++) {
+                            boxes[i].innerHTML = '';
+                        }
+                    }
+
+                    console.log(`[LOG] Section cleared: kinds=[${kinds.join(', ')}], removed=${totalRemoved}`);
+                };
+
+                btn.addEventListener('click', handle);
+                btn.addEventListener('keydown', (ev) => {
+                    if (!ev) return;
+                    if (ev.key === 'Enter' || ev.key === ' ') handle(ev);
+                });
             });
         }
 
@@ -3548,13 +3690,13 @@ Private send interception
                 dmLink.href = '#';
                 dmLink.setAttribute('data-action', 'open-dm');
                 dmLink.innerHTML = `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-       width="16" height="16" focusable="false" aria-hidden="true"
-       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-       class="lucide lucide-mail">
-    <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-    <polyline points="3 7,12 13,21 7"></polyline>
-  </svg>`;
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                       width="16" height="16" focusable="false" aria-hidden="true"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                       class="lucide lucide-mail">
+                    <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+                    <polyline points="3 7,12 13,21 7"></polyline>
+                  </svg>`;
                 dmLink.title = 'Direct message';
                 actions_div.appendChild(dmLink);
             }
@@ -3566,13 +3708,13 @@ Private send interception
             delLink.setAttribute('data-action', 'delete-log');
             delLink.title = 'Delete this log entry';
             delLink.innerHTML = `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-       width="16" height="16" focusable="false" aria-hidden="true"
-       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-       class="lucide lucide-x">
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>`;
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                   width="16" height="16" focusable="false" aria-hidden="true"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   class="lucide lucide-x">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>`;
 
             actions_div.appendChild(delLink);
 
