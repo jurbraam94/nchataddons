@@ -214,14 +214,14 @@
             return this.set(log);
         }
 
-        markReadFromDate(uid, fromDateStr) {
-            if (!uid || !fromDateStr) {
-                console.error(`Uid ${uid} or fromDateStr ${fromDateStr} is invalid`);
+        MarkReadUntilChatLogId(uid, chatLogId) {
+            if (!uid || !chatLogId) {
+                console.error(`Uid ${uid} or chatLogId ${chatLogId} is invalid`);
                 return [];
             }
 
             const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
-                .filter(log => this.parseLogDateToNumber(log.ts) <= this.parseLogDateToNumber(fromDateStr))
+                .filter(log => log.guid <= chatLogId)
                 .map(log => ({...log, unread: false}))
             this.app.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
             return this.setAll(allUnreadMessagesForUid);
@@ -531,7 +531,7 @@
             this.ui = {
                 sUser: null, sMsg: null, sSend: null, sStat: null,
                 bMsg: null, bSend: null, bStat: null, bReset: null,
-                sentBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
+                sentMessagesBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
                 repliedMessageBox: null, unrepliedMessageBox: null,
                 navBc: null,
                 debugCheckbox: null,
@@ -687,35 +687,14 @@
         async init(options = {}) {
             this.options = options || {};
 
-            const debug_cookie = this._getCookie(this.DEBUG_COOKIE);
-            if (debug_cookie != null) {
-                this.debugMode = (debug_cookie === 'true');
-            } else {
-                const stored = localStorage.getItem(this.DEBUG_MODE_KEY);
-                this.debugMode = (stored === 'true');
-            }
-
-            const verbose_cookie = this._getCookie(this.VERBOSE_COOKIE);
-            if (verbose_cookie != null) {
-                this.verboseMode = (verbose_cookie === 'true');
-            } else {
-                const stored = localStorage.getItem(this.VERBOSE_MODE_KEY);
-                this.verboseMode = (stored === 'true');
-            }
+            this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' || localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
+            this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' || localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
 
             this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
 
             // Key/value store used all over the App — now with custom backend
             this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
-
-            // Load debug mode from storage
-            const storedDebugMode = localStorage.getItem(this.DEBUG_MODE_KEY);
-            this.debugMode = storedDebugMode === 'true';
-
-            // Load verbose mode from storage
-            const storedVerboseMode = localStorage.getItem(this.VERBOSE_MODE_KEY);
-            this.verboseMode = storedVerboseMode === 'true';
 
             this.debug('Initializing app with options:', options);
 
@@ -797,6 +776,19 @@
             this.ui.managedCount = this.qs(this.sel.users.managedCount);
             this.ui.hostCount = this.qs(this.sel.users.hostCount);
 
+            this.appendCustomActionsToBar()
+            this.watchChatRightForHostChanges();
+
+            await this.startRefreshUsersLoop({intervalMs: 15000}); // every 60s
+            this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
+
+            this.scrollToBottom(this.ui.repliedMessageBox);
+            this.scrollToBottom(this.ui.unrepliedMessageBox);
+            this.scrollToBottom(this.ui.sentMessagesBox);
+            return this;
+        }
+
+        appendCustomActionsToBar() {
             const bar = document.getElementById('right_panel_bar');
 
             if (bar) {
@@ -817,14 +809,6 @@
             } else {
                 console.error('Bar not found');
             }
-
-            this.initializeGlobalWatermark?.();    // <— if you have this already; otherwise keep the method below
-            this.watchChatRightForHostChanges();
-
-            await this.startRefreshUsersLoop({intervalMs: 15000}); // every 60s
-            this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
-
-            return this;
         }
 
         /* ---------- Cookie helpers ---------- */
@@ -1082,14 +1066,15 @@ Private send interception
             // Look up user - ensure we always have a valid user object
             let dmSentToUser = this.UserStore.get(targetId);
 
-            console.log(this.LOG, 'Intercepted native message send to', dmSentToUser?.name || targetId, '(ID:', targetId, ')');
+            if (!dmSentToUser) {
+                console.error(`[PrivateSend] Could not find user with ID ${targetId}. Could not process outgoing private message`);
+                return;
+            }
+
+            console.log(this.LOG, 'Intercepted native message send to', dmSentToUser.name || targetId, '(ID:', targetId, ')');
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
-            // TODO: user this log_id to determine which messages below it can be set to read in stead of using date
-            // this.UserStore.setHasRepliedUpToLog(logData.log_id);
-
-            const repliedAt = this.getTimeStampInWebsiteFormat();
-            const affectedLogs = this.ActivityLogStore.markReadFromDate(targetId, repliedAt);
+            const affectedLogs = this.ActivityLogStore.MarkReadUntilChatLogId(targetId, dmSentToUser.parsedDmInUpToLog);
             this.processReadStatusForLogs(affectedLogs);
             this.updateProfileChip(dmSentToUser.uid);
         }
@@ -1573,7 +1558,7 @@ Private send interception
 
         _attachLogClickHandlers() {
             const boxes = [
-                this.ui.sentBox,
+                this.ui.sentMessagesBox,
                 this.ui.receivedMessagesBox,
                 this.ui.presenceBox,
                 this.ui.unrepliedMessageBox,
@@ -3028,7 +3013,7 @@ Private send interception
             // They will be bound when the modal is opened via wireSpecificControls()
 
             // logs
-            this.ui.sentBox = this.qs(this.sel.log.sent);
+            this.ui.sentMessagesBox = this.qs(this.sel.log.sent);
             this.ui.receivedMessagesBox = this.qs(this.sel.log.received);
             this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
             this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
@@ -3105,7 +3090,7 @@ Private send interception
         _wireLogClear() {
             if (!this.ui.logClear) return;
             this.ui.logClear.addEventListener('click', () => {
-                if (this.ui.sentBox) this.ui.sentBox.innerHTML = '';
+                if (this.ui.sentMessagesBox) this.ui.sentMessagesBox.innerHTML = '';
                 // rebuild received with subsections
                 if (this.ui.receivedMessagesBox) {
                     this.ui.receivedMessagesBox.innerHTML =
@@ -3146,7 +3131,7 @@ Private send interception
             let targetContainer = null;
             switch (kind) {
                 case 'dm-out':
-                    targetContainer = this.ui.sentBox;
+                    targetContainer = this.ui.sentMessagesBox;
                     break;
 
                 case 'dm-in': {
@@ -3245,6 +3230,10 @@ Private send interception
 
             targetContainer.appendChild(el);
 
+            this.scrollToBottom(targetContainer);
+        }
+
+        scrollToBottom(targetContainer) {
             requestAnimationFrame(() => {
                 targetContainer.scrollTop = targetContainer.scrollHeight;
             });
@@ -3260,7 +3249,7 @@ Private send interception
         }
 
         async restoreLog() {
-            if (!this.ui.sentBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
+            if (!this.ui.sentMessagesBox || !this.ui.receivedMessagesBox || !this.ui.presenceBox) return;
 
             const logs = this.ActivityLogStore.list({order: 'asc'}) || [];
 
@@ -3570,15 +3559,13 @@ Private send interception
                 return;
             }
 
-            const src = this.ui.unrepliedMessageBox;
-            const dst = this.ui.repliedMessageBox || this.ui.receivedMessagesBox;
-            if (!src || !dst) return;
-
             for (const log of logs) {
                 this.debug(`Processing read status for log ${log.guid}`);
-                const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, src);
-                dst.appendChild(el);
+                const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
+                this.ui.repliedMessageBox.appendChild(el);
             }
+
+            this.scrollToBottom(this.ui.repliedMessageBox);
         }
 
         getLogEntryByUid(uid) {
