@@ -12,10 +12,6 @@
     /* Height set by JavaScript based on chat_right */
 }
 
-#right-panel {
-    width: 550px;
-}
-
 .ca-header {
     display: flex;
     align-items: center;
@@ -477,7 +473,6 @@
     flex-direction: column;
     border: 1px solid #334155;
     border-radius: 8px;
-    margin-bottom: 10px;
     transition: all 0.3s ease;
 }
 
@@ -566,9 +561,6 @@
 
 /* List content area */
 .ca-user-list-content {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    overflow-x: hidden;
     transition: all 0.3s ease;
 }
 
@@ -599,18 +591,6 @@
 #ca-host-users-wrapper.ca-collapsed {
     flex: 0 0 auto;
     max-height: 45px;
-}
-
-/* Ensure host container (male users) remains scrollable */
-#chat_right_data {
-    flex: 1 1 auto;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
-#chat_right_data .online_user {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
 }
 
 /* ===== Activity Log ===== */
@@ -1143,19 +1123,9 @@
 }
 
 
-#private_center.pboxed #private_box .pcontent {
-    height: calc(100% - 85px) !important;
-}
-
-#private_center.pboxed {
-    position: unset;
-    width: 100%;
-    height: 100% !important;
-}
-
-#private_center.privhide {
-    display: block !important;
-}
+/*#private_center #private_box .pcontent {*/
+/*    height: calc(100% - 85px) !important;*/
+/*}*/
 
 /* === Menu-side mini panel ======================================== */
 .ca-panel.ca-mini {
@@ -1186,24 +1156,6 @@
 /* Slightly tighter section spacing works well inside bcell_mid */
 .ca-section.ca-section-compact {
     margin-top: 8px;
-}
-
-/* Let our collapsible wrapper do the scrolling */
-.ca-user-list-container .ca-user-list-content {
-    overflow-y: auto;
-}
-
-/* Stop inner containers from also scrolling */
-.ca-user-list-container #chat_right_data,
-.ca-user-list-container #chat_right_data .online_user,
-.ca-user-list-container .online_user {
-    overflow: visible !important;
-    height: auto !important;
-    max-height: none !important;
-}
-
-#private_content #show_private .target_private {
-    max-width: unset;
 }
 
 /* Bottom row: checkbox subrow */
@@ -1250,17 +1202,41 @@
     height: 12px;
 }
 
+
 /* Make sure the username doesn't get pushed oddly */
 .ca-user-list-container .user_item_data .username {
     margin: 0; /* prevent unexpected line breaks/offsets */
 }
 
-/*#chat_left, #chat_center, #container_chat, #wrap_chat, #global_chat, #chat_center, #chat_right, #ca-managed-chat-right-data {*/
-/*    height: unset !important;*/
-/*}*/
-
-#my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #private_center #private_box, #chat_right {
+#my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #chat_left, #chat_right, #private_content {
     height: 100% !important;
+}
+
+#show_private {
+    bottom: unset;
+    position: relative;
+}
+
+#private_center {
+    display: flex;
+    flex-direction: column;
+}
+
+#private_center.pboxed, #private_center.pboxed .pcontent {
+    position: unset;
+    width: 100%;
+    height: 100% !important;
+}
+
+
+#private_box {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#priv_input {
+    margin-top: auto;
 }
 
 #wrap_footer {
@@ -1291,11 +1267,29 @@
     height: 100%;
 }
 
-#ca-managed-wrapper {
-    max-height: calc(100vh - 250px);
-    overflow-y: auto;
-}
-
 #rlist_open {
     margin-left: auto;
+}
+
+/* Right panel: reserve fixed-ish space */
+#chat_right, #private_center {
+    display: flex !important;
+    flex-direction: column;
+    min-width: 300px;
+}
+
+/* If the user list inside right needs explicit flex */
+#chat_right_data {
+    flex: 1 1 auto; /* matches your intent */
+    overflow: unset;
+    overflow-y: unset;
+}
+
+#ca-managed-chat-right-data {
+    min-height: 0; /* required for grid too */
+}
+
+#ca-managed-wrapper, #ca-host-users-wrapper {
+    overflow-y: auto;
+    flex-grow: 1;
 }
