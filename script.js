@@ -1283,7 +1283,7 @@ Private send interception
         }
 
         /* Carry over site chat context and fetch private chat_log for uid */
-        caFetchChatLogFor(uid, params) {
+        fetchPrivateMessagesForUid(uid, params) {
             const token = this.getToken();
             if (!token || !uid) {
                 console.error(`.caFetchChatLogFor() called with invalid arguments:`, uid, params);
@@ -1337,117 +1337,86 @@ Private send interception
                 });
         }
 
+        processSinglePrivateChatLog(privateChatLog, user, initialFetch, currentHighestLogId) {
+            if (privateChatLog.user_id === String(user_id)) {
+                return {accepted: false, logId: privateChatLog.log_id, reason: 'from myself'};
+            }
+
+            if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
+                this.debug(`Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; watermark=${this.getGlobalWatermark()}`);
+                return {accepted: false, logId: privateChatLog.log_id, reason: 'too old'};
+            }
+
+            if (privateChatLog.log_id <= currentHighestLogId) {
+                return {accepted: false, logId: privateChatLog.log_id, reason: 'already shown'};
+            }
+
+            this.logLine('dm-in', this.decodeHTMLEntities(privateChatLog?.log_content), user, privateChatLog.log_id);
+            return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
+        }
+
         /* Parse & render the private chat log for a given user */
-        async caProcessPrivateLogResponse(uid, response) {
-            this.debug('Processing private log response for user:', uid);
-
-            if (!response || typeof response !== 'string' || response.trim() === '') {
-                console.warn(this.LOG, 'Empty response for conversation', uid);
-                return;
-            }
-
-            let conversationChatLog = this.toPrivateChatLogResponse(JSON.parse(String(response)));
-
-            // update CHAT_CTX.last from private response
-            if (conversationChatLog && conversationChatLog.last) {
-                this.state.CHAT_CTX.last = String(conversationChatLog.last);
-            }
-
-            let privateChatLogs = Array.isArray(conversationChatLog?.pload) && conversationChatLog?.pload.length ? conversationChatLog.pload
-                : (Array.isArray(conversationChatLog?.plogs) ? conversationChatLog.plogs : []);
-
+        async caProcessPrivateLogResponse(uid, privateChatLogs) {
             if (!privateChatLogs.length) {
                 console.log(`No new private chat logs for user ${uid}`);
                 return;
             }
 
-            let newMessages = 0;
-            const skipped = {fromMe: 0, alreadyShown: 0, tooOld: 0};
-
-            const user = await this.UserStore.getOrFetch(uid);
+            const user = await this.UserStore.getOrFetch(String(uid));
             if (!user) {
-                console.error(`[DM] Could not resolve user ${uid} for getting private messages.`);
-                return
+                console.error('[caProcessPrivateLogResponse] Could not resolve user for uid:', uid);
+                return;
             }
 
-            let parsedDmInUpToLog = user.parsedDmInUpToLog
+            let parsedDmInUpToLog = user.parsedDmInUpToLog;
+            const initialFetch = parsedDmInUpToLog === 0;
+            let newMessages = 0;
+            let skipped = '';
 
-            console.log(`Parsing new messages`, privateChatLogs);
-            for (const item of privateChatLogs) {
-                // Always skip messages sent by myself
-                if (item.user_id === user_id) {
-                    skipped.fromMe++;
+            for (const privateChatLog of privateChatLogs) {
+                const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, parsedDmInUpToLog);
+                if (!res.accepted) {
+                    skipped += `Skipped ${res.logId}: ${res.reason}\n`;
                     continue;
+                } else {
+                    console.log(`New message ${res.logId} for user ${uid}`, privateChatLog);
                 }
 
-                // Only on initial fetch: skip too-old messages
-                if (!this.UserStore.hasParsedDmAlready(uid) && !this.isMessageNewer(item.log_date)) {
-                    skipped.tooOld++;
-                    console.log(`Is initial fetch, watermark date from page load is ${this.getGlobalWatermark()} and current message is older, skipping too old message ${item.log_id} from user ${uid}`);
-                    continue;
+                if (res.logId > parsedDmInUpToLog) {
+                    parsedDmInUpToLog = res.logId;
                 }
 
-                // Skip anything we've already shown (compare numerically)
-                if (item.log_id <= parsedDmInUpToLog) {
-                    skipped.alreadyShown++;
-                    console.log(`Already shown message ${item.log_id} from user ${uid}`);
-                    continue;
-                }
-
-                this.logLine('dm-in', this.decodeHTMLEntities(item.log_content), user, item.log_id);
-                this.updateProfileChip(user.uid);
                 newMessages++;
-
-                // Track max
-                if (item.log_id > parsedDmInUpToLog) {
-                    user.parsedDmInUpToLog = item.log_id;
-                }
             }
 
-            this.UserStore.setParsedDmInUpToLog(uid, parsedDmInUpToLog);
+            if (parsedDmInUpToLog > user.parsedDmInUpToLog) {
+                this.UserStore.setParsedDmInUpToLog(uid, parsedDmInUpToLog);
+                this.debug(`Set last read for user ${uid} to ${parsedDmInUpToLog}`);
+            }
 
-            if (skipped.fromMe || skipped.alreadyShown || skipped.tooOld) {
-                console.log(this.LOG, 'Processed messages from user with uid', uid, 'Skipped — from me:', skipped.fromMe, 'already shown:', skipped.alreadyShown, 'too old:', skipped.tooOld);
+            if (skipped.length > 0) {
+                console.log(skipped);
             }
         }
 
-        // Converts "D/M HH:MM" (or with seconds) to "DD/MM HH:MM:SS"
-        normalizeApiDate(ts) {
-            if (!ts) return this.getTimeStampInWebsiteFormat?.() || '';
-            const m = String(ts).match(/^\s*(\d{1,2})\/(\d{1,2})\s+(\d{2}):(\d{2})(?::(\d{2}))?\s*$/);
-            if (!m) return String(ts);
-            const DD = String(m[1]).padStart(2, '0');
-            const MM = String(m[2]).padStart(2, '0');
-            const hh = m[3], mm = m[4], ss = m[5] ?? '00';
-            return `${DD}/${MM} ${hh}:${mm}:${ss}`;
-        }
-
-        async handleChatLogPlogs(payload) {
-            const plogs = Array.isArray(payload?.plogs) ? payload.plogs : [];
-            if (!plogs.length) return;
-
-            for (const p of plogs) {
-                const uid = String(p.user_id);
-
-                const myUserId = (typeof user_id !== 'undefined') ? String(user_id) : null;
-                if (myUserId && String(uid) === myUserId) {
-                    this.verbose(`Skipping message from myself: ${uid}`);
-                    return false;
+        async handleChatLogPlogs(plogs) {
+            for (const privateChatLog of plogs) {
+                const user = await this.UserStore.getOrFetch(privateChatLog.user_id);
+                if (!user) {
+                    console.error('[handleChatLogPlogs] Could not resolve user for uid:', privateChatLog.user_id);
+                    continue;
                 }
 
-                const user = await this.UserStore.getOrFetch(uid);
-                if (!user) continue;
-
-                // Normalize timestamp like "3/11 19:30" → "03/11 19:30:00"
-                const ts = this.normalizeApiDate
-                    ? this.normalizeApiDate(p.log_date)
-                    : String(p.log_date || '');
-
-                // Log as inbound private DM
-                this.logLine('dm-in', String(p.log_content || ''), user, String(p.log_id), ts);
-
-                // Update user’s chip status
-                this.updateProfileChip?.(uid);
+                const initialFetch = user.parsedDmInUpToLog === 0;
+                console.log(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
+                this.verbose(privateChatLog);
+                const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
+                if (res.accepted) {
+                    console.log(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                    this.UserStore.setParsedDmInUpToLog(user.uid, res.logId);
+                } else {
+                    console.log(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
+                }
             }
         }
 
@@ -1462,7 +1431,7 @@ Private send interception
             const data = this.toChatLogResponse(JSON.parse(String(txt)));
 
             if (Array.isArray(data.plogs) && data.plogs.length > 0) {
-                this.handleChatLogPlogs(data);
+                this.handleChatLogPlogs(data.plogs);
                 return;
             }
 
@@ -1478,22 +1447,34 @@ Private send interception
                 privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
                 this.verbose(this.LOG, 'Private conversations returned:', privateConversations.length, privateConversations);
 
-                const toFetch = privateConversations
+                const privateChatsToFetch = privateConversations
                     .filter(pc => pc.unread > 0)
                     .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
 
-                if (!toFetch.length) {
+                if (!privateChatsToFetch.length) {
                     console.log(this.LOG, 'None of the conversations has new messages');
                     return;
                 }
 
-                this.verbose(this.LOG, 'Fetching', toFetch.length, 'conversation' + (toFetch.length !== 1 ? 's' : ''), 'with new messages');
+                this.verbose(this.LOG, 'Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
 
                 (async () => {
-                    for (let i = 0; i < toFetch.length; i++) {
-                        const conversation = toFetch[i];
-                        console.log(this.LOG, 'Fetch chat_log for conversation', conversation.uid, '— unread:', conversation.unread);
-                        await this.caProcessPrivateLogResponse(conversation.uid, await this.caFetchChatLogFor(conversation.uid, params));
+                    for (const privateChat of privateChatsToFetch) {
+                        console.log(this.LOG, 'Fetch private message for conversation', privateChat.uid, '— unread:', privateChat.unread);
+                        const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(privateChat.uid, params);
+
+                        if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse.trim() === '') {
+                            console.warn(this.LOG, 'Empty response for conversation', privateChat.uid);
+                            return;
+                        }
+
+                        const privateChatLogResponse = this.toPrivateChatLogResponse(JSON.parse(String(rawPrivateChatLogResponse)));
+
+                        const privateChatLogs =
+                            (Array.isArray(privateChatLogResponse?.pload) && privateChatLogResponse.pload.length ? privateChatLogResponse.pload :
+                                (Array.isArray(privateChatLogResponse?.plogs) ? privateChatLogResponse.plogs : []));
+
+                        await this.caProcessPrivateLogResponse(privateChat.uid, privateChatLogs);
                     }
                 })();
             });
@@ -3262,12 +3243,7 @@ Private send interception
             del.textContent = '✖';
             el.appendChild(del);
 
-            // Unread go to the top of "Not Replied"; replied can append.
-            if (kind === 'dm-in' && activityLog.unread !== false) {
-                targetContainer.insertBefore(el, targetContainer.firstChild || null);
-            } else {
-                targetContainer.appendChild(el);
-            }
+            targetContainer.appendChild(el);
 
             requestAnimationFrame(() => {
                 targetContainer.scrollTop = targetContainer.scrollHeight;
