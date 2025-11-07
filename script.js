@@ -2508,7 +2508,7 @@ Private send interception
         }
 
         /* ---------- DOM find helper ---------- */
-        findUserElementById(uid, root = document) {
+        findUserElementById(uid) {
             if (!uid) {
                 console.error(`.findUserElementById: id is empty`);
                 return null;
@@ -3419,8 +3419,7 @@ Private send interception
             }
 
             // --- Per-section Clear (kind-driven; no rebuilds, no selectors) ---
-            const root = document;
-            const buttons = this.qsa('.ca-section-title .clear-logs', root);
+            const buttons = this.qsa('.ca-section-title .clear-logs', document);
 
             if (!buttons || buttons.length === 0) {
                 console.warn('[LOG] No per-section clear buttons found (.clear-logs)');
