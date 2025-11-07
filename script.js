@@ -800,6 +800,8 @@
             // build panel + wire refs + handlers
             this.buildPanel();
             this.buildMenuLogPanel();
+            // Create our managed container for female users
+            this.createManagedUsersContainer();
             this.addSpecificNavButton();
             this._bindStaticRefs();
             this._installStorageToggleButton();
@@ -840,9 +842,6 @@
             this.installNetworkTaps();   // <— enable fetch/XHR interception
 
             this.installPrivateSendInterceptor();  // <— enable intercept for native /private_process.php
-
-            // Create our managed container for female users
-            this.createManagedUsersContainer();
 
             // Re-bind counter references after creating the containers
             this.ui.managedCount = this.qs(this.sel.users.managedCount);
@@ -960,21 +959,18 @@
 
         // ===== Refresh Users loop =====
         async startRefreshUsersLoop({
-                                        intervalMs = 60000,    // default 60s
+                                        intervalMs = 15000,    // default 60s
                                         runImmediately = true
                                     } = {}) {
             this.stopRefreshUsersLoop?.(); // clear any previous loop
 
             this._refreshUsersIntervalMs = intervalMs;
-            this._refreshUsersRunning = false;
 
             if (runImmediately) {
                 await this.refreshUserList();
             }
 
             this._refreshUsersTimerId = setInterval(async () => {
-                if (this._refreshUsersRunning) return;
-                this._refreshUsersRunning = true;
                 await this.refreshUserList();
             }, this._refreshUsersIntervalMs);
         }
@@ -984,7 +980,6 @@
                 clearInterval(this._refreshUsersTimerId);
                 this._refreshUsersTimerId = null;
             }
-            this._refreshUsersRunning = false;
         }
 
         // ===== Clear Event Logs loop =====
@@ -1022,6 +1017,7 @@
         }
 
         async refreshUserList() {
+            console.log('Start refreshing user list');
             const formData = new URLSearchParams();
             formData.append('token', utk);
 
@@ -2665,13 +2661,19 @@ Private send interception
       <div class="ca-section ca-section-compact">
         <div class="ca-log-dual">
           <div class="ca-section ca-log-section">
-                  <div class="ca-section-title"><span>Logon/Logoff</span></div>
+                  <div class="ca-section-title">
+                    <span>Logon/Logoff</span>
+                      <span class="clear-logs">Clear</span>
+                  </div>
                   <div id="${this.sel.raw.log.presence}"
                        class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
                        aria-live="polite"></div>
                 </div>
                  <div class="ca-section ca-log-section">
-              <div class="ca-section-title"><span>Other Logs</span></div>
+              <div class="ca-section-title">
+                <span>Other Logs</span>
+                  <span class="clear-logs">Clear</span>
+              </div>
               <div id="${this.sel.raw.log.other}"
                    class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
@@ -2714,7 +2716,10 @@ Private send interception
                 </div>
             
                 <div class="ca-section ca-section-compact">
-                  <div class="ca-section-title"><span>Sent Messages</span></div>
+                  <div class="ca-section-title">
+                      <span>Sent Messages</span>
+                      <span class="clear-logs">Clear</span>
+                  </div>
                   <div id="${this.sel.raw.log.sent}"
                        class="ca-log-box ca-log-box-compact ${this.sel.raw.log.classes.ca_box_scrollable}"
                        aria-live="polite"></div>
@@ -2723,7 +2728,10 @@ Private send interception
                 <hr class="ca-divider">
             
                 <div class="ca-section ca-section-expand">
-                  <div class="ca-section-title"><span>Received Messages</span></div>
+                  <div class="ca-section-title">
+                    <span>Received Messages</span>
+                      <span class="clear-logs">Clear</span>
+                  </div>
                   <div id="${this.sel.raw.log.received}" 
                        class="ca-log-box ca-log-box-expand"
                        aria-live="polite">
@@ -3540,12 +3548,13 @@ Private send interception
                 dmLink.href = '#';
                 dmLink.setAttribute('data-action', 'open-dm');
                 dmLink.innerHTML = `
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  class="lucide lucide-mail">
-                    <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-                    <polyline points="3 7,12 13,21 7"></polyline>
-                  </svg>`;
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+       width="16" height="16" focusable="false" aria-hidden="true"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+       class="lucide lucide-mail">
+    <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+    <polyline points="3 7,12 13,21 7"></polyline>
+  </svg>`;
                 dmLink.title = 'Direct message';
                 actions_div.appendChild(dmLink);
             }
@@ -3557,12 +3566,13 @@ Private send interception
             delLink.setAttribute('data-action', 'delete-log');
             delLink.title = 'Delete this log entry';
             delLink.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              class="lucide lucide-x">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>`;
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+       width="16" height="16" focusable="false" aria-hidden="true"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+       class="lucide lucide-x">
+    <line x1="18" y1="6" x2="6" y2="18"></line>
+    <line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>`;
 
             actions_div.appendChild(delLink);
 

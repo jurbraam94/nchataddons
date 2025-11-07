@@ -33,10 +33,17 @@
 }
 
 .ca-section-title {
+    display: flex;
     gap: 8px;
     font-weight: 700;
     font-size: 13px;
     color: #ffffff;
+    justify-content: space-between;
+}
+
+.ca-section-title .clear-logs {
+    font-size: 12px;
+    color: #9E9E9E;
 }
 
 .ca-row {
@@ -49,7 +56,6 @@
 .ca-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     flex: 0 0 auto;
 }
 
@@ -1273,9 +1279,12 @@
 
 /* Right panel: reserve fixed-ish space */
 #chat_right, #private_center {
+    min-width: 300px;
+}
+
+#chat_right {
     display: flex !important;
     flex-direction: column;
-    min-width: 300px;
 }
 
 /* If the user list inside right needs explicit flex */
