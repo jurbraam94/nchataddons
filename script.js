@@ -813,7 +813,6 @@
             this.createManagedUsersContainer();
             this.addSpecificNavButton();
             this.createPredefinedMessagesSection();
-            this.installPredefinedGlobalHandlers();
             this._bindStaticRefs();
             this._installStorageToggleButton();
             this._attachLogClickHandlers();  // Attach handlers AFTER refs are bound
@@ -827,6 +826,7 @@
                 const privateMenuEl = this.qs('#private_menu');
                 const privateCenterEl = this.qs('#private_center');
                 this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
+                this.qs('#message_form').prepend(this.qs('#private_input_box'));
                 privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
                 main_wrapper.appendChild(globalChatEl);
@@ -1029,26 +1029,21 @@
         }
 
         createPredefinedMessagesSection() {
-            const boxEl =
-                document.getElementById('private_box');
+            const privateBoxEl =
+                document.getElementById('message_form');
 
-            if (!boxEl) {
+            if (!privateBoxEl) {
                 console.warn('[CA] createPredefinedMessagesSection: private area not found');
                 return;
             }
 
-            this.createPredefinedBar({
-                container: boxEl,
-                selectId: 'ca-predefined-messages-select-private',
-                manageId: 'ca-predefined-messages-manage-private',
+            this.createPredefinedMessagesBar({
+                container: privateBoxEl,
+                messageBarName: 'ca-predefined-messages-select-private-chat',
                 targetSelector: '#private_input_box #message_content'
             });
         }
 
-        /**
-         * Apply the currently selected predefined template for a given <select>.
-         * Returns true if something was inserted, false otherwise.
-         */
         _applyPredefinedFromSelect(selectEl) {
             if (!selectEl) {
                 console.error('[CA] _applyPredefinedFromSelect: selectEl is missing');
@@ -1069,7 +1064,7 @@
             }
 
             const template = list[idx];
-            const targetSelector = selectEl.dataset.predefTarget;
+            const targetSelector = selectEl.dataset.predefinedMessagesTarget; // <-- changed
             if (!targetSelector) {
                 console.error('[CA] _applyPredefinedFromSelect: missing data-predefined-messages-target');
                 return false;
@@ -1085,21 +1080,24 @@
             return true;
         }
 
-
-        createPredefinedBar(options) {
-            const {container, selectId, manageId, targetSelector, appendAtStart} = options || {};
-
+        createPredefinedMessagesBar({container, messageBarName, targetSelector, appendAtStart}) {
             if (!container) {
-                console.error('[CA] createPredefinedBar: container is missing');
+                console.error('[CA] createPredefinedMessagesBar: container is missing');
                 return;
             }
-            if (!selectId || !manageId || !targetSelector) {
-                console.error('[CA] createPredefinedBar: invalid options', options);
+
+            if (!messageBarName || !targetSelector || !appendAtStart === undefined) {
+                console.error('[CA] createPredefinedMessagesBar: invalid options', {
+                    container,
+                    messageBarName: messageBarName,
+                    targetSelector,
+                    appendAtStart
+                });
                 return;
             }
 
             // Avoid duplicating if bar already exists here
-            if (container.querySelector(`#${selectId}`)) {
+            if (container.querySelector(`#${messageBarName}`)) {
                 return;
             }
 
@@ -1107,146 +1105,188 @@
             wrapper.className = 'ca-predefined-messages-bar';
 
             wrapper.innerHTML = `
-                <div class="ca-predefined-messages-bar-inner">
-                    <label class="ca-predefined-messages-label">
-                        <span>Predefined:</span>
-                        <select id="${selectId}"
-                                class="ca-predefined-messages-select"
-                                data-predefined-messages-target="${targetSelector}">
-                            <option value="">Select predefined message…</option>
-                        </select>
-                    </label>
-                
-                    <div class="ca-predefined-messages-bar-actions">
-                
-                        <a href="#"
-                           id="${selectId}-resend"
-                           class="ca-log-action ca-log-action-filled ca-predefined-messages-resend"
-                           title="Insert again">
-                            <svg xmlns="http://www.w3.org/2000/svg"
-                                 viewBox="0 0 24 24"
-                                 width="16" height="16"
-                                 class="lucide lucide-triangle-right">
-                                <path d="M8 4l12 8-12 8V4z"></path>
-                            </svg>
-                        </a>
-                        
-                        <!-- ADD NEW FROM CURRENT TEXT -->
-                        <a href="#"
-                           id="${selectId}-add"
-                           class="ca-log-action ca-predefined-messages-add"
-                           title="Save current text as template">
-                            <!-- 🔽 use the SAME plus SVG you already have elsewhere -->
-                            <svg xmlns="http://www.w3.org/2000/svg"
-                                 viewBox="0 0 24 24"
-                                 width="16" height="16"
-                                 stroke="currentColor"
-                                 stroke-width="2"
-                                 stroke-linecap="round"
-                                 stroke-linejoin="round"
-                                 class="lucide lucide-plus">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                
-                        <a href="#"
-                           id="${manageId}"
-                           class="ca-log-action ca-predefined-messages-manage"
-                           title="Manage templates">
-                            <svg xmlns="http://www.w3.org/2000/svg"
-                                 viewBox="0 0 24 24"
-                                 width="16" height="16"
-                                 stroke="currentColor"
-                                 stroke-width="2"
-                                 stroke-linecap="round"
-                                 stroke-linejoin="round"
-                                 class="lucide lucide-pencil">
-                                <path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>
-                            </svg>
-                        </a>
-                
-                    </div>
+            <div class="ca-predefined-messages-bar-inner">
+                <label class="ca-predefined-messages-label">
+                    <span>Predefined:</span>
+                    <select id="${messageBarName}"
+                            class="ca-predefined-messages-select"
+                            data-predefined-messages-target="${targetSelector}">
+                        <option value="">Select predefined message…</option>
+                    </select>
+                </label>
+            
+                <div class="ca-predefined-messages-bar-actions">
+            
+                    <!-- SEND AGAIN -->
+                    <a href="#"
+                       id="${messageBarName}-resend"
+                       class="ca-log-action ca-log-action-filled ca-predefined-messages-resend"
+                       title="Insert again">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             viewBox="0 0 24 24"
+                             width="16" height="16"
+                             fill="currentColor"
+                             class="lucide lucide-triangle-right">
+                            <path d="M8 4l12 8-12 8V4z"></path>
+                        </svg>
+                    </a>
+            
+                    <!-- ADD NEW FROM CURRENT TEXT -->
+                    <a href="#"
+                       id="${messageBarName}-add"
+                       class="ca-log-action ca-predefined-messages-add"
+                       title="Save current text as template">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             viewBox="0 0 24 24"
+                             width="16" height="16"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             stroke-linecap="round"
+                             stroke-linejoin="round"
+                             class="lucide lucide-plus">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </a>
+            
+                    <!-- MANAGE -->
+                    <a href="#"
+                       id="${messageBarName}-manage"
+                       class="ca-log-action ca-predefined-messages-manage"
+                       title="Manage templates">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             viewBox="0 0 24 24"
+                             width="16" height="16"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             stroke-linecap="round"
+                             stroke-linejoin="round"
+                             class="lucide lucide-pencil">
+                            <path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>
+                        </svg>
+                    </a>
+            
                 </div>
-                `;
-
+            </div>
+            `;
 
             if (appendAtStart) {
-                container.insertBefore(wrapper, container.firstChild);
+                container.prepend(wrapper);
             } else {
                 container.appendChild(wrapper);
             }
 
-            const selectEl = wrapper.querySelector(`#${selectId}`);
-            const manageBtn = wrapper.querySelector(`#${manageId}`);
-
-            if (!selectEl || !manageBtn) {
-                console.error('[CA] createPredefinedBar: controls not found after render');
-                return;
-            }
-
-            // Mark where this select should insert text
-            selectEl.dataset.predefTarget = targetSelector;
-
-            // Fill options
-            this._fillPredefinedSelect(selectEl);
+            // ⬇️ Separate wiring step
+            this.wirePredefinedMessagesBar(wrapper);
         }
 
-        installPredefinedGlobalHandlers() {
-            if (this._predefHandlersInstalled) {
+        wirePredefinedMessagesBar(barEl) {
+            if (!barEl) {
+                console.error('[CA] wirePredefinedMessagesBar: barEl missing');
                 return;
             }
-            this._predefHandlersInstalled = true;
 
-            document.body.addEventListener('change', (e) => {
-                const select = e.target.closest('.ca-predefined-messages-select');
-                if (!select) {
-                    return;
-                }
+            const selectEl = barEl.querySelector('.ca-predefined-messages-select');
+            const resendEl = barEl.querySelector('.ca-predefined-messages-resend');
+            const addEl = barEl.querySelector('.ca-predefined-messages-add');
+            const manageEl = barEl.querySelector('.ca-predefined-messages-manage');
 
-                this._applyPredefinedFromSelect(select);
+            if (!selectEl) {
+                console.error('[CA] wirePredefinedMessagesBar: select not found');
+                return;
+            }
+
+            // Fill options for this select only
+            this._fillPredefinedSelect(selectEl);
+
+            // --- change on THIS select ---
+            selectEl.addEventListener('change', (e) => {
+                this._applyPredefinedFromSelect(e.target);
             });
 
-            // Handle ALL "resend" (▶) buttons
-            document.body.addEventListener('click', (e) => {
-                const btn = e.target.closest('.ca-predefined-messages-resend');
-                if (!btn) return;
-
-                const wrapper = btn.closest('.ca-predefined-messages-bar-inner');
-                if (!wrapper) return;
-
-                const select = wrapper.querySelector('.ca-predefined-messages-select');
-                if (!select) return;
-
-                const ok = this._applyPredefinedFromSelect(select);
-                if (!ok) {
-                    console.warn('[CA] Predefined resend: nothing to resend (no selection?)');
-                    return;
-                }
-
-                console.log('[CA] Predefined resend done from', select.id || '(no id)');
-            });
-
-
-            // Handle ALL "Manage" buttons
-            document.body.addEventListener('click', (e) => {
-                const btn = e.target.closest('.ca-predefined-messages-manage');
-                if (!btn) {
-                    return;
-                }
-
-                console.log('[CA] Predefined Manage clicked:', btn.id || '(no id)');
-
-                if (typeof this.openPredefinedPopup === 'function') {
-                    this.openPredefinedPopup();
-                } else if (typeof this.createPredefinedPopup === 'function') {
-                    const pop = this.createPredefinedPopup();
-                    if (pop) {
-                        pop.style.display = 'block';
+            // --- resend on THIS bar ---
+            if (resendEl) {
+                resendEl.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const ok = this._applyPredefinedFromSelect(selectEl);
+                    if (!ok) {
+                        console.warn('[CA] Predefined resend: nothing to resend (no selection?)');
                     }
-                } else {
-                    console.error('[CA] No predefined popup open method defined');
-                }
-            });
+                });
+            }
+
+            // --- add-from-chat on THIS bar ---
+            if (addEl) {
+                addEl.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    const targetSel = selectEl.dataset.predefinedMessagesTarget;
+                    if (!targetSel) {
+                        console.error('[CA] add-from-chat: missing data-predefined-messages-target');
+                        return;
+                    }
+
+                    const box = this.qs(targetSel) || document.querySelector(targetSel);
+                    if (!box) {
+                        console.error('[CA] add-from-chat: target input not found for selector:', targetSel);
+                        return;
+                    }
+
+                    const currentText = (box.value || '').trim();
+                    if (!currentText) {
+                        console.warn('[CA] No text in chatbox to save as template');
+                        return;
+                    }
+
+                    if (typeof this.openPredefinedPopup === 'function') {
+                        this.openPredefinedPopup();
+                    } else if (typeof this.createPredefinedPopup === 'function') {
+                        const pop = this.createPredefinedPopup();
+                        if (pop) pop.style.display = 'block';
+                    }
+
+                    const modal =
+                        document.getElementById('ca-predefined-messages-pop') ||
+                        document.getElementById('ca-predefined-modal');
+
+                    if (!modal) {
+                        console.error('[CA] Predefined modal not found after opening');
+                        return;
+                    }
+
+                    const subjectInput = modal.querySelector('#ca-predefined-messages-subject');
+                    const textInput = modal.querySelector('#ca-predefined-messages-text');
+                    const indexInput = modal.querySelector('#ca-predefined-messages-index');
+
+                    if (indexInput) {
+                        indexInput.value = '-1'; // new template
+                    }
+                    if (subjectInput) {
+                        subjectInput.value = subjectInput.value || '';
+                    }
+                    if (textInput) {
+                        textInput.value = currentText;
+                    }
+                });
+            }
+
+            // --- manage on THIS bar ---
+            if (manageEl) {
+                manageEl.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    console.log('[CA] Predefined Manage clicked:', manageEl.id || '(no id)');
+
+                    if (typeof this.openPredefinedPopup === 'function') {
+                        this.openPredefinedPopup();
+                    } else if (typeof this.createPredefinedPopup === 'function') {
+                        const pop = this.createPredefinedPopup();
+                        if (pop) pop.style.display = 'block';
+                    } else {
+                        console.error('[CA] No predefined popup open method defined');
+                    }
+                });
+            }
         }
 
 
@@ -3710,12 +3750,11 @@ Private send interception
 
             document.body.appendChild(pop);
 
-            const body = pop.querySelector('.ca-pop-body');
-            if (body) {
-                this.createPredefinedBar({
-                    container: body,
-                    selectId: 'ca-predefined-messages-select-broadcast',
-                    manageId: 'ca-predefined-messages-manage-broadcast',
+            const popBodyEl = pop.querySelector('.ca-pop-body');
+            if (popBodyEl) {
+                this.createPredefinedMessagesBar({
+                    container: popBodyEl,
+                    messageBarName: 'ca-predefined-messages-select-broadcast',
                     targetSelector: '#ca-bc-msg',
                     appendAtStart: true
                 });

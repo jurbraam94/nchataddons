@@ -1122,6 +1122,11 @@
     cursor: pointer;
 }
 
+#private_input_box {
+    display: block;
+}
+
+
 .ca-log-action.ca-log-action-filled svg {
     fill: #51b9a6;
 }
@@ -1256,6 +1261,11 @@
     field-sizing: content;
     min-height: 40px;
     padding: 3px;
+    align-content: center;
+}
+
+#message_content::placeholder {
+    text-align: center;
 }
 
 .ca-btn-icon {
@@ -1461,6 +1471,9 @@
 
 #message_form {
     height: unset;
+    display: flex;
+    row-gap: 10px;
+    flex-direction: column;
 }
 
 #ca-managed-chat-right-data {
