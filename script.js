@@ -682,7 +682,7 @@
                     privateCenter: '#private_center',
                     privateInputBox: '#private_input_box',
                     privateTop: '#private_top',
-                    privInput: '#priv_input'
+                    privInput: '#message_content'
                 },
                 users: {
                     managed: '#ca-managed-users',  // Our custom container wrapper for female users
@@ -826,7 +826,7 @@
                 const wrapFooterEl = this.qs('#wrap_footer');
                 const privateMenuEl = this.qs('#private_menu');
                 const privateCenterEl = this.qs('#private_center');
-                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea rows="4" id="priv_input" class="inputbox" placeholder="Type a message..."></textarea>';
+                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
                 privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
                 main_wrapper.appendChild(globalChatEl);
@@ -1041,7 +1041,7 @@
                 container: boxEl,
                 selectId: 'ca-predefined-messages-select-private',
                 manageId: 'ca-predefined-messages-manage-private',
-                targetSelector: '#private_input_box #priv_input'
+                targetSelector: '#private_input_box #message_content'
             });
         }
 
@@ -1108,30 +1108,47 @@
 
             wrapper.innerHTML = `
                 <div class="ca-predefined-messages-bar-inner">
+                    <label class="ca-predefined-messages-label">
+                        <span>Predefined:</span>
                         <select id="${selectId}"
                                 class="ca-predefined-messages-select"
                                 data-predefined-messages-target="${targetSelector}">
                             <option value="">Select predefined message…</option>
                         </select>
+                    </label>
                 
                     <div class="ca-predefined-messages-bar-actions">
                 
-                        <!-- SEND AGAIN -->
                         <a href="#"
                            id="${selectId}-resend"
-                           class="ca-log-action ca-predefined-messages-resend ca-log-action-filled"
+                           class="ca-log-action ca-log-action-filled ca-predefined-messages-resend"
                            title="Insert again">
                             <svg xmlns="http://www.w3.org/2000/svg"
                                  viewBox="0 0 24 24"
                                  width="16" height="16"
-                                stroke="none"
-
                                  class="lucide lucide-triangle-right">
                                 <path d="M8 4l12 8-12 8V4z"></path>
                             </svg>
                         </a>
+                        
+                        <!-- ADD NEW FROM CURRENT TEXT -->
+                        <a href="#"
+                           id="${selectId}-add"
+                           class="ca-log-action ca-predefined-messages-add"
+                           title="Save current text as template">
+                            <!-- 🔽 use the SAME plus SVG you already have elsewhere -->
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 viewBox="0 0 24 24"
+                                 width="16" height="16"
+                                 stroke="currentColor"
+                                 stroke-width="2"
+                                 stroke-linecap="round"
+                                 stroke-linejoin="round"
+                                 class="lucide lucide-plus">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
                 
-                        <!-- MANAGE -->
                         <a href="#"
                            id="${manageId}"
                            class="ca-log-action ca-predefined-messages-manage"

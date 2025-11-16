@@ -1251,7 +1251,7 @@
     height: 100%;
 }
 
-#priv_input {
+#message_content {
     margin-top: auto;
     field-sizing: content;
     min-height: 40px;
