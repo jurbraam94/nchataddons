@@ -947,8 +947,6 @@
                     : (this.NO_LS_MODE === 'wipe') ? 'block'
                         : 'allow';
                 this._writeStorageMode(this.NO_LS_MODE);
-                // If user switches to wipe, clear now too to be consistent
-                if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
                 // Rebind Store to new backend for 'block'/'allow' immediately
                 this.Store = new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
                 render();
@@ -1976,7 +1974,7 @@ Private send interception
                 return existingEl;
             } else {
                 const clonedEl = newEl.cloneNode(true);
-                managedList.appendChild(clonedEl);
+                managedList.insertBefore(clonedEl, this.qs('.user_item[data-rank="0"]', managedList) || this.qs('.user_item.ca-replied-messages', managedList) || managedList.lastElementChild);
                 this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
                 return clonedEl;
             }
@@ -2508,11 +2506,23 @@ Private send interception
         }
 
         /* ---------- DOM find helper ---------- */
-        findUserElementById(uid) {
+
+        /* ---------- DOM find helper ---------- */
+        findManagedUserElementById(uid) {
             if (!uid) {
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
+
+            // Prefer the managed female container so we don't accidentally
+            // grab the host list item that might be removed right after.
+            const managed = this.getContainer();
+            if (managed) {
+                const el = this.qs(`.user_item[data-id="${uid}"]`, managed);
+                if (el) return el;
+            }
+
+            // Fallback (mostly for debugging / safety)
             return this.qs(`.user_item[data-id="${uid}"]`);
         }
 
@@ -2520,7 +2530,7 @@ Private send interception
         updateProfileChip(uid) {
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
-            const userEl = this.findUserElementById(uid);
+            const userEl = this.findManagedUserElementById(uid);
             console.log(userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
             if (!userEl) {
@@ -2551,10 +2561,17 @@ Private send interception
                 if (container.firstElementChild !== userEl) {
                     container.insertBefore(userEl, container.firstElementChild);
                 }
-
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                console.log('Adding all read chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
+                console.log(
+                    'Adding all read chip to user:',
+                    uid,
+                    ', unread received messages count: ',
+                    unreadReceivedMessagesCount,
+                    ', sent messages count: ',
+                    sentMessagesCount
+                );
+
                 const chip = this._createChipForUserItem(userEl);
 
                 userEl.classList.add(this.sel.raw.log.classes.ca_replied_messages);
@@ -2564,23 +2581,12 @@ Private send interception
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.textContent = '✓';
 
-                if (!userEl) {
-                    container.appendChild(userEl);
-                }
-
                 // --- Move user to bottom of container ---
+                console.log('Moving user to bottom of container:', uid);
+                container.insertBefore(userEl, this.qs('.user_item[data-rank="0"]', container) || container.lastElementChild);
 
-
-                // No sent messages → remove chip
-            } else {
-                this.verbose('Removing sent chip from user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
-                if (userEl.classList.contains('chataddons-sent')) {
-                    userEl.classList.remove('chataddons-sent');
-                    userEl.style.removeProperty('outline');
-                    userEl.style.removeProperty('border-radius');
-                }
-                userEl.querySelector(this.sel.log.classes.ca_sent_chip_all_read)?.remove();
             }
+
         }
 
         _createChipForUserItem(userEl) {
