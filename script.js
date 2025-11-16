@@ -517,6 +517,7 @@
             this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
             this.HIDE_REPLIED_USERS_KEY = '321chataddons.hideRepliedUsers';
+            this.PREDEFINED_MESSAGES_KEY = 'predefinedMessages';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
             this.USERS_KEY = '321chataddons.users';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
@@ -677,6 +678,12 @@
                 reset: '#ca-bc-reset',
                 status: '#ca-bc-status',
                 // user list containers (first existing wins)
+                privateChat: {
+                    privateCenter: '#private_center',
+                    privateInputBox: '#private_input_box',
+                    privateTop: '#private_top',
+                    privInput: '#priv_input'
+                },
                 users: {
                     managed: '#ca-managed-users',  // Our custom container wrapper for female users
                     managedList: '#ca-managed-list',  // The actual list container inside managed
@@ -694,10 +701,7 @@
                     chatHead: '#chat_head',
                     wrapFooter: '#wrap_footer',
                     topChatContainer: '#top_chat_container',
-                    caUserListHeader: '.ca-user-list-header',
-                    privateCenter: '#private_center',
-                    privateTop: '#private_top',
-                    privInput: '#priv_input'
+                    caUserListHeader: '.ca-user-list-header'
                 },
                 // Debug checkboxes
                 debug: {
@@ -808,6 +812,7 @@
             // Create our managed container for female users
             this.createManagedUsersContainer();
             this.addSpecificNavButton();
+            this.createPredefinedMessagesSection();
             this._bindStaticRefs();
             this._installStorageToggleButton();
             this._attachLogClickHandlers();  // Attach handlers AFTER refs are bound
@@ -820,6 +825,7 @@
                 const wrapFooterEl = this.qs('#wrap_footer');
                 const privateMenuEl = this.qs('#private_menu');
                 const privateCenterEl = this.qs('#private_center');
+                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea rows="4" id="priv_input" class="inputbox" placeholder="Type a message..."></textarea>';
                 privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
                 main_wrapper.appendChild(globalChatEl);
@@ -865,6 +871,410 @@
             this.scrollToBottom(this.ui.unrepliedMessageBox);
             this.scrollToBottom(this.ui.sentMessagesBox);
             return this;
+        }
+
+        /* Fill the list inside the pop */
+        _renderPredefinedList() {
+            const pop = document.getElementById('ca-predefined-messages-pop');
+            if (!pop) return;
+
+            const listEl = pop.querySelector('#ca-predefined-messages-list');
+            const subjectInput = pop.querySelector('#ca-predefined-messages-subject');
+            const textInput = pop.querySelector('#ca-predefined-messages-text');
+            const indexInput = pop.querySelector('#ca-predefined-messages-index');
+
+            if (!listEl || !subjectInput || !textInput || !indexInput) {
+                console.error('[CA] _renderPredefinedList: missing elements');
+                return;
+            }
+
+            const list = this._getPredefinedMessages();
+            listEl.innerHTML = '';
+
+            list.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = 'ca-predefined-messages-item';
+
+                const titleRow = document.createElement('div');
+                titleRow.className = 'ca-predefined-messages-title-row';
+
+                const title = document.createElement('strong');
+                title.textContent = item.subject || `Template ${index + 1}`;
+
+                const actions = document.createElement('div');
+                actions.className = 'ca-predefined-messages-actions';
+
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.textContent = 'Edit';
+                editBtn.className = 'ca-btn ca-btn-slim';
+                editBtn.addEventListener('click', () => {
+                    this.predefinedEditIndex = index;
+                    indexInput.value = String(index);
+                    subjectInput.value = item.subject || '';
+                    textInput.value = item.text || '';
+                });
+
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.textContent = 'Delete';
+                delBtn.className = 'ca-btn ca-btn-slim';
+                delBtn.addEventListener('click', () => {
+                    const current = this._getPredefinedMessages().slice();
+                    if (index < 0 || index >= current.length) {
+                        console.error('[CA] delete predefined: index out of range', index);
+                        return;
+                    }
+                    current.splice(index, 1);
+                    this._savePredefinedMessages(current);
+                    this._renderPredefinedList();
+                    this._refreshAllPredefinedSelects();   // ✅ EXACT PLACE
+
+                });
+
+                actions.appendChild(editBtn);
+                actions.appendChild(delBtn);
+
+                titleRow.appendChild(title);
+                titleRow.appendChild(actions);
+
+                const preview = document.createElement('div');
+                preview.className = 'ca-predefined-messages-preview';
+                preview.textContent = (item.text || '').slice(0, 80);
+
+                li.appendChild(titleRow);
+                li.appendChild(preview);
+                listEl.appendChild(li);
+            });
+
+        }
+
+        _fillPredefinedSelect(selectEl) {
+            if (!selectEl) return;
+
+            const list = this._getPredefinedMessages();
+
+            selectEl.innerHTML = '';
+
+            const def = document.createElement('option');
+            def.value = '';
+            def.textContent = 'Select predefined message…';
+            selectEl.appendChild(def);
+
+            list.forEach((tpl, index) => {
+                const opt = document.createElement('option');
+                opt.value = String(index);
+                opt.textContent = tpl.subject || `Template ${index + 1}`;
+                selectEl.appendChild(opt);
+            });
+        }
+
+// Call this whenever templates change, so ALL dropdowns stay in sync
+        _refreshAllPredefinedSelects() {
+            const selects = document.querySelectorAll('.ca-predef-select');
+            selects.forEach((sel) => this._fillPredefinedSelect(sel));
+        }
+
+
+        // Append to any textarea-like input
+        _appendPredefinedToBox(template, box) {
+            if (!template || !template.text) {
+                console.warn('[CA] _appendPredefinedToBox: empty template');
+                return;
+            }
+
+            if (!box) {
+                console.error('[CA] _appendPredefinedToBox: target box not found');
+                return;
+            }
+
+            const current = box.value || '';
+            let next = current;
+
+            if (current && !current.endsWith('\n')) {
+                next += '\n\n';
+            }
+
+            next += template.text;
+
+            box.value = next;
+
+            try {
+                const evt = new Event('input', {bubbles: true});
+                box.dispatchEvent(evt);
+            } catch (err) {
+                console.warn('[CA] _appendPredefinedToBox: failed to dispatch input event', err);
+            }
+
+            box.focus();
+        }
+
+// Convenience for the private input
+        _appendPredefinedToMessageContent(template) {
+            const box =
+                this.qs('#private_input_box #priv_input') ||
+                document.getElementById('message_content');
+
+            this._appendPredefinedToBox(template, box);
+        }
+
+
+        createPredefinedMessagesSection() {
+            const boxEl =
+                document.getElementById('private_box') ||
+                this.qs('#private_top') ||
+                this.qs('#private_center');
+
+            if (!boxEl) {
+                console.warn('[CA] createPredefinedMessagesSection: private area not found');
+                return;
+            }
+
+            this.createPredefinedBar({
+                container: boxEl,
+                selectId: 'ca-predef-select-private',
+                manageId: 'ca-predef-manage-private',
+                getTargetBox: () =>
+                    this.qs('#private_input_box #priv_input') ||
+                    document.getElementById('message_content')
+            });
+        }
+
+
+        /**
+         * Create a predefined messages bar in a given container.
+         * Options:
+         *   - container: DOM element where the bar is inserted at the top
+         *   - selectId: unique ID for the <select>
+         *   - manageId: unique ID for the Manage button
+         *   - getTargetBox: () => textarea/input element to append to
+         */
+        createPredefinedBar(options) {
+            const {container, selectId, manageId, getTargetBox} = options || {};
+
+            if (!container) {
+                console.error('[CA] createPredefinedBar: container is missing');
+                return;
+            }
+            if (!selectId || !manageId || typeof getTargetBox !== 'function') {
+                console.error('[CA] createPredefinedBar: invalid options', options);
+                return;
+            }
+
+            // Avoid duplicating if bar already exists here
+            if (container.querySelector(`#${selectId}`)) {
+                return;
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'ca-predef-bar';
+
+            wrapper.innerHTML =
+                '<div class="ca-predef-bar-inner">' +
+                `  <label class="ca-predef-label">` +
+                '    <span>Predefined:</span>' +
+                `    <select id="${selectId}" class="ca-predef-select">` +
+                '      <option value="">Select predefined message…</option>' +
+                '    </select>' +
+                '  </label>' +
+                `  <button type="button" id="${manageId}" class="ca-btn ca-btn-slim">Manage</button>` +
+                '</div>';
+
+            // Insert at top of container
+            if (container.firstChild) {
+                container.insertBefore(wrapper, container.firstChild);
+            } else {
+                container.appendChild(wrapper);
+            }
+
+            const selectEl = wrapper.querySelector(`#${selectId}`);
+            const manageBtn = wrapper.querySelector(`#${manageId}`);
+
+            if (!selectEl || !manageBtn) {
+                console.error('[CA] createPredefinedBar: controls not found after render');
+                return;
+            }
+
+            // Fill the dropdown
+            this._fillPredefinedSelect(selectEl);
+
+            // When selecting a template, append to the correct box
+            selectEl.addEventListener('change', (e) => {
+                const idxStr = e.target.value;
+                if (!idxStr) return;
+
+                const idx = Number(idxStr);
+                const list = this._getPredefinedMessages();
+                if (Number.isNaN(idx) || idx < 0 || idx >= list.length) {
+                    console.warn('[CA] Invalid predefined index selected:', idxStr);
+                    e.target.value = '';
+                    return;
+                }
+
+                const template = list[idx];
+                const box = getTargetBox();
+
+                this._appendPredefinedToBox(template, box);
+
+                // Always reset so choosing the same one again works
+                e.target.value = '';
+            });
+
+            // Manage button → open the popup
+            manageBtn.addEventListener('click', () => {
+                this.openPredefinedPopup();
+            });
+        }
+
+        // ---- Predefined messages storage helpers ----
+        _getPredefinedMessages() {
+            if (!this.Store) {
+                console.error('[CA] _getPredefinedMessages: Store is not initialized');
+                return [];
+            }
+            if (Array.isArray(this.predefinedMessages) && this.predefinedMessages.length > 0) {
+                return this.predefinedMessages;
+            }
+            const raw = this.Store.get(this.PREDEFINED_MESSAGES_KEY);
+            this.predefinedMessages = Array.isArray(raw) ? raw : [];
+            return this.predefinedMessages;
+        }
+
+        _savePredefinedMessages(list) {
+            if (!this.Store) {
+                console.error('[CA] _savePredefinedMessages: Store is not initialized');
+                return;
+            }
+            const arr = Array.isArray(list) ? list : [];
+            this.predefinedMessages = arr;
+            this.Store.set(this.PREDEFINED_MESSAGES_KEY, arr);
+        }
+
+        /* ---------- Predefined messages popup (ca-pop) ---------- */
+        createPredefinedPopup() {
+            let pop = document.getElementById('ca-predefined-messages-pop');
+            if (pop) return pop;
+
+            pop = document.createElement('div');
+            pop.id = 'ca-predefined-messages-pop';
+            pop.className = 'ca-pop';
+            pop.style.display = 'none';
+
+            pop.innerHTML =
+                '<div id="ca-predefined-messages-pop-header" class="ca-pop-header">' +
+                '  <span>Predefined messages</span>' +
+                '  <button id="ca-predefined-messages-pop-close" class="ca-pop-close" type="button">✕</button>' +
+                '</div>' +
+                '<div class="ca-pop-body">' +
+                '  <form id="ca-predefined-messages-form" class="ca-predefined-messages-form" style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;">' +
+                '    <label>Subject<br>' +
+                '      <input type="text" id="ca-predefined-messages-subject" class="ca-8" />' +
+                '    </label>' +
+                '    <label>Text<br>' +
+                '      <textarea id="ca-predefined-messages-text" class="ca-8" rows="4"></textarea>' +
+                '    </label>' +
+                '    <input type="hidden" id="ca-predefined-messages-index" value="-1" />' +
+                '    <div style="display:flex; gap:4px; justify-content:flex-end; margin-top:4px;">' +
+                '      <button type="button" id="ca-predefined-messages-reset" class="ca-btn ca-btn-slim">Clear</button>' +
+                '      <button type="submit" id="ca-predefined-messages-save" class="ca-btn ca-btn-slim">Save</button>' +
+                '    </div>' +
+                '  </form>' +
+                '  <hr>' +
+                '  <ul id="ca-predefined-messages-list" style="list-style:none; padding:0; margin:6px 0 0; max-height:220px; overflow:auto;"></ul>' +
+                '</div>';
+
+            document.body.appendChild(pop);
+
+            const closeBtn = pop.querySelector('#ca-predefined-messages-pop-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    pop.style.display = 'none';
+                });
+            }
+
+            const form = pop.querySelector('#ca-predefined-messages-form');
+            const subjectInput = pop.querySelector('#ca-predefined-messages-subject');
+            const textInput = pop.querySelector('#ca-predefined-messages-text');
+            const indexInput = pop.querySelector('#ca-predefined-messages-index');
+            const resetBtn = pop.querySelector('#ca-predefined-messages-reset');
+
+            if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
+                console.error('[CA] createPredefinedPopup: missing form controls');
+                return pop;
+            }
+
+            resetBtn.addEventListener('click', () => {
+                this.predefinedEditIndex = null;
+                indexInput.value = '-1';
+                subjectInput.value = '';
+                textInput.value = '';
+            });
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const subject = subjectInput.value.trim();
+                const text = textInput.value.trim();
+
+                if (!subject && !text) {
+                    console.warn('[CA] Cannot save empty predefined message');
+                    return;
+                }
+
+                const list = this._getPredefinedMessages().slice();
+                const idx = Number(indexInput.value);
+
+                if (!Number.isNaN(idx) && idx >= 0 && idx < list.length) {
+                    list[idx] = {subject, text};
+                } else {
+                    list.push({subject, text});
+                }
+
+                this._savePredefinedMessages(list);
+                this._renderPredefinedList();
+                this._refreshAllPredefinedSelects();
+
+
+                this.predefinedEditIndex = null;
+                indexInput.value = '-1';
+                subjectInput.value = '';
+                textInput.value = '';
+            });
+
+            // draggable header (same pattern as other pops)
+            const hdr = pop.querySelector('#ca-predefined-messages-pop-header');
+            let ox = 0, oy = 0, sx = 0, sy = 0;
+            const mm = (e) => {
+                const dx = e.clientX - sx, dy = e.clientY - sy;
+                pop.style.left = (ox + dx) + 'px';
+                pop.style.top = (oy + dy) + 'px';
+                pop.style.transform = 'none';
+            };
+            const mu = () => {
+                document.removeEventListener('mousemove', mm);
+                document.removeEventListener('mouseup', mu);
+            };
+            if (hdr) {
+                hdr.addEventListener('mousedown', (e) => {
+                    sx = e.clientX;
+                    sy = e.clientY;
+                    const r = pop.getBoundingClientRect();
+                    ox = r.left;
+                    oy = r.top;
+                    document.addEventListener('mousemove', mm);
+                    document.addEventListener('mouseup', mu);
+                });
+            }
+
+            this._renderPredefinedList();
+
+            return pop;
+        }
+
+        openPredefinedPopup() {
+            const pop = this.createPredefinedPopup();
+            if (!pop) return;
+            this._renderPredefinedList();
+            pop.style.display = 'block';
         }
 
         appendCustomActionsToBar() {
@@ -928,6 +1338,7 @@
             console.warn(`CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED`);
             const pref = this.STORAGE_KEY_PREFIX;
             for (let i = localStorage.length - 1; i >= 0; i--) {
+
                 const k = localStorage.key(i) || '';
                 if (k.startsWith(pref)) localStorage.removeItem(k);
             }
@@ -1979,7 +2390,6 @@ Private send interception
                 return existingEl;
             } else {
                 const clonedEl = newEl.cloneNode(true);
-                console.log(this.qs('.user_item[data-rank="0"]', managedList))
                 managedList.insertBefore(clonedEl, this.qs('.user_item.ca-replied-messages', managedList) || this.qs('.user_item[data-rank="0"]', managedList) || managedList.lastElementChild);
                 this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
                 return clonedEl;
@@ -3173,14 +3583,26 @@ Private send interception
                 '    <button id="ca-bc-send" class="ca-btn ca-btn-slim" type="button">Send</button>' +
                 '  </div>' +
                 '</div>';
+
             document.body.appendChild(pop);
+
+            // 🔹 NEW: add predefined bar inside the broadcast body
+            const body = pop.querySelector('.ca-pop-body');
+            if (body) {
+                this.createPredefinedBar({
+                    container: body,
+                    selectId: 'ca-predef-select-broadcast',
+                    manageId: 'ca-predef-manage-broadcast',
+                    getTargetBox: () => pop.querySelector('#ca-bc-msg')
+                });
+            }
 
             const closeBtn = pop.querySelector('#ca-bc-pop-close');
             if (closeBtn) closeBtn.addEventListener('click', () => {
                 pop.style.display = 'none';
             });
 
-            // drag
+            // ... existing drag code and other logic ...
             const hdr = pop.querySelector('#ca-bc-pop-header');
             let ox = 0, oy = 0, sx = 0, sy = 0;
             const mm = (e) => {
@@ -3205,6 +3627,7 @@ Private send interception
 
             return pop;
         }
+
 
         createSpecificPopup() {
             let pop = document.getElementById('ca-specific-pop');

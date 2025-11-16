@@ -1249,7 +1249,52 @@
 
 #priv_input {
     margin-top: auto;
+    field-sizing: content;
+    min-height: 40px;
+    padding: 3px;
 }
+
+#ca-predefined-messages-wrapper {
+    padding: 4px 6px;
+    font-size: 11px;
+}
+
+/* Wrapper for each predefined item */
+.ca-predefined-messages-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0;
+    border-bottom: 1px solid #eee;
+}
+
+/* Title row: subject + edit/delete buttons */
+.ca-predefined-messages-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Button row container */
+.ca-predefined-messages-actions {
+    display: flex;
+    gap: 4px;
+}
+
+/* Preview text */
+.ca-predefined-messages-preview {
+    font-size: 11px;
+    color: #666;
+}
+
+/* Optional: make list scroll smoother */
+#ca-predefined-messages-list {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0;
+}
+
 
 #wrap_footer {
     position: relative;
@@ -1302,6 +1347,10 @@
     flex: 1 1 auto; /* matches your intent */
     overflow: unset;
     overflow-y: unset;
+}
+
+#message_form {
+    height: unset;
 }
 
 #ca-managed-chat-right-data {
