@@ -208,12 +208,6 @@
             return mergedList;
         }
 
-        markRead(guid) {
-            const log = this.get(guid);
-            log.unread = false;
-            return this.set(log);
-        }
-
         MarkReadUntilChatLogId(uid, parsedDmInUpToLog) {
             if (!uid || parsedDmInUpToLog === undefined) {
                 console.error(`Uid ${uid} or parsedDmInUpToLog ${parsedDmInUpToLog} is invalid`);
@@ -344,11 +338,6 @@
                 .map(u => this._mergeUser(u));
         }
 
-        // alias used by call sites
-        upsert(user) {
-            return this.set(user);
-        }
-
         set(user) {
             if (!user || user.uid == null) {
                 console.error('set() requires user.uid');
@@ -462,7 +451,7 @@
                 return null;
             }
 
-            const user = this.get(uid);
+            const user = this.getOrFetch(uid);
             if (!user) {
                 console.error(`User ${uid} not found, cannot check isIncludedForBroadcast`);
                 return false;
@@ -507,19 +496,17 @@
             this.LOG = '';
             this.FEMALE_CODE = '2';
 
-            // LocalStorage keys (you chose full keys → no KV namespace elsewhere)
-            this.STORAGE_COOKIE = '321chataddons.storageMode';
-            this.STORAGE_KEY_PREFIX = '321chataddons.';
-            this.DEBUG_COOKIE = '321chataddons.debug';
-            this.VERBOSE_COOKIE = '321chataddons.verbose';
-            this.DEBUG_MODE_KEY = '321chataddons.debugMode';
-            this.VERBOSE_MODE_KEY = '321chataddons.verboseMode';
-            this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
-            this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
-            this.HIDE_REPLIED_USERS_KEY = '321chataddons.hideRepliedUsers';
-            this.PREDEFINED_MESSAGES_KEY = 'predefinedMessages';
-            this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
-            this.USERS_KEY = '321chataddons.users';
+            this.STORAGE_KEY_PREFIX = '321chataddons';
+            this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
+            this.DEBUG_COOKIE = `${this.STORAGE_KEY_PREFIX}.debug`;
+            this.VERBOSE_COOKIE = `${this.STORAGE_KEY_PREFIX}.verbose`;
+            this.DEBUG_MODE_KEY = `${this.STORAGE_KEY_PREFIX}.debugMode`;
+            this.VERBOSE_MODE_KEY = `${this.STORAGE_KEY_PREFIX}.verboseMode`;
+            this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
+            this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
+            this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
+            this.USERS_KEY = `persist_${this.STORAGE_KEY_PREFIX}.users`;
+
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 
             /* ========= App State ========= */
@@ -554,11 +541,7 @@
             /* ========= Flags / Scheduling ========= */
             this._lastSendAt = 0;                 // throttle PM sending
 
-            /* ========= Observers & Listeners (refs only) ========= */
-            this._onResize = null;
-
             /* ========= Network Taps (originals) ========= */
-            this._origFetch = null;
             this._xhrOpen = null;
             this._xhrSend = null;
 
@@ -1440,10 +1423,6 @@
             document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
         }
 
-        _delCookie(name) {
-            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
-        }
-
         /* ---------- Mode: 'allow' | 'wipe' | 'block' ---------- */
         _readStorageMode() {
             const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
@@ -1460,15 +1439,16 @@
             return localStorage;
         }
 
-        /* ---------- Clear only our own keys (for 'wipe' on each load) ---------- */
         _clearOwnLocalStorage() {
-            console.warn(`CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED`);
-            const pref = this.STORAGE_KEY_PREFIX;
-            for (let i = localStorage.length - 1; i >= 0; i--) {
+            console.warn(
+                'CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED'
+            );
 
-                const k = localStorage.key(i) || '';
-                if (k.startsWith(pref)) localStorage.removeItem(k);
-            }
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith(this.STORAGE_KEY_PREFIX)) {
+                    localStorage.removeItem(key);
+                }
+            });
         }
 
         // ===== Refresh Users loop =====
@@ -1524,10 +1504,6 @@
                 clearInterval(this._clearEventsTimerId);
                 this._clearEventsTimerId = null;
             }
-        }
-
-        clearEventLogUI() {
-            if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
         }
 
         async refreshUserList() {
@@ -1603,10 +1579,6 @@
 
         randBetween(minMs, maxMs) {
             return Math.floor(minMs + Math.random() * (maxMs - minMs));
-        }
-
-        safeMatches(n, sel) {
-            return !!(n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(sel));
         }
 
         safeQuery(n, sel) {
@@ -3201,49 +3173,16 @@ Private send interception
             }
         }
 
-        _rebuildClearedBox({rebuild, clearBoxSelector}) {
-            // Find target box
-            const box = clearBoxSelector
-                ? this.qs(clearBoxSelector)
-                : null;
-
-            if (rebuild === 'received') {
-                // Rebuild the two subsections for Received
-                const target = box || this.ui?.receivedMessagesBox;
-                if (target) {
-                    target.innerHTML =
-                        '<div class="ca-log-subsection-unreplied-wrapper">' +
-                        '  <div class="ca-log-subsection-header">Not Replied</div>' +
-                        `  <div id="${this.sel.raw.log.unreplied}" class="${this.sel.raw.log.classes.ca_box_scrollable}"></div>` +
-                        '</div>' +
-                        '<div class="ca-log-subsection-replied-wrapper">' +
-                        '  <div class="ca-log-subsection-header">Replied</div>' +
-                        `  <div id="${this.sel.raw.log.replied}" class="${this.sel.raw.log.classes.ca_box_scrollable}"></div>` +
-                        '</div>';
-
-                    // Rebind subsection refs
-                    this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
-                    this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
-                }
-                return;
-            }
-
-            // Default: just clear the target box (auto-detect if not provided)
-            const targetBox = box
-                || (this.qs('.ca-log-box', (this.ui?.panel || document).querySelector('.ca-section-title')?.parentElement) || null);
-            if (targetBox) targetBox.innerHTML = '';
-        }
-
-        buildSvgIconString(className, svgInnerHTML) {
-            return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        buildSvgIconString(className, svgInnerHTML, small = true) {
+            return `<svg class="${className} ${small ? 'svg-small' : 'svg-large'}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             ${svgInnerHTML}
         </svg>`;
         }
 
-        renderSvgIconWithClass(className, svgInnerHTML) {
+        renderSvgIconWithClass(className, svgInnerHTML, small = true) {
             const wrapper = document.createElement('div');
 
-            wrapper.innerHTML = this.buildSvgIconString(className, svgInnerHTML);
+            wrapper.innerHTML = this.buildSvgIconString(className, svgInnerHTML, small);
 
             // return the <svg> element itself instead of the wrapper
             return wrapper.firstElementChild;
@@ -3266,7 +3205,7 @@ Private send interception
                    class="ca-dm-link ca-dm-right ca-log-action"
                    title="Broadcast message">
                   ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M8 4l12 8-12 8V4z"></path>`)}
+                `<path d="M8 4l12 8-12 8V4z"></path>`, false)}
                 </a>
             
                 <!-- SEND SPECIFIC: pijltje -->
@@ -3276,7 +3215,7 @@ Private send interception
                    class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
                    title="Send specific message">
                   ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M8 4l12 8-12 8V4z"></path>`)}
+                `<path d="M8 4l12 8-12 8V4z"></path>`, false)}
                 </a>
             
                 <!-- CLEAR LOGS: prullenbak -->
@@ -3285,11 +3224,13 @@ Private send interception
                    data-action="clear-all-logs"
                    class="ca-dm-link ca-dm-right ca-log-action"
                    title="Clear logs">
-                   ${this.buildSvgIconString("lucide lucide-trash-2",
-                `<polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                    <path d="M10 11v6"></path>
-                    <path d="M14 11v6"></path>`)}
+                    ${this.buildSvgIconString("lucide lucide-triangle-right",
+                `<g transform="translate(0,-1)">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+        </g>`, false)}
                 </a>
             
                 <!-- STORAGE TOGGLE: LS aan/uit -->
@@ -3376,7 +3317,7 @@ Private send interception
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
             <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
             <path d="M6 7l12 12"></path>
-            <path d="M18 7L6 19"></path>`);
+            <path d="M18 7L6 19"></path>`, false);
 
             } else if (mode === 'wipe') {
                 // wipe-on-load: database with trash
@@ -3391,14 +3332,14 @@ Private send interception
             <line x1="14" y1="10" x2="14" y2="8"></line>
             <line x1="9"  y1="13" x2="9"  y2="17"></line>
             <line x1="12" y1="13" x2="12" y2="17"></line>
-            <line x1="15" y1="13" x2="15" y2="17"></line>`);
+            <line x1="15" y1="13" x2="15" y2="17"></line>`, false);
             } else {
                 // allow = normal storage icon
                 title = 'Storage enabled (click to cycle: wipe / block)';
                 svgEl = this.renderSvgIconWithClass("lucide lucide-database",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
-            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>`);
+            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>`, false);
             }
 
             el.title = title;
@@ -4130,14 +4071,6 @@ Private send interception
             });
         }
 
-        // helper (place near other small helpers in App class if you like)
-        isCappedText_(htmlStr) {
-            if (!htmlStr) return false;
-            // strip tags, trim, then check for ... or single ellipsis char
-            const plain = String(htmlStr).replace(/<[^>]*>/g, '').trim();
-            return /(\.\.\.|…)$/.test(plain);
-        }
-
         // Detects visual truncation from CSS (works for single-line and multi-line clamps)
         isVisuallyTruncated_(el) {
             if (!el) {
@@ -4604,16 +4537,6 @@ Private send interception
             }
 
             this.scrollToBottom(this.ui.repliedMessageBox);
-        }
-
-        getLogEntryByUid(uid) {
-            // find the log entry
-            if (!uid) return;
-            const el = document.querySelector(`${this.sel.log.classes.ca_log_entry}[data-uid="${uid}"]`);
-            if (!el) {
-                console.error(`${this.sel.log.classes.ca_log_entry}[data-uid="${uid}"] not found`);
-            }
-            return el;
         }
 
         destroy() {

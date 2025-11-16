@@ -1127,6 +1127,16 @@
     cursor: pointer;
 }
 
+svg.svg-small {
+    width: 16px;
+    height: 16px;
+}
+
+svg.svg-large {
+    width: 25px;
+    height: 25px;
+}
+
 #private_input_box {
     display: block;
 }
