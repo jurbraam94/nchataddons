@@ -497,6 +497,7 @@
             this.FEMALE_CODE = '2';
 
             this.STORAGE_KEY_PREFIX = '321chataddons';
+            this.PERSIST_STORAGE_KEY_PREFIX = `persist_${this.STORAGE_KEY_PREFIX}`;
             this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
             this.DEBUG_COOKIE = `${this.STORAGE_KEY_PREFIX}.debug`;
             this.VERBOSE_COOKIE = `${this.STORAGE_KEY_PREFIX}.verbose`;
@@ -505,7 +506,8 @@
             this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
             this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
             this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
-            this.USERS_KEY = `persist_${this.STORAGE_KEY_PREFIX}.users`;
+            this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
+            this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
 
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
 

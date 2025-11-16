@@ -400,6 +400,16 @@
     pointer-events: none; /* never intercept clicks */
 }
 
+#main_wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#content, #message_content {
+    border-radius: 0;
+}
+
 /* Already messaged checkmark (non-interactive) */
 .user_item .ca-sent-chip.ca-sent-chip-all-read {
     background: #22c55e;
