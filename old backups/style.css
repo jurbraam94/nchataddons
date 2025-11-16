@@ -11,6 +11,16 @@
     min-width: 450px;
 }
 
+.ca-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    background: #f7fbff;
+    border-bottom: 1px solid #dbeafe;
+    font-weight: 700;
+    font-size: 14px;
+}
+
 #right-panel .ca-body {
     padding-left: 12px;
     padding-right: 12px;
@@ -29,6 +39,11 @@
     font-size: 13px;
     color: #ffffff;
     justify-content: space-between;
+}
+
+.ca-section-title .clear-logs {
+    font-size: 12px;
+    color: #9E9E9E;
 }
 
 .ca-row {
@@ -63,6 +78,20 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 6px;
+}
+
+.ca-nav-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ca-nav-btn:hover {
+    background: #111827;
 }
 
 /* Draggable popup */
@@ -298,6 +327,14 @@
 .ca-btn-slim {
     padding: 6px 12px;
     font-weight: 600;
+}
+
+/* Extra small button for compact actions like Clear */
+.ca-btn-xs {
+    padding: 4px 8px;
+    font-weight: 600;
+    font-size: 12px;
+    border-radius: 8px;
 }
 
 .ca-status {
@@ -570,6 +607,12 @@
     flex: 0 0 auto;
 }
 
+.ca-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
 /* Presence log section stays at bottom with fixed height */
 .ca-section.ca-log-section {
     margin-top: 0;
@@ -578,6 +621,42 @@
 
 .ca-hidden {
     display: none !important;
+}
+
+.ca-log-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+}
+
+.ca-log-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* Bottom placement variant to prevent layout jumps */
+.ca-log-controls-bottom {
+    margin-top: 4px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
+.ca-log-controls input[type="checkbox"] {
+    accent-color: #93c5fd;
+}
+
+.ca-log-ctl {
+    font-size: 12px;
+    color: #e5e7eb;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
 }
 
 .ca-log-box {
@@ -619,6 +698,14 @@
     letter-spacing: 0.5px;
     padding: 4px 0 2px 0;
     margin-top: 0;
+    flex-shrink: 0;
+}
+
+.ca-log-divider {
+    height: 1px;
+    background: #334155;
+    margin: 0;
+    border: 0;
     flex-shrink: 0;
 }
 
@@ -691,6 +778,23 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* ========================================
+ * Log Box Scrollbar Visibility
+ * ======================================== */
+
+/* Ensure log boxes show scrollbars */
+.ca-log-box,
+.ca-log-box-sent,
+.ca-log-box-received,
+.ca-log-box-presence,
+#ca-log-box-sent,
+#ca-log-box-received,
+#ca-log-box-presence,
+#ca-log-box-other { /* NEW */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
 
 /* Presence log box within fixed-height section - show exactly 5 lines */
 .ca-log-section .ca-log-box {
@@ -735,6 +839,25 @@
     font-weight: 700;
 }
 
+/* Collapsible sent message text - one line by default */
+.ca-log-send-ok .ca-log-text,
+.ca-log-send-fail .ca-log-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+/* Expanded state - show full message */
+.ca-log-send-ok.ca-expanded .ca-log-text,
+.ca-log-send-fail.ca-expanded .ca-log-text {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
 /* Expand/collapse indicator */
 .ca-expand-indicator {
     flex-shrink: 0;
@@ -770,6 +893,30 @@
     display: inline-block;
 }
 
+/* Replied indicator for received messages - clickable to open chat */
+.ca-replied-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.ca-replied-mark:hover {
+    background: rgba(34, 197, 94, 0.4);
+    color: #ffffff;
+    text-decoration: none;
+}
+
 /* Color coding */
 .ca-log-dot-green {
     color: #15e315
@@ -785,10 +932,143 @@
     color: #818183;
 }
 
+/* blue */
+
+/* Badge for broadcast entries */
+.ca-badge-bc {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    background: #1e3a8a;
+    color: #bfdbfe;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* Visibility toggles */
+.ca-log-box.ca-hide-presence .ca-log-login,
+.ca-log-box.ca-hide-presence .ca-log-logout {
+    display: none !important;
+}
+
+.ca-log-box.ca-hide-messages .ca-log-send-ok,
+.ca-log-box.ca-hide-messages .ca-log-send-fail {
+    display: none !important;
+}
+
+/* === End of existing styles === */
+
+/* Private notifications list */
+.ca-priv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.ca-priv-empty {
+    padding: 8px;
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+}
+
+.ca-priv-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #f5f5f5;
+    transition: background 0.2s;
+}
+
+.ca-priv-row:hover {
+    background: #e8e8e8;
+}
+
+.ca-priv-row.ca-priv-unread {
+    background: #fff3cd;
+    font-weight: 600;
+}
+
+.ca-priv-row.ca-priv-unread:hover {
+    background: #ffe8a1;
+}
+
+.ca-priv-name {
+    flex: 1;
+    color: #333;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.ca-priv-name:hover {
+    text-decoration: underline;
+}
+
+.ca-priv-badge {
+    background: #ff5722;
+    color: white;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: bold;
+    min-width: 18px;
+    text-align: center;
+}
+
+.ca-priv-mark-read {
+    color: #999;
+    text-decoration: none;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: all 0.2s;
+    margin-left: auto;
+}
+
+.ca-priv-mark-read:hover {
+    color: #f44336;
+    background: #ffebee;
+}
+
+/* Header placement for log controls */
+.ca-log-controls-header {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 @media (max-width: 640px) {
     .ca-log-controls-header .ca-log-ctl {
         font-size: 11px;
     }
+
+    .ca-log-controls-header .ca-btn-xs {
+        padding: 3px 7px;
+        font-size: 11px;
+    }
+}
+
+
+/* === Specific modal & UI tweaks (added by ChatGPT on 2025-10-26) === */
+.ca-nav-btn-secondary {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ca-nav-btn-secondary:hover {
+    background: #111827;
 }
 
 /* Ensure popups are hidden by default but show when JS sets display:block */
@@ -871,6 +1151,11 @@ svg.svg-large {
     text-decoration: none;
 }
 
+
+/*#private_center #private_box .pcontent {*/
+/*    height: calc(100% - 85px) !important;*/
+/*}*/
+
 /* === Menu-side mini panel ======================================== */
 .ca-panel.ca-mini {
     width: 100%;
@@ -952,9 +1237,24 @@ svg.svg-large {
     margin: 0; /* prevent unexpected line breaks/offsets */
 }
 
+/* UNUSED ID BLOCK START
+
+
+#my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #chat_left, #chat_right, #private_content {
+    height: 100% !important;
+}
+UNUSED ID BLOCK END */
+
 #show_private {
     bottom: unset;
     position: relative;
+}
+
+#private_center, #private_menu {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    top: 0;
 }
 
 #private_menu.float_menu {
@@ -987,6 +1287,13 @@ svg.svg-large {
     text-align: center;
 }
 
+.ca-btn-icon {
+    padding: 0 4px;
+    line-height: 1;
+    font-size: 11px;
+    cursor: pointer;
+}
+
 #ca-predefined-messages-list {
     list-style: none;
     padding: 0;
@@ -1012,11 +1319,54 @@ svg.svg-large {
     gap: 4px;
 }
 
+/* Tiny icon buttons for edit/delete */
+.ca-predefined-messages-edit,
+.ca-predefined-messages-delete {
+    padding: 2px 5px;
+    font-size: 12px;
+    line-height: 1;
+    min-width: 0;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #e5e7eb;
+}
+
+.ca-predefined-messages-edit:hover {
+    color: #60a5fa; /* soft blue */
+}
+
+.ca-predefined-messages-delete:hover {
+    color: #f87171; /* soft red */
+}
+
 /* Buttons row stays right-aligned */
 .ca-predefined-messages-actions {
     display: flex;
     gap: 4px;
     margin-left: auto;
+}
+
+/* Generic small action links for predefined manager rows */
+.ca-predefined-messages-link {
+    font-size: 11px;
+    color: #60a5fa; /* Tailwind-style soft blue */
+    text-decoration: none;
+    margin-left: 6px;
+    cursor: pointer;
+}
+
+.ca-predefined-messages-link:hover {
+    text-decoration: underline;
+}
+
+/* Optional: make delete red-ish */
+.ca-predefined-messages-delete {
+    color: #f87171; /* soft red */
+}
+
+.ca-predefined-messages-delete:hover {
+    text-decoration: underline;
 }
 
 
@@ -1031,6 +1381,16 @@ svg.svg-large {
     font-size: 11px;
     color: #666;
 }
+
+/* UNUSED ID BLOCK START
+
+
+#ca-predefined-messages-select {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0;
+}
+UNUSED ID BLOCK END */
 
 .ca-predefined-messages-select {
     background: linear-gradient(#192231, #0e1420);
@@ -1065,6 +1425,14 @@ svg.svg-large {
     gap: 2px;
 }
 
+/* Generic tiny button style */
+.ca-btn-icon {
+    padding: 1px 5px;
+    font-size: 11px;
+    line-height: 1.2;
+    min-width: auto;
+}
+
 /* If ca-btn-slim exists and is too large, tighten it here */
 .ca-btn-slim {
     padding: 2px 6px;
@@ -1092,6 +1460,16 @@ svg.svg-large {
 #chat_toping {
     display: none;
 }
+
+/* UNUSED ID BLOCK START
+
+
+#main_wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+UNUSED ID BLOCK END */
 
 #rlist_open {
     margin-left: auto;
@@ -1124,6 +1502,14 @@ svg.svg-large {
     row-gap: 10px;
     flex-direction: column;
 }
+
+/* UNUSED ID BLOCK START
+
+
+/* #ca-managed-chat-right-data {
+    min-height: 0;
+}
+UNUSED ID BLOCK END */
 
 #ca-managed-wrapper, #ca-host-users-wrapper {
     overflow-y: auto;
