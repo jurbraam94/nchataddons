@@ -1122,6 +1122,10 @@
     cursor: pointer;
 }
 
+.ca-log-action.ca-log-action-filled svg {
+    fill: #51b9a6;
+}
+
 .ca-log-action:hover {
     color: #f87171; /* soft red on hover */
     text-decoration: none;
@@ -1254,9 +1258,19 @@
     padding: 3px;
 }
 
-#ca-predefined-messages-wrapper {
-    padding: 4px 6px;
+.ca-btn-icon {
+    padding: 0 4px;
+    line-height: 1;
     font-size: 11px;
+    cursor: pointer;
+}
+
+#ca-predefined-messages-list {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0;
+    max-height: 600px;
+    overflow: auto;
 }
 
 /* Wrapper for each predefined item */
@@ -1264,7 +1278,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 4px 0;
+    padding: 10px 0;
     border-bottom: 1px solid #eee;
 }
 
@@ -1275,6 +1289,57 @@
     align-items: center;
     gap: 4px;
 }
+
+/* Tiny icon buttons for edit/delete */
+.ca-predefined-messages-edit,
+.ca-predefined-messages-delete {
+    padding: 2px 5px;
+    font-size: 12px;
+    line-height: 1;
+    min-width: 0;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #e5e7eb;
+}
+
+.ca-predefined-messages-edit:hover {
+    color: #60a5fa; /* soft blue */
+}
+
+.ca-predefined-messages-delete:hover {
+    color: #f87171; /* soft red */
+}
+
+/* Buttons row stays right-aligned */
+.ca-predefined-messages-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+/* Generic small action links for predefined manager rows */
+.ca-predefined-messages-link {
+    font-size: 11px;
+    color: #60a5fa; /* Tailwind-style soft blue */
+    text-decoration: none;
+    margin-left: 6px;
+    cursor: pointer;
+}
+
+.ca-predefined-messages-link:hover {
+    text-decoration: underline;
+}
+
+/* Optional: make delete red-ish */
+.ca-predefined-messages-delete {
+    color: #f87171; /* soft red */
+}
+
+.ca-predefined-messages-delete:hover {
+    text-decoration: underline;
+}
+
 
 /* Button row container */
 .ca-predefined-messages-actions {
@@ -1288,13 +1353,58 @@
     color: #666;
 }
 
-/* Optional: make list scroll smoother */
-#ca-predefined-messages-list {
+#ca-predefined-messages-select {
     list-style: none;
     padding: 0;
     margin: 6px 0 0;
 }
 
+.ca-predefined-messages-select {
+    background: linear-gradient(#192231, #0e1420);
+    color: #e5e7eb;
+    border: 1px solid #374151;
+    max-width: 220px;
+    font-size: 11px;
+    padding: 1px 3px;
+}
+
+.ca-predefined-messages-select option {
+    background: #192231;
+    color: #e5e7eb;
+}
+
+/* Top predefined bar */
+.ca-predefined-messages-bar {
+    padding: 3px 6px;
+    font-size: 11px;
+}
+
+.ca-predefined-messages-bar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+/* Actions glued to the right */
+.ca-predefined-messages-bar-actions {
+    display: flex;
+    gap: 2px;
+}
+
+/* Generic tiny button style */
+.ca-btn-icon {
+    padding: 1px 5px;
+    font-size: 11px;
+    line-height: 1.2;
+    min-width: auto;
+}
+
+/* If ca-btn-slim exists and is too large, tighten it here */
+.ca-btn-slim {
+    padding: 2px 6px;
+    font-size: 11px;
+}
 
 #wrap_footer {
     position: relative;

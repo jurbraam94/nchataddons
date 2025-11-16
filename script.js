@@ -813,6 +813,7 @@
             this.createManagedUsersContainer();
             this.addSpecificNavButton();
             this.createPredefinedMessagesSection();
+            this.installPredefinedGlobalHandlers();
             this._bindStaticRefs();
             this._installStorageToggleButton();
             this._attachLogClickHandlers();  // Attach handlers AFTER refs are bound
@@ -904,36 +905,54 @@
                 const actions = document.createElement('div');
                 actions.className = 'ca-predefined-messages-actions';
 
-                const editBtn = document.createElement('button');
-                editBtn.type = 'button';
-                editBtn.textContent = 'Edit';
-                editBtn.className = 'ca-btn ca-btn-slim';
-                editBtn.addEventListener('click', () => {
+                // EDIT (pencil)
+                const editLink = document.createElement('a');
+                editLink.href = "#";
+                editLink.className = 'ca-log-action ca-edit-link';
+                editLink.title = "Edit template";
+                editLink.innerHTML = `
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                       width="16" height="16" focusable="false" aria-hidden="true"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                       stroke-linejoin="round" class="lucide lucide-pencil">
+                    <path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>
+                  </svg>
+                `;
+
+                editLink.addEventListener('click', (ev) => {
+                    ev.preventDefault();
                     this.predefinedEditIndex = index;
                     indexInput.value = String(index);
                     subjectInput.value = item.subject || '';
                     textInput.value = item.text || '';
                 });
 
-                const delBtn = document.createElement('button');
-                delBtn.type = 'button';
-                delBtn.textContent = 'Delete';
-                delBtn.className = 'ca-btn ca-btn-slim';
-                delBtn.addEventListener('click', () => {
+                const deleteLink = document.createElement('a');
+                deleteLink.href = "#";
+                deleteLink.className = 'ca-log-action ca-del-link';
+                deleteLink.title = "Delete template";
+                deleteLink.innerHTML = `
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                       width="16" height="16" focusable="false" aria-hidden="true"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                       stroke-linejoin="round" class="lucide lucide-x">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                `;
+
+                deleteLink.addEventListener('click', (ev) => {
+                    ev.preventDefault();
                     const current = this._getPredefinedMessages().slice();
-                    if (index < 0 || index >= current.length) {
-                        console.error('[CA] delete predefined: index out of range', index);
-                        return;
-                    }
                     current.splice(index, 1);
                     this._savePredefinedMessages(current);
                     this._renderPredefinedList();
-                    this._refreshAllPredefinedSelects();   // ✅ EXACT PLACE
-
+                    this._refreshAllPredefinedSelects();
                 });
 
-                actions.appendChild(editBtn);
-                actions.appendChild(delBtn);
+
+                actions.appendChild(editLink);
+                actions.appendChild(deleteLink);
 
                 titleRow.appendChild(title);
                 titleRow.appendChild(actions);
@@ -971,7 +990,7 @@
 
 // Call this whenever templates change, so ALL dropdowns stay in sync
         _refreshAllPredefinedSelects() {
-            const selects = document.querySelectorAll('.ca-predef-select');
+            const selects = document.querySelectorAll('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
         }
 
@@ -1009,21 +1028,9 @@
             box.focus();
         }
 
-// Convenience for the private input
-        _appendPredefinedToMessageContent(template) {
-            const box =
-                this.qs('#private_input_box #priv_input') ||
-                document.getElementById('message_content');
-
-            this._appendPredefinedToBox(template, box);
-        }
-
-
         createPredefinedMessagesSection() {
             const boxEl =
-                document.getElementById('private_box') ||
-                this.qs('#private_top') ||
-                this.qs('#private_center');
+                document.getElementById('private_box');
 
             if (!boxEl) {
                 console.warn('[CA] createPredefinedMessagesSection: private area not found');
@@ -1032,31 +1039,61 @@
 
             this.createPredefinedBar({
                 container: boxEl,
-                selectId: 'ca-predef-select-private',
-                manageId: 'ca-predef-manage-private',
-                getTargetBox: () =>
-                    this.qs('#private_input_box #priv_input') ||
-                    document.getElementById('message_content')
+                selectId: 'ca-predefined-messages-select-private',
+                manageId: 'ca-predefined-messages-manage-private',
+                targetSelector: '#private_input_box #priv_input'
             });
         }
 
-
         /**
-         * Create a predefined messages bar in a given container.
-         * Options:
-         *   - container: DOM element where the bar is inserted at the top
-         *   - selectId: unique ID for the <select>
-         *   - manageId: unique ID for the Manage button
-         *   - getTargetBox: () => textarea/input element to append to
+         * Apply the currently selected predefined template for a given <select>.
+         * Returns true if something was inserted, false otherwise.
          */
+        _applyPredefinedFromSelect(selectEl) {
+            if (!selectEl) {
+                console.error('[CA] _applyPredefinedFromSelect: selectEl is missing');
+                return false;
+            }
+
+            const idxStr = selectEl.value;
+            if (!idxStr) {
+                console.warn('[CA] _applyPredefinedFromSelect: nothing selected');
+                return false;
+            }
+
+            const idx = Number(idxStr);
+            const list = this._getPredefinedMessages();
+            if (Number.isNaN(idx) || idx < 0 || idx >= list.length) {
+                console.warn('[CA] _applyPredefinedFromSelect: invalid index', idxStr);
+                return false;
+            }
+
+            const template = list[idx];
+            const targetSelector = selectEl.dataset.predefTarget;
+            if (!targetSelector) {
+                console.error('[CA] _applyPredefinedFromSelect: missing data-predefined-messages-target');
+                return false;
+            }
+
+            const box = this.qs(targetSelector) || document.querySelector(targetSelector);
+            if (!box) {
+                console.error('[CA] _applyPredefinedFromSelect: target not found for selector:', targetSelector);
+                return false;
+            }
+
+            this._appendPredefinedToBox(template, box);
+            return true;
+        }
+
+
         createPredefinedBar(options) {
-            const {container, selectId, manageId, getTargetBox} = options || {};
+            const {container, selectId, manageId, targetSelector, appendAtStart} = options || {};
 
             if (!container) {
                 console.error('[CA] createPredefinedBar: container is missing');
                 return;
             }
-            if (!selectId || !manageId || typeof getTargetBox !== 'function') {
+            if (!selectId || !manageId || !targetSelector) {
                 console.error('[CA] createPredefinedBar: invalid options', options);
                 return;
             }
@@ -1067,21 +1104,56 @@
             }
 
             const wrapper = document.createElement('div');
-            wrapper.className = 'ca-predef-bar';
+            wrapper.className = 'ca-predefined-messages-bar';
 
-            wrapper.innerHTML =
-                '<div class="ca-predef-bar-inner">' +
-                `  <label class="ca-predef-label">` +
-                '    <span>Predefined:</span>' +
-                `    <select id="${selectId}" class="ca-predef-select">` +
-                '      <option value="">Select predefined message…</option>' +
-                '    </select>' +
-                '  </label>' +
-                `  <button type="button" id="${manageId}" class="ca-btn ca-btn-slim">Manage</button>` +
-                '</div>';
+            wrapper.innerHTML = `
+                <div class="ca-predefined-messages-bar-inner">
+                        <select id="${selectId}"
+                                class="ca-predefined-messages-select"
+                                data-predefined-messages-target="${targetSelector}">
+                            <option value="">Select predefined message…</option>
+                        </select>
+                
+                    <div class="ca-predefined-messages-bar-actions">
+                
+                        <!-- SEND AGAIN -->
+                        <a href="#"
+                           id="${selectId}-resend"
+                           class="ca-log-action ca-predefined-messages-resend ca-log-action-filled"
+                           title="Insert again">
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 viewBox="0 0 24 24"
+                                 width="16" height="16"
+                                stroke="none"
 
-            // Insert at top of container
-            if (container.firstChild) {
+                                 class="lucide lucide-triangle-right">
+                                <path d="M8 4l12 8-12 8V4z"></path>
+                            </svg>
+                        </a>
+                
+                        <!-- MANAGE -->
+                        <a href="#"
+                           id="${manageId}"
+                           class="ca-log-action ca-predefined-messages-manage"
+                           title="Manage templates">
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 viewBox="0 0 24 24"
+                                 width="16" height="16"
+                                 stroke="currentColor"
+                                 stroke-width="2"
+                                 stroke-linecap="round"
+                                 stroke-linejoin="round"
+                                 class="lucide lucide-pencil">
+                                <path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>
+                            </svg>
+                        </a>
+                
+                    </div>
+                </div>
+                `;
+
+
+            if (appendAtStart) {
                 container.insertBefore(wrapper, container.firstChild);
             } else {
                 container.appendChild(wrapper);
@@ -1095,36 +1167,71 @@
                 return;
             }
 
-            // Fill the dropdown
+            // Mark where this select should insert text
+            selectEl.dataset.predefTarget = targetSelector;
+
+            // Fill options
             this._fillPredefinedSelect(selectEl);
+        }
 
-            // When selecting a template, append to the correct box
-            selectEl.addEventListener('change', (e) => {
-                const idxStr = e.target.value;
-                if (!idxStr) return;
+        installPredefinedGlobalHandlers() {
+            if (this._predefHandlersInstalled) {
+                return;
+            }
+            this._predefHandlersInstalled = true;
 
-                const idx = Number(idxStr);
-                const list = this._getPredefinedMessages();
-                if (Number.isNaN(idx) || idx < 0 || idx >= list.length) {
-                    console.warn('[CA] Invalid predefined index selected:', idxStr);
-                    e.target.value = '';
+            document.body.addEventListener('change', (e) => {
+                const select = e.target.closest('.ca-predefined-messages-select');
+                if (!select) {
                     return;
                 }
 
-                const template = list[idx];
-                const box = getTargetBox();
-
-                this._appendPredefinedToBox(template, box);
-
-                // Always reset so choosing the same one again works
-                e.target.value = '';
+                this._applyPredefinedFromSelect(select);
             });
 
-            // Manage button → open the popup
-            manageBtn.addEventListener('click', () => {
-                this.openPredefinedPopup();
+            // Handle ALL "resend" (▶) buttons
+            document.body.addEventListener('click', (e) => {
+                const btn = e.target.closest('.ca-predefined-messages-resend');
+                if (!btn) return;
+
+                const wrapper = btn.closest('.ca-predefined-messages-bar-inner');
+                if (!wrapper) return;
+
+                const select = wrapper.querySelector('.ca-predefined-messages-select');
+                if (!select) return;
+
+                const ok = this._applyPredefinedFromSelect(select);
+                if (!ok) {
+                    console.warn('[CA] Predefined resend: nothing to resend (no selection?)');
+                    return;
+                }
+
+                console.log('[CA] Predefined resend done from', select.id || '(no id)');
+            });
+
+
+            // Handle ALL "Manage" buttons
+            document.body.addEventListener('click', (e) => {
+                const btn = e.target.closest('.ca-predefined-messages-manage');
+                if (!btn) {
+                    return;
+                }
+
+                console.log('[CA] Predefined Manage clicked:', btn.id || '(no id)');
+
+                if (typeof this.openPredefinedPopup === 'function') {
+                    this.openPredefinedPopup();
+                } else if (typeof this.createPredefinedPopup === 'function') {
+                    const pop = this.createPredefinedPopup();
+                    if (pop) {
+                        pop.style.display = 'block';
+                    }
+                } else {
+                    console.error('[CA] No predefined popup open method defined');
+                }
             });
         }
+
 
         // ---- Predefined messages storage helpers ----
         _getPredefinedMessages() {
@@ -1180,7 +1287,7 @@
                 '    </div>' +
                 '  </form>' +
                 '  <hr>' +
-                '  <ul id="ca-predefined-messages-list" style="list-style:none; padding:0; margin:6px 0 0; max-height:220px; overflow:auto;"></ul>' +
+                '  <ul id="ca-predefined-messages-list"></ul>' +
                 '</div>';
 
             document.body.appendChild(pop);
@@ -3586,15 +3693,17 @@ Private send interception
 
             document.body.appendChild(pop);
 
-            // 🔹 NEW: add predefined bar inside the broadcast body
             const body = pop.querySelector('.ca-pop-body');
             if (body) {
                 this.createPredefinedBar({
                     container: body,
-                    selectId: 'ca-predef-select-broadcast',
-                    manageId: 'ca-predef-manage-broadcast',
-                    getTargetBox: () => pop.querySelector('#ca-bc-msg')
+                    selectId: 'ca-predefined-messages-select-broadcast',
+                    manageId: 'ca-predefined-messages-manage-broadcast',
+                    targetSelector: '#ca-bc-msg',
+                    appendAtStart: true
                 });
+            } else {
+                console.error('[CA] createBroadcastPopup: .ca-pop-body not found');
             }
 
             const closeBtn = pop.querySelector('#ca-bc-pop-close');
