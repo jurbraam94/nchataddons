@@ -808,14 +808,13 @@
 
             // build panel + wire refs + handlers
             this.buildPanel();
+            this._updateStorageToggleUi();
             this.buildMenuLogPanel();
             // Create our managed container for female users
             this.createManagedUsersContainer();
-            this.addSpecificNavButton();
             this.createPredefinedMessagesSection();
             this._bindStaticRefs();
-            this._installStorageToggleButton();
-            this._attachLogClickHandlers();  // Attach handlers AFTER refs are bound
+            this._attachLogClickHandlers();  // Attfspecach handlers AFTER refs are bound
 
             if (document.body) {
                 const main_wrapper = document.createElement('div');
@@ -846,8 +845,6 @@
                 if (this.ui.sendPrivateMessageUser) this.Drafts.bindInput(this.ui.sendPrivateMessageUser, this.STORAGE_PREFIX + 'specificUsername');
             }
 
-            this.wireSpecificSendButton();   // enable the “Send” button in the panel
-            this._wirePanelNav();
             this._wireDebugCheckbox();
             this._wireVerboseCheckbox();
             this._wireLogClear();
@@ -910,14 +907,8 @@
                 editLink.href = "#";
                 editLink.className = 'ca-log-action ca-edit-link';
                 editLink.title = "Edit template";
-                editLink.innerHTML = `
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                       width="16" height="16" focusable="false" aria-hidden="true"
-                       stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                       stroke-linejoin="round" class="lucide lucide-pencil">
-                    <path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>
-                  </svg>
-                `;
+                editLink.appendChild(this.renderSvgIconWithClass("lucide lucide-lucide-pencil",
+                    `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`));
 
                 editLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
@@ -931,15 +922,9 @@
                 deleteLink.href = "#";
                 deleteLink.className = 'ca-log-action ca-del-link';
                 deleteLink.title = "Delete template";
-                deleteLink.innerHTML = `
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                       width="16" height="16" focusable="false" aria-hidden="true"
-                       stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                       stroke-linejoin="round" class="lucide lucide-x">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                `;
+                deleteLink.appendChild(this.renderSvgIconWithClass("lucide lucide-x",
+                    ` <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>`));
 
                 deleteLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
@@ -949,7 +934,6 @@
                     this._renderPredefinedList();
                     this._refreshAllPredefinedSelects();
                 });
-
 
                 actions.appendChild(editLink);
                 actions.appendChild(deleteLink);
@@ -1122,13 +1106,8 @@
                        id="${messageBarName}-resend"
                        class="ca-log-action ca-log-action-filled ca-predefined-messages-resend"
                        title="Insert again">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                             viewBox="0 0 24 24"
-                             width="16" height="16"
-                             fill="currentColor"
-                             class="lucide lucide-triangle-right">
-                            <path d="M8 4l12 8-12 8V4z"></path>
-                        </svg>
+                       ${this.buildSvgIconString("lucide lucide-triangle-right",
+                `<path d="M8 4l12 8-12 8V4z"></path>`)}
                     </a>
             
                     <!-- ADD NEW FROM CURRENT TEXT -->
@@ -1136,17 +1115,9 @@
                        id="${messageBarName}-add"
                        class="ca-log-action ca-predefined-messages-add"
                        title="Save current text as template">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                             viewBox="0 0 24 24"
-                             width="16" height="16"
-                             stroke="currentColor"
-                             stroke-width="2"
-                             stroke-linecap="round"
-                             stroke-linejoin="round"
-                             class="lucide lucide-plus">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
+                       ${this.buildSvgIconString("lucide lucide-lucide-plus",
+                `<line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>`)}
                     </a>
             
                     <!-- MANAGE -->
@@ -1154,16 +1125,8 @@
                        id="${messageBarName}-manage"
                        class="ca-log-action ca-predefined-messages-manage"
                        title="Manage templates">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                             viewBox="0 0 24 24"
-                             width="16" height="16"
-                             stroke="currentColor"
-                             stroke-width="2"
-                             stroke-linecap="round"
-                             stroke-linejoin="round"
-                             class="lucide lucide-pencil">
-                            <path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>
-                        </svg>
+                       ${this.buildSvgIconString("lucide lucide-pencil",
+                `<path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>`)}
                     </a>
             
                 </div>
@@ -1506,36 +1469,6 @@
                 const k = localStorage.key(i) || '';
                 if (k.startsWith(pref)) localStorage.removeItem(k);
             }
-        }
-
-        /* ---------- UI: storage toggle button ---------- */
-        _installStorageToggleButton() {
-            const nav = this.qs('.ca-nav');
-            if (!nav || nav._caStorageBtnWired) return;
-
-            const btn = document.createElement('button');
-            btn.id = 'ca-storage-toggle';
-            btn.className = 'ca-nav-btn ca-nav-btn-secondary';
-            const render = () => {
-                btn.textContent = this.NO_LS_MODE === 'allow' ? 'Storage: Allow'
-                    : this.NO_LS_MODE === 'wipe' ? 'Storage: Wipe'
-                        : 'Storage: Block';
-                btn.title = 'Click to cycle between Allow → Wipe on load → Block writes';
-            };
-            btn.addEventListener('click', () => {
-                this.NO_LS_MODE = (this.NO_LS_MODE === 'allow') ? 'wipe'
-                    : (this.NO_LS_MODE === 'wipe') ? 'block'
-                        : 'allow';
-                this._writeStorageMode(this.NO_LS_MODE);
-                // Rebind Store to new backend for 'block'/'allow' immediately
-                this.Store = new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
-                render();
-                this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
-            });
-
-            render();
-            nav.appendChild(btn);
-            nav._caStorageBtnWired = true;
         }
 
         // ===== Refresh Users loop =====
@@ -2372,43 +2305,6 @@ Private send interception
                     this._lastSendAt = Date.now();
                     return r;
                 });
-        }
-
-        wireSpecificSendButton() {
-            if (!this.ui.sendPrivateMessageButton || this.ui.sendPrivateMessageButton._wired) return;
-            this.ui.sendPrivateMessageButton._wired = true;
-
-            this.ui.sendPrivateMessageButton.addEventListener('click', async () => {
-                const sendPrivateMessageUser = String(this.ui.sendPrivateMessageUser?.value || '').trim();
-                const sendPrivateMessageText = String(this.ui.sendPrivateMessageText?.value || '').trim();
-
-                if (!sendPrivateMessageText) {
-                    return;
-                }
-                if (!sendPrivateMessageUser) {
-                    return;
-                }
-
-                // try local, then remote search
-                let candidates = [];
-                if (this.UserStore?.getOrFetchByName) {
-                    candidates = await this.UserStore.getOrFetchByName(sendPrivateMessageUser);
-                }
-
-                if (!Array.isArray(candidates) || candidates.length === 0) {
-                    return;
-                }
-
-                const target = candidates[0]; // first exact match
-
-                this.ui.sendPrivateMessageButton.disabled = true;
-                const sendPrivateMessageResponse = await this.sendWithThrottle(target.uid, sendPrivateMessageText);
-                if (sendPrivateMessageResponse.ok) {
-                    this.logEventLine(`Sent to ${target.name || target.uid}.`)
-                } else {
-                    this.logEventLine(`Failed (HTTP ${sendPrivateMessageResponse?.status || 0}).`);
-                }
-            });
         }
 
         /* ===================== BROADCAST (unified) ===================== */
@@ -3338,26 +3234,82 @@ Private send interception
             if (targetBox) targetBox.innerHTML = '';
         }
 
+        buildSvgIconString(className, svgInnerHTML) {
+            return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            ${svgInnerHTML}
+        </svg>`;
+        }
+
+        renderSvgIconWithClass(className, svgInnerHTML) {
+            const wrapper = document.createElement('div');
+
+            wrapper.innerHTML = this.buildSvgIconString(className, svgInnerHTML);
+
+            // return the <svg> element itself instead of the wrapper
+            return wrapper.firstElementChild;
+        }
 
         buildPanel() {
             const h = document.createElement('section');
             h.id = this.sel.raw.rightPanel;
             h.classList.add('ca-panel');
+            h.id = this.sel.raw.rightPanel;
+            h.classList.add('ca-panel');
             h.innerHTML = `
-              <div class="ca-body">
-                <div class="ca-nav">
-                  <button id="ca-nav-bc" class="ca-nav-btn" type="button">Broadcast</button>
-                  <button id="${this.sel.raw.log.clear}" class="ca-btn ca-btn-xs" type="button">Clear</button>
-                  <label class="ca-debug-toggle" title="Enable debug logging">
-                    <input type="checkbox" id="ca-debug-checkbox">
-                    <span>Debug</span>
-                  </label>
-                  <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
-                    <input type="checkbox" id="ca-verbose-checkbox">
-                    <span>Verbose</span>
-                  </label>
-                </div>
+             <div class="ca-body">
+              <div class="ca-nav">
             
+                <!-- BROADCAST: megafoon -->
+                <a id="ca-nav-bc"
+                   data-action="broadcast"
+                   href="#"
+                   class="ca-dm-link ca-dm-right ca-log-action"
+                   title="Broadcast message">
+                  ${this.buildSvgIconString("lucide lucide-triangle-right",
+                `<path d="M8 4l12 8-12 8V4z"></path>`)}
+                </a>
+            
+                <!-- SEND SPECIFIC: pijltje -->
+                <a id="ca-nav-specific"
+                   href="#"
+                   data-action="send-message"
+                   class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
+                   title="Send specific message">
+                  ${this.buildSvgIconString("lucide lucide-triangle-right",
+                `<path d="M8 4l12 8-12 8V4z"></path>`)}
+                </a>
+            
+                <!-- CLEAR LOGS: prullenbak -->
+                <a id="${this.sel.raw.log.clear}"
+                   href="#"
+                   data-action="clear-all-logs"
+                   class="ca-dm-link ca-dm-right ca-log-action"
+                   title="Clear logs">
+                   ${this.buildSvgIconString("lucide lucide-trash-2",
+                `<polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>`)}
+                </a>
+            
+                <!-- STORAGE TOGGLE: LS aan/uit -->
+                <a id="ca-nav-storage-toggle"
+                   href="#"
+                   class="ca-dm-link ca-dm-right ca-log-action"
+                   data-action="storage-toggle"
+                   title="">
+                </a>
+            
+                <label class="ca-debug-toggle" title="Enable debug logging">
+                  <input type="checkbox" id="ca-debug-checkbox">
+                  <span>Debug</span>
+                </label>
+                <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
+                  <input type="checkbox" id="ca-verbose-checkbox">
+                  <span>Verbose</span>
+                </label>
+              </div>
+                        
                 <div class="ca-section ca-section-compact">
                   <div class="ca-section-title">
                       <span>Sent Messages</span>
@@ -3400,6 +3352,139 @@ Private send interception
 
             this.appendAfterMain(h);
             this.ui.panel = h;
+            this._wirePanelNav();
+        }
+
+        _updateStorageToggleUi() {
+            const el = document.getElementById('ca-nav-storage-toggle');
+            if (!el) {
+                console.error('[CA] _updateStorageToggleUi: #ca-nav-storage-toggle not found');
+                return;
+            }
+
+            const mode = this.NO_LS_MODE || 'allow';
+            el.dataset.storageMode = mode;
+
+            let title;
+            let svgEl;
+
+            if (mode === 'block') {
+                // disabled: database with cross
+                title = 'Storage disabled (click to cycle: allow / wipe)';
+                svgEl = this.renderSvgIconWithClass("lucide lucide-database",
+                    `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
+            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
+            <path d="M6 7l12 12"></path>
+            <path d="M18 7L6 19"></path>`);
+
+            } else if (mode === 'wipe') {
+                // wipe-on-load: database with trash
+                title = 'Storage wipe on load (click to cycle: block / allow)';
+                svgEl = this.renderSvgIconWithClass("lucide lucide-database-trash",
+                    `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
+            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
+            <!-- trash can inside -->
+            <rect x="8" y="10" width="8" height="9" rx="1"></rect>
+            <line x1="10" y1="10" x2="10" y2="8"></line>
+            <line x1="14" y1="10" x2="14" y2="8"></line>
+            <line x1="9"  y1="13" x2="9"  y2="17"></line>
+            <line x1="12" y1="13" x2="12" y2="17"></line>
+            <line x1="15" y1="13" x2="15" y2="17"></line>`);
+            } else {
+                // allow = normal storage icon
+                title = 'Storage enabled (click to cycle: wipe / block)';
+                svgEl = this.renderSvgIconWithClass("lucide lucide-database",
+                    `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
+            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>`);
+            }
+
+            el.title = title;
+            el.replaceChild(svgEl, el.firstChild);
+        }
+
+        handleStorageToggleClick() {
+            const prevMode = this.NO_LS_MODE || 'allow';
+            let nextMode;
+
+            if (prevMode === 'allow') {
+                nextMode = 'wipe';
+            } else if (prevMode === 'wipe') {
+                nextMode = 'block';
+            } else {
+                nextMode = 'allow';
+            }
+
+            this.NO_LS_MODE = nextMode;
+            this._writeStorageMode(this.NO_LS_MODE);
+
+            // Rebind Store to new backend for 'block'/'allow' immediately
+            this.Store = new KeyValueStore({
+                storage: this._chooseStorage(this.NO_LS_MODE)
+            });
+
+            this._updateStorageToggleUi();
+            this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
+        }
+
+
+        _wirePanelNav() {
+            this.ui.panel.addEventListener('click', (e) => {
+                const link = e.target.closest('.ca-dm-link[data-action]');
+                if (!link) {
+                    return;
+                }
+
+                const action = String(link.dataset.action || '').toLowerCase();
+
+                // Only prevent default for our own actions
+                e.preventDefault();
+
+                switch (action) {
+                    case 'broadcast':
+                        this.verbose(this.LOG, 'Nav: broadcast clicked');
+                        this.openBroadcastModal();
+                        break;
+
+                    case 'send-message':
+                        this.verbose(this.LOG, 'Nav: send-specific clicked');
+                        this.openSendMessageModal();
+                        break;
+
+                    case 'clear-all-logs':
+                        this.verbose(this.LOG, 'Nav: clear-all-logs clicked');
+                        this.handleLogClear();
+                        break;
+
+                    case 'storage-toggle':
+                        this.verbose(this.LOG, 'Nav: storage-toggle clicked');
+                        this.handleStorageToggleClick();
+                        break;
+
+                    default:
+                        console.warn('[CA] _wirePanelNav: unhandled data-action:', action);
+                        break;
+                }
+            });
+        }
+
+        handleLogClear() {
+            this.ui.sentMessagesBox.innerHTML = '';
+            this.ui.unrepliedMessageBox.innerHTML = '';
+            this.ui.repliedMessageBox.innerHTML = '';
+            this.ui.otherBox.innerHTML = '';
+
+            const removedIn = this.ActivityLogStore.clearByKind('dm-in') || 0;
+            const removedOut = this.ActivityLogStore.clearByKind('dm-out') || 0;
+            const removedFail = this.ActivityLogStore.clearByKind('send-fail') || 0;
+            const removedEvents = this.ActivityLogStore.clearByKind('event') || 0;
+            const removedLogin = this.ActivityLogStore.clearByKind('login') || 0;
+            const removedLogout = this.ActivityLogStore.clearByKind('logout') || 0;
+
+            console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
+            this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
 
         createManagedUsersContainer() {
@@ -3850,7 +3935,7 @@ Private send interception
             return pop;
         }
 
-        openSpecific() {
+        openSendMessageModal() {
             const pop = this.createSpecificPopup();
             this.verbose(this.LOG, 'Specific popup element:', pop);
             if (pop) {
@@ -3859,9 +3944,9 @@ Private send interception
                 pop.style.position = 'fixed';
                 pop.style.zIndex = '2147483647';
                 console.log(this.LOG, 'Set popup display to block, current display:', pop.style.display);
-                if (!this.openSpecific._wired) {
+                if (!this.openSendMessageModal._wired) {
                     this.wireSpecificControls();
-                    this.openSpecific._wired = true;
+                    this.openSendMessageModal._wired = true;
                 }
             } else {
                 console.error(this.LOG, 'Failed to create specific popup');
@@ -3873,15 +3958,9 @@ Private send interception
             this.ui.sendPrivateMessageUser = this.qs(this.sel.specificPop.username);
             this.ui.sendPrivateMessageText = this.qs(this.sel.specificPop.msg);
             this.ui.sendPrivateMessageButton = this.qs(this.sel.specificPop.send);
-
-            // Wire the send button - reset the flag since we're binding to new modal elements
-            if (this.ui.sendPrivateMessageButton) {
-                this.ui.sendPrivateMessageButton._wired = false; // Reset flag for modal button
-                this.wireSpecificSendButton();
-            }
         }
 
-        openBroadcast() {
+        openBroadcastModal() {
             console.log(this.LOG, 'openBroadcast() called');
             const pop = this.createBroadcastPopup();
             console.log(this.LOG, 'Broadcast popup element:', pop);
@@ -3891,43 +3970,12 @@ Private send interception
                 pop.style.position = 'fixed';
                 pop.style.zIndex = '2147483647';
                 console.log(this.LOG, 'Set popup display to block, current display:', pop.style.display);
-                if (!this.openBroadcast._wired) {
+                if (!this.openBroadcastModal._wired) {
                     this.wireBroadcastButton();
-                    this.openBroadcast._wired = true;
+                    this.openBroadcastModal._wired = true;
                 }
             } else {
                 console.error(this.LOG, 'Failed to create broadcast popup');
-            }
-        }
-
-        addSpecificNavButton() {
-            // Find the Broadcast button and append the Specific button next to it
-            const bcBtn = this.qs(this.sel.nav.bc);
-            this.verbose(this.LOG, 'Broadcast button found:', bcBtn);
-            if (!bcBtn) return;
-
-            // The ID should be 'ca-nav-specific' not 'a-nav-specific'
-            let specBtn = document.getElementById('ca-nav-specific');
-            this.verbose(this.LOG, 'Looking for specific button, found:', specBtn);
-
-            if (!specBtn) {
-                specBtn = document.createElement('button');
-                specBtn.id = 'ca-nav-specific';
-                specBtn.className = 'ca-nav-btn-secondary';
-                specBtn.type = 'button';
-                specBtn.textContent = 'Specific';
-                // insert after Broadcast
-                bcBtn.insertAdjacentElement('afterend', specBtn);
-                this.verbose(this.LOG, 'Created specific button:', specBtn);
-            }
-            this.ui.navSpec = specBtn;
-            if (!specBtn._wired) {
-                specBtn._wired = true;
-                specBtn.addEventListener('click', () => {
-                    this.verbose(this.LOG, 'Specific button clicked');
-                    this.openSpecific();
-                });
-                this.verbose(this.LOG, 'Wired specific button');
             }
         }
 
@@ -3959,23 +4007,6 @@ Private send interception
             this.ui.hostCount = this.qs(this.sel.users.hostCount);
 
             this.ui.otherBox = this.qs(this.sel.log.other);
-        }
-
-        _wirePanelNav() {
-            if (this.ui.navBc && !this.ui.navBc._wired) {
-                this.ui.navBc._wired = true;
-                this.ui.navBc.addEventListener('click', () => {
-                    console.log(this.LOG, 'Broadcast button clicked');
-                    this.openBroadcast();
-                });
-            }
-            if (this.ui.navSpec && !this.ui.navSpec._wired) {
-                this.ui.navSpec._wired = true;
-                this.ui.navSpec.addEventListener('click', () => {
-                    console.log(this.LOG, 'Specific button clicked');
-                    this.openSpecific();
-                });
-            }
         }
 
         _wireDebugCheckbox() {
@@ -4041,35 +4072,6 @@ Private send interception
         }
 
         _wireLogClear() {
-            // --- Global Clear (kept as-is; if you want, you can keep or remove this block) ---
-            if (this.ui && this.ui.logClear) {
-                this.ui.logClear.addEventListener('click', () => {
-                    if (this.ui.sentMessagesBox) this.ui.sentMessagesBox.innerHTML = '';
-                    if (this.ui.unrepliedMessageBox) this.ui.unrepliedMessageBox.innerHTML = '';
-                    if (this.ui.repliedMessageBox) this.ui.repliedMessageBox.innerHTML = '';
-                    if (this.ui.receivedMessagesBox && !this.ui.unrepliedMessageBox && !this.ui.repliedMessageBox) {
-                        // Only as a fallback if sub-box refs are not present
-                        this.ui.receivedMessagesBox.innerHTML = '';
-                    }
-                    if (this.ui.otherBox) this.ui.otherBox.innerHTML = '';
-
-                    if (!this.ActivityLogStore || typeof this.ActivityLogStore.clearByKind !== 'function') {
-                        console.error('[LOG] ActivityLogStore.clearByKind unavailable for global clear');
-                        return;
-                    }
-                    const removedIn = this.ActivityLogStore.clearByKind('dm-in') || 0;
-                    const removedOut = this.ActivityLogStore.clearByKind('dm-out') || 0;
-                    const removedFail = this.ActivityLogStore.clearByKind('send-fail') || 0;
-                    const removedEvents = this.ActivityLogStore.clearByKind('event') || 0;
-                    const removedLogin = this.ActivityLogStore.clearByKind('login') || 0;
-                    const removedLogout = this.ActivityLogStore.clearByKind('logout') || 0;
-
-                    console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
-                });
-            } else {
-                console.warn('[LOG] Global clear button not found (this.ui.logClear)');
-            }
-
             // --- Per-section Clear (kind-driven; no rebuilds, no selectors) ---
             const buttons = this.qsa('.ca-section-title .clear-logs', document);
 
@@ -4340,14 +4342,10 @@ Private send interception
                 dmLink.classList.add(this.sel.raw.log.classes.ca_log_action);
                 dmLink.href = '#';
                 dmLink.setAttribute('data-action', 'open-dm');
-                dmLink.innerHTML = `
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                       width="16" height="16" focusable="false" aria-hidden="true"
-                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                       class="lucide lucide-mail">
-                    <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-                    <polyline points="3 7,12 13,21 7"></polyline>
-                  </svg>`;
+                dmLink.appendChild(this.renderSvgIconWithClass("lucide lucide-mail",
+                    `<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+                    <polyline points="3 7,12 13,21 7"></polyline>`));
+
                 dmLink.title = 'Direct message';
                 actions_div.appendChild(dmLink);
             }
@@ -4358,14 +4356,9 @@ Private send interception
             delLink.href = '#';
             delLink.setAttribute('data-action', 'delete-log');
             delLink.title = 'Delete this log entry';
-            delLink.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                   width="16" height="16" focusable="false" aria-hidden="true"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                   class="lucide lucide-x">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>`;
+            delLink.appendChild(this.renderSvgIconWithClass("lucide lucide-x",
+                `<line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>`));
 
             actions_div.appendChild(delLink);
 
