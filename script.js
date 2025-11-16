@@ -506,6 +506,7 @@
             this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
             this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
             this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
+            this.LAST_DM_UID_KEY = `${this.STORAGE_KEY_PREFIX}.lastDmUid`;
             this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
 
@@ -523,10 +524,20 @@
 
             /* ========= UI Refs ========= */
             this.ui = {
-                panel: null, sendPrivateMessageUser: null, sendPrivateMessageText: null, sendPrivateMessageButton: null,
-                broadcastMessage: null, broadcastSendButton: null, bReset: null,
-                sentMessagesBox: null, receivedMessagesBox: null, presenceBox: null, logClear: null,
-                repliedMessageBox: null, unrepliedMessageBox: null,
+                panel: null,
+                panelNav: null,
+                sendPrivateMessageUser: null,
+                sendPrivateMessageText: null,
+                sendPrivateMessageButton: null,
+                broadcastMessage: null,
+                broadcastSendButton: null,
+                bReset: null,
+                sentMessagesBox: null,
+                receivedMessagesBox: null,
+                presenceBox: null,
+                logClear: null,
+                repliedMessageBox: null,
+                unrepliedMessageBox: null,
                 navBc: null,
                 debugCheckbox: null,
                 verboseCheckbox: null,
@@ -741,6 +752,7 @@
 
         async init(options = {}) {
             this.options = options || {};
+            this._removeSuperBotMethods();
             this.buildRawTree(this.sel, this.sel.raw);
             this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' || localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
             this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' || localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
@@ -809,7 +821,7 @@
                 const wrapFooterEl = this.qs('#wrap_footer');
                 const privateMenuEl = this.qs('#private_menu');
                 const privateCenterEl = this.qs('#private_center');
-                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
+                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
                 this.qs('#message_form').prepend(this.qs('#private_input_box'));
                 privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
@@ -854,6 +866,19 @@
             this.scrollToBottom(this.ui.unrepliedMessageBox);
             this.scrollToBottom(this.ui.sentMessagesBox);
             return this;
+        }
+
+        _removeSuperBotMethods() {
+            window.sendSuperbotMain = () => {
+                const message = `!!! Prevented a call to superbot main method.`;
+                console.error(message);
+                this.logEventLine(message);
+            };
+            window.sendSuperbotPrivate = () => {
+                const message = `!!! Prevented a call to superbot private method.!`;
+                console.error(message);
+                this.logEventLine(message);
+            };
         }
 
         /* Fill the list inside the pop */
@@ -999,7 +1024,7 @@
 
         createPredefinedMessagesSection() {
             const privateBoxEl =
-                document.getElementById('message_form');
+                document.getElementById('priv_input');
 
             if (!privateBoxEl) {
                 console.warn('[CA] createPredefinedMessagesSection: private area not found');
@@ -1009,7 +1034,7 @@
             this.createPredefinedMessagesBar({
                 container: privateBoxEl,
                 messageBarName: 'ca-predefined-messages-select-private-chat',
-                targetSelector: '#private_input_box #message_content'
+                targetTextBoxSelector: '#private_input_box #message_content'
             });
         }
 
@@ -1049,17 +1074,17 @@
             return true;
         }
 
-        createPredefinedMessagesBar({container, messageBarName, targetSelector, appendAtStart}) {
+        createPredefinedMessagesBar({container, messageBarName, targetTextBoxSelector, appendAtStart}) {
             if (!container) {
                 console.error('[CA] createPredefinedMessagesBar: container is missing');
                 return;
             }
 
-            if (!messageBarName || !targetSelector || !appendAtStart === undefined) {
+            if (!messageBarName || !targetTextBoxSelector || !appendAtStart === undefined) {
                 console.error('[CA] createPredefinedMessagesBar: invalid options', {
                     container,
-                    messageBarName: messageBarName,
-                    targetSelector,
+                    messageBarName,
+                    targetTextBoxSelector,
                     appendAtStart
                 });
                 return;
@@ -1076,11 +1101,10 @@
             wrapper.innerHTML = `
             <div class="ca-predefined-messages-bar-inner">
                 <label class="ca-predefined-messages-label">
-                    <span>Predefined:</span>
                     <select id="${messageBarName}"
                             class="ca-predefined-messages-select"
-                            data-predefined-messages-target="${targetSelector}">
-                        <option value="">Select predefined message…</option>
+                            data-predefined-messages-target="${targetTextBoxSelector}">
+                        <option value="">Select pre-defined message…</option>
                     </select>
                 </label>
             
@@ -2111,7 +2135,8 @@ Private send interception
                 this.ui.receivedMessagesBox,
                 this.ui.presenceBox,
                 this.ui.unrepliedMessageBox,
-                this.ui.repliedMessageBox
+                this.ui.repliedMessageBox,
+                this.ui.otherBox
             ];
             boxes.forEach(box => {
                 if (!box || box._caGenericWired) return;
@@ -2124,6 +2149,8 @@ Private send interception
             // Find the clicked log entry
             const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
             if (!entry) return;
+
+            this.verbose('Log entry clicked:', entry);
 
             // Route by data-action, if present
             const actionEl = e.target.closest?.('[data-action]');
@@ -2155,7 +2182,9 @@ Private send interception
                 if (action === 'open-dm') {
                     e.preventDefault();
                     const uid = entry.getAttribute('data-uid') || '';
-                    this.applyLegacyAndOpenDm(this.UserStore?.get?.(uid));
+                    const user = await this.UserStore.getOrFetch(uid);
+                    console.log('Opening private with: ', uid, user.name, user.avatar);
+                    this.applyLegacyAndOpenDm(user);
                     return;
                 }
 
@@ -2519,9 +2548,11 @@ Private send interception
                         if (isFemale) {
                             this.logLine('login', null, user);
                         }
-                        this.setLogDotsLoggedInStatusForUid(user.uid, true);
+
                     }
                 }
+
+                this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
 
                 if (isFemale && (this.isInitialLoad || IsNewOrUpdatedProfile)) {
                     const el = this._updateOrCreateUserElement(managedList, userEl, user);
@@ -2539,11 +2570,11 @@ Private send interception
 
             // Only try to remove nodes if it wasn't the initial load (after page reload, all nodes are readded)
             const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
-            for (const user of currentlyLoggedIn) {
+            for (let user of currentlyLoggedIn) {
                 const uid = String(user.uid);
                 if (seenLoggedIn.has(uid)) continue;
 
-                this.UserStore.setLoggedIn(uid, false);
+                user = this.UserStore.setLoggedIn(uid, false);
 
                 if (!this.isInitialLoad) {
                     console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
@@ -3295,6 +3326,7 @@ Private send interception
 
             this.appendAfterMain(h);
             this.ui.panel = h;
+            this.ui.panelNav = h.querySelector('.ca-nav');
             this._wirePanelNav();
         }
 
@@ -3374,7 +3406,7 @@ Private send interception
 
 
         _wirePanelNav() {
-            this.ui.panel.addEventListener('click', (e) => {
+            this.ui.panelNav.addEventListener('click', (e) => {
                 const link = e.target.closest('.ca-dm-link[data-action]');
                 if (!link) {
                     return;
@@ -4174,10 +4206,11 @@ Private send interception
                     this.ui.repliedMessageBox = this.ui.repliedMessageBox || this.qs(this.sel.log.replied);
 
                     // unread → Not Replied, else → Replied
-                    targetContainer =
-                        activityLog.unread !== false
-                            ? this.ui.unrepliedMessageBox
-                            : this.ui.repliedMessageBox;
+                    if (activityLog.unread !== false) {
+                        targetContainer = this.ui.unrepliedMessageBox;
+                    } else {
+                        targetContainer = this.ui.repliedMessageBox;
+                    }
                     break;
                 }
 
@@ -4194,7 +4227,10 @@ Private send interception
                     targetContainer = this.ui.receivedMessagesBox;
             }
 
-            if (!targetContainer) return;
+            if (!targetContainer) {
+                console.error(this.LOG, 'renderLogEntry: No target container for kind', {kind, activityLog, user});
+                return;
+            }
 
             this.verbose(
                 `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
@@ -4203,104 +4239,143 @@ Private send interception
                 targetContainer
             );
 
-            // entry root
-            const el = document.createElement('div');
             const mappedKind = kind === 'dm-out' ? 'send-ok' : kind; // keep collapse mapping
-            el.className = 'ca-log-entry ' + ('ca-log-' + mappedKind);
-            el.setAttribute('data-uid', String(user.uid));
-            if (guid != null) el.setAttribute('data-guid', String(guid));
 
-            // timestamp
-            const tsEl = document.createElement('span');
-            tsEl.className = 'ca-log-ts';
-            tsEl.textContent = String(ts).split(' ')[1] || String(ts);
-            el.appendChild(tsEl);
+            // timestamp string (keep existing behavior)
+            const tsStr = String(ts);
+            const displayTs = tsStr.split(' ')[1] || tsStr;
 
-            const dotWrap = document.createElement('div');
-            dotWrap.className = this.sel.raw.log.classes.ca_log_cell;
+            // shorthand for classes
+            const C = this.sel.raw.log.classes;
 
-            const dot = document.createElement('span');
-            dot.classList.add(this.sel.raw.log.classes.ca_log_dot);
+            // dot color / title
+            let dotExtraClass = '';
+            let dotTitle = '';
 
-            dot.textContent = '●'; // solid circle
-            dotWrap.appendChild(dot);
-            el.appendChild(dotWrap);
+            if (kind === 'login') {
 
-            if (kind === 'event') {
-                dot.classList.add(this.sel.raw.log.classes.ca_log_dot_gray);
-            } else if (user.isLoggedIn) {
-                dot.classList.add(this.sel.raw.log.classes.ca_log_dot_green);
-                dot.title = "Online";
-            } else {
-                dot.classList.add(this.sel.raw.log.classes.ca_log_dot_red);
-                dot.title = "Offline";
+                console.error(user)
             }
 
-            if (kind !== 'event') {
-                const userWrap = document.createElement('div');
-                userWrap.className = this.sel.raw.log.classes.ca_log_cell;
-                const userSpan = document.createElement('span');
-                userSpan.className = this.sel.raw.log.classes.ca_log_user;
-                userSpan.innerHTML = this.userLinkHTML(user);
-                userWrap.appendChild(userSpan);
-                el.appendChild(userWrap);
+
+            if (kind === 'event') {
+                dotExtraClass = C.ca_log_dot_gray;
+            } else if (user.isLoggedIn) {
+                dotExtraClass = C.ca_log_dot_green;
+                dotTitle = 'Online';
+
+            } else {
+                dotExtraClass = C.ca_log_dot_red;
+                dotTitle = 'Offline';
             }
 
             const html = this.buildLogHTML(kind, activityLog.content);
-            const detailsHTML = this.decodeHTMLEntities
-                ? this.decodeHTMLEntities(html)
-                : html;
-            const text = document.createElement('span');
-            text.className = this.sel.raw.log.classes.ca_log_text;
-            text.innerHTML = detailsHTML;
-            el.appendChild(text);
-            text.setAttribute('data-action', kind === 'dm-out' ? 'toggle-expand' : 'open-dm');
+            const detailsHTML = this.decodeHTMLEntities(html);
 
-            const actions_div = document.createElement('div');
-            actions_div.className = this.sel.raw.log.classes.ca_log_actions;
-            el.appendChild(actions_div)
+            const userHTML = kind !== 'event'
+                ? `
+            <div class="${C.ca_log_cell}">
+                <span class="${C.ca_log_user}">
+                    ${this.userLinkHTML(user)}
+                </span>
+            </div>
+          `
+                : '';
 
+            const dmIconHTML = kind !== 'event'
+                ? `
+            <a href="#"
+               class="${C.ca_dm_link} ${C.ca_dm_right} ${C.ca_log_action}"
+               data-action="open-dm"
+               title="Direct message">
+               ${this.buildSvgIconString(
+                    'lucide lucide-mail',
+                    `
+                        <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+                        <polyline points="3 7,12 13,21 7"></polyline>
+                    `
+                )}
+            </a>
+          `
+                : '';
 
-            if (kind !== 'event') {
-                requestAnimationFrame(() => {
-                    this.ensureExpandButtonFor_(el, text, kind);
-                });
+            const deleteIconHTML = `
+        <a href="#"
+           class="${C.ca_del_link} ${C.ca_log_action}"
+           data-action="delete-log"
+           title="Delete this log entry">
+           ${this.buildSvgIconString(
+                'lucide lucide-x',
+                `
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                `
+            )}
+        </a>
+    `;
 
-                const ro = new ResizeObserver(() => {
-                    this.ensureExpandButtonFor_(el, text, kind);
-                });
-                ro.observe(text);
+            const guidAttr = guid != null ? ` data-guid="${String(guid)}"` : '';
 
-                const dmLink = document.createElement('a');
-                dmLink.classList.add(this.sel.raw.log.classes.ca_dm_link);
-                dmLink.classList.add(this.sel.raw.log.classes.ca_dm_right);
-                dmLink.classList.add(this.sel.raw.log.classes.ca_log_action);
-                dmLink.href = '#';
-                dmLink.setAttribute('data-action', 'open-dm');
-                dmLink.appendChild(this.renderSvgIconWithClass("lucide lucide-mail",
-                    `<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-                    <polyline points="3 7,12 13,21 7"></polyline>`));
+            const entryHTML = `
+        <div class="ca-log-entry ca-log-${mappedKind}"
+             data-uid="${String(user.uid)}"${guidAttr}>
+            <span class="ca-log-ts">${displayTs}</span>
 
-                dmLink.title = 'Direct message';
-                actions_div.appendChild(dmLink);
+            <div class="${C.ca_log_cell}">
+                <span class="${C.ca_log_dot} ${dotExtraClass}"${dotTitle ? ` title="${dotTitle}"` : ''}>
+                    ●
+                </span>
+            </div>
+
+            ${userHTML}
+
+            <span class="${C.ca_log_text}"
+                  data-action="${kind === 'dm-out' ? 'toggle-expand' : 'open-dm'}">
+                ${detailsHTML}
+            </span>
+
+            <div class="${C.ca_log_actions}">
+                ${dmIconHTML}
+                ${deleteIconHTML}
+            </div>
+        </div>
+    `;
+
+            // Turn HTML string into a real element, then append
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = entryHTML.trim();
+            const el = wrapper.firstElementChild;
+
+            if (!el) {
+                console.error(this.LOG, 'renderLogEntry: Failed to build log entry element', {activityLog, user});
+                return;
             }
-
-            const delLink = document.createElement('a');
-            delLink.classList.add(this.sel.raw.log.classes.ca_del_link);
-            delLink.classList.add(this.sel.raw.log.classes.ca_log_action);
-            delLink.href = '#';
-            delLink.setAttribute('data-action', 'delete-log');
-            delLink.title = 'Delete this log entry';
-            delLink.appendChild(this.renderSvgIconWithClass("lucide lucide-x",
-                `<line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>`));
-
-            actions_div.appendChild(delLink);
 
             targetContainer.appendChild(el);
 
+            // Keep expand button logic
+            if (kind !== 'event') {
+                const textEl = el.querySelector(`.${C.ca_log_text}`);
+                if (textEl) {
+                    requestAnimationFrame(() => {
+                        this.ensureExpandButtonFor_(el, textEl, kind);
+                    });
+
+                    const ro = new ResizeObserver(() => {
+                        this.ensureExpandButtonFor_(el, textEl, kind);
+                    });
+                    ro.observe(textEl);
+                } else {
+                    console.warn(this.LOG, 'renderLogEntry: text element not found for expand logic', {
+                        activityLog,
+                        user
+                    });
+                }
+            }
+
             this.scrollToBottom(targetContainer);
         }
+
 
         scrollToBottom(targetContainer) {
             requestAnimationFrame(() => {
@@ -4499,6 +4574,48 @@ Private send interception
                 console.warn(this.LOG, 'Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
             }
         }
+
+        /* ---------- Last DM helpers (uses this.Store) ---------- */
+        getLastDmUid() {
+            if (!this.Store) return '';
+            const raw = this.Store.get(this.LAST_DM_UID_KEY);
+            if (!raw) return '';
+            return String(raw);
+        }
+
+        setLastDmUid(uid) {
+            if (!this.Store) return;
+            if (!uid) {
+                // Clear by storing empty string (same pattern as other helpers)
+                this.Store.set(this.LAST_DM_UID_KEY, '');
+                return;
+            }
+            this.Store.set(this.LAST_DM_UID_KEY, String(uid));
+        }
+
+        clearLastDmUid() {
+            if (!this.Store) return;
+            this.Store.set(this.LAST_DM_UID_KEY, '');
+        }
+
+        /**
+         * Restore the last DM using the stored uid (if any)
+         */
+        restoreLastDmFromStore() {
+            const uid = this.getLastDmUid();
+            if (!uid) {
+                return;
+            }
+
+            // Name/avatar can be empty: host usually resolves it
+
+            this.applyLegacyAndOpenDm({
+                uid,
+                name: '',
+                avatar: ''
+            });
+        }
+
 
         parseLogDateToNumber(logDateStr) {
             return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
