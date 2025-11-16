@@ -516,6 +516,7 @@
             this.VERBOSE_MODE_KEY = '321chataddons.verboseMode';
             this.GLOBAL_WATERMARK_KEY = '321chataddons.global.watermark';
             this.ACTIVITY_LOG_KEY = '321chataddons.activityLog';
+            this.HIDE_REPLIED_USERS_KEY = '321chataddons.hideRepliedUsers';
             this.STORAGE_PREFIX = '321chataddons.pm.';              // drafts, per-message hash
             this.USERS_KEY = '321chataddons.users';
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
@@ -754,6 +755,10 @@
             this.buildRawTree(this.sel, this.sel.raw);
             this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' || localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
             this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' || localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
+            const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
+
+            this.hideRepliedUsers = storedHide === true || storedHide === 'true';
+
 
             this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
@@ -1974,7 +1979,8 @@ Private send interception
                 return existingEl;
             } else {
                 const clonedEl = newEl.cloneNode(true);
-                managedList.insertBefore(clonedEl, this.qs('.user_item[data-rank="0"]', managedList) || this.qs('.user_item.ca-replied-messages', managedList) || managedList.lastElementChild);
+                console.log(this.qs('.user_item[data-rank="0"]', managedList))
+                managedList.insertBefore(clonedEl, this.qs('.user_item.ca-replied-messages', managedList) || this.qs('.user_item[data-rank="0"]', managedList) || managedList.lastElementChild);
                 this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
                 return clonedEl;
             }
@@ -2531,7 +2537,7 @@ Private send interception
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
             const userEl = this.findManagedUserElementById(uid);
-            console.log(userEl, unreadReceivedMessagesCount, sentMessagesCount);
+            this.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
             if (!userEl) {
                 console.warn('updateProfileChip: user element not found for uid:', uid);
@@ -2557,10 +2563,13 @@ Private send interception
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.textContent = `${unreadReceivedMessagesCount}`;
 
-                // --- Move user to top of container ---
+                // Unread must always be visible
+                userEl.style.display = '';
+
                 if (container.firstElementChild !== userEl) {
                     container.insertBefore(userEl, container.firstElementChild);
                 }
+
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
                 console.log(
@@ -2579,7 +2588,9 @@ Private send interception
 
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
-                chip.textContent = '✓';
+                chip.textContent = '✓';// 🔑 Respect the “Hide replied users” checkbox every time
+                // Respect "hide replied" state
+                userEl.style.display = this.hideRepliedUsers ? 'none' : '';
 
                 // --- Move user to bottom of container ---
                 console.log('Moving user to bottom of container:', uid);
@@ -2885,17 +2896,21 @@ Private send interception
                 const sub = document.createElement('div');
                 sub.className = 'ca-subrow';
                 sub.innerHTML = `
-                    <label>
-                      <input id="ca-managed-ck-toggle" type="checkbox" />
-                      <span>Show selection boxes</span>
-                    </label>
-                  `;
+    <label>
+      <input id="ca-managed-ck-toggle" type="checkbox" />
+      <span>Show selection boxes</span>
+    </label>
+    <label style="margin-left: 8px;">
+      <input id="ca-managed-hide-replied" type="checkbox" />
+      <span>Hide replied users</span>
+    </label>
+  `;
                 header.appendChild(sub);
 
+// existing show-selection-boxes wiring
                 const ckToggle = sub.querySelector('#ca-managed-ck-toggle');
                 if (ckToggle) {
                     ckToggle.checked = false;
-
                     managedWrapper.classList.remove('ca-show-ck');
 
                     ckToggle.addEventListener('change', (e) => {
@@ -2903,6 +2918,33 @@ Private send interception
                         console.log('[CA] Managed checkbox visibility:', e.target.checked ? 'shown' : 'hidden');
                     });
                 }
+
+// NEW: hide-replied wiring
+                const hideRepliedToggle = sub.querySelector('#ca-managed-hide-replied');
+                if (hideRepliedToggle) {
+                    // Initialize from stored value
+                    hideRepliedToggle.checked = !!this.hideRepliedUsers;
+
+                    // Apply to current list immediately
+                    this.applyHideRepliedUsers(!!this.hideRepliedUsers);
+
+                    hideRepliedToggle.addEventListener('change', (e) => {
+                        const hide = !!e.target.checked;
+                        console.log('[CA] Hide replied users:', hide);
+
+                        // Persist via localStorage + Store
+                        this.hideRepliedUsers = hide;
+                        localStorage.setItem(this.HIDE_REPLIED_USERS_KEY, String(hide));
+                        if (this.Store) {
+                            this.Store.set(this.HIDE_REPLIED_USERS_KEY, hide);
+                        }
+
+                        // Apply to current DOM
+                        this.applyHideRepliedUsers(hide);
+                    });
+
+                }
+
             }
 
             // Update the counter ID in the header
@@ -2969,6 +3011,22 @@ Private send interception
             // Update host users count initially
             this.updateHostUsersCount();
         }
+
+        applyHideRepliedUsers(hide) {
+            const managedList = this.getContainer ? this.getContainer() : this.qs(this.sel.users.managedList);
+            if (!managedList) {
+                console.error('[CA] applyHideRepliedUsers: managed list not found');
+                return;
+            }
+
+            const selector = `${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`;
+            const repliedEls = this.qsa(selector, managedList);
+
+            repliedEls.forEach((el) => {
+                el.style.display = hide ? 'none' : '';
+            });
+        }
+
 
         // Reuse the same explicit expander you already use
         _setExpanded(wrapper, expanded) {
