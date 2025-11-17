@@ -45,18 +45,18 @@
     class DraftsStore {
         constructor({kv}) {
             if (!kv) throw new Error("DraftsStore requires a KeyValueStore");
-            this.kv = kv;
+            this.keyValueStoreReference = kv;
         }
 
         save(key, value) {
             const k = typeof key === "string" ? key : String(key || "");
             if (!k) return false;
-            return this.kv.set(k, value == null ? "" : String(value));
+            return this.keyValueStoreReference.set(k, value == null ? "" : String(value));
         }
 
         bindInput(el, key) {
             if (!el) return;
-            el.value = String(this.kv.get(key) ?? "");
+            el.value = String(this.keyValueStoreReference.get(key) ?? "");
             el.addEventListener("input", () => this.save(key, el.value));
         }
     }
@@ -2093,9 +2093,7 @@ Private send interception
             XMLHttpRequest.prototype.send = function (...sendArgs) {
                 let qs = null;
 
-                const targetUrl = this._ca_url || '';
-
-                if (self.isChatLogUrl(targetUrl) && sendArgs && sendArgs[0].length) {
+                if (self.isChatLogUrl(this._ca_url) && sendArgs && sendArgs[0].length) {
                     if (sendArgs[0].indexOf('priv=1') !== -1) return;
 
                     qs = new URLSearchParams(sendArgs[0]);
@@ -2114,15 +2112,12 @@ Private send interception
                         }
                     } else if (this.status === 403) {
                         console.error(
-                            '[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare. Ask the client to refresh the page.',
+                            `[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare.\n
+                            Uninstalling the network taps to prevent any more calls being done until the browser is manually refreshed.`,
                             responseUrl
                         );
-
-                        if (typeof self.openCloudflarePopup === 'function') {
-                            self.openCloudflarePopup(responseUrl);
-                        } else {
-                            console.warn('[PrivateSend] openCloudflarePopup is not available');
-                        }
+                        self.openCloudflarePopup(responseUrl);
+                        self.destroy();
                     }
                 });
 
@@ -3227,14 +3222,13 @@ Private send interception
             pop.style.zIndex = '2147483647';
         }
 
-        openCloudflarePopup(responseUrl) {
+        openCloudflarePopup() {
             const bodyHtml =
                 '<p style="margin-bottom:8px;">' +
                 '  Cloudflare is blocking the chat requests (HTTP 403).<br>' +
                 '  Please refresh the page to continue.' +
                 '</p>' +
                 '<div id="ca-cloudflare-url" class="ca-status" style="margin-bottom:8px;"></div>' +
-                '<div id="ca-cloudflare-countdown" class="ca-status" style="margin-bottom:8px;"></div>' +
                 '<button id="ca-cloudflare-refresh" class="ca-btn ca-btn-slim" type="button">Refresh page</button>';
 
             const pop = this.ensurePopup({
@@ -3243,54 +3237,11 @@ Private send interception
                 bodyHtml
             });
 
-            const countdownEl = pop.querySelector('#ca-cloudflare-countdown');
-
             // Wire refresh button once
             const refreshBtn = pop.querySelector('#ca-cloudflare-refresh');
-            if (refreshBtn && !this._cloudflarePopupWired) {
-                this._cloudflarePopupWired = true;
-
-                refreshBtn.addEventListener('click', () => {
-                    if (this._cloudflareCountdownTimer) {
-                        clearInterval(this._cloudflareCountdownTimer);
-                        this._cloudflareCountdownTimer = null;
-                    }
-                    window.location.reload();
-                });
-            }
-
-            // Reset previous timer
-            if (this._cloudflareCountdownTimer) {
-                clearInterval(this._cloudflareCountdownTimer);
-                this._cloudflareCountdownTimer = null;
-            }
-
-            this._cloudflareCountdownRemaining = 120;
-
-            if (countdownEl) {
-                countdownEl.textContent =
-                    'Page will auto-refresh in ' +
-                    this._cloudflareCountdownRemaining +
-                    ' seconds if you do nothing.';
-            }
-
-            this._cloudflareCountdownTimer = window.setInterval(() => {
-                this._cloudflareCountdownRemaining -= 1;
-
-                if (this._cloudflareCountdownRemaining <= 0) {
-                    clearInterval(this._cloudflareCountdownTimer);
-                    this._cloudflareCountdownTimer = null;
-                    window.location.reload();
-                    return;
-                }
-
-                if (countdownEl) {
-                    countdownEl.textContent =
-                        'Page will auto-refresh in ' +
-                        this._cloudflareCountdownRemaining +
-                        ' seconds if you do nothing.';
-                }
-            }, 1000);
+            refreshBtn.addEventListener('click', () => {
+                window.location.reload();
+            });
 
             this.showPopup('ca-cloudflare-pop');
         }
@@ -3333,30 +3284,6 @@ Private send interception
             cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
         }
 
-        getUserThroughUserItem(el) {
-            if (!el || el.nodeType !== 1) {
-                return;
-            }
-
-            // Avoid duplicating the DM icon
-            const existing = this.qs('.ca-dm-from-userlist', el);
-            if (existing) {
-                return;
-            }
-
-            const uid = this.getUserId(el);
-            if (!uid) {
-                console.warn('ensureDmLink: user ID not found for element:', el);
-                return;
-            }
-
-            const user = this.UserStore.getOrFetch(uid);
-            if (!user) {
-                console.warn('ensureDmLink: user not found with uid:', uid);
-                return;
-            }
-        }
-
         ensureDmLink(el, user) {
             const target = this.qs('.user_item_data', el) || el;
 
@@ -3364,6 +3291,7 @@ Private send interception
             dmLink.href = '#';
             dmLink.className = 'ca-dm-from-userlist ca-log-action';
             dmLink.title = 'Open direct message';
+            dmLink.setAttribute('data-action', 'open-dm');
 
             dmLink.appendChild(this.renderSvgIconWithClass(
                 'lucide lucide-mail',
@@ -3487,7 +3415,7 @@ Private send interception
                    class="ca-dm-link ca-dm-right ca-log-action"
                    title="Broadcast message">
                   ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M8 4l12 8-12 8V4z"></path>`, false)}
+                `<path d="M3 10v4c0 .55.45 1 1 1h1l4 5v-16l-4 5h-1c-.55 0-1 .45-1 1zm13-5l-8 5v4l8 5v-14zm2 4h3v6h-3v-6z"/>`, false)}
                 </a>
             
                 <!-- SEND SPECIFIC: pijltje -->
@@ -4844,19 +4772,14 @@ Private send interception
         /**
          * Restore the last DM using the stored uid (if any)
          */
-        restoreLastDmFromStore() {
+        async restoreLastDmFromStore() {
             const uid = this.getLastDmUid();
             if (!uid) {
+                this.debug('There was no uid for a last dm');
                 return;
             }
 
-            // Name/avatar can be empty: host usually resolves it
-
-            this.applyLegacyAndOpenDm({
-                uid,
-                name: '',
-                avatar: ''
-            });
+            this.applyLegacyAndOpenDm(await this.UserStore.getOrFetch(uid));
         }
 
         parseLogDateToNumber(logDateStr) {

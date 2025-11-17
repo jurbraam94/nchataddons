@@ -56,6 +56,10 @@
     flex-direction: column;
 }
 
+.boom_spinner {
+    display: none;
+}
+
 /* Top nav for tools */
 .ca-nav {
     display: flex;
