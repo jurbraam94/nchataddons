@@ -798,10 +798,8 @@
 
             this._installAudioAutoplayGate();
 
-
             // Initialize watermark once
             this.initializeGlobalWatermark();
-
 
             // build panel + wire refs + handlers
             this.buildPanel();
@@ -811,7 +809,18 @@
             this.createManagedUsersContainer();
             this.createPredefinedMessagesSection();
             this._bindStaticRefs();
-            this._attachLogClickHandlers();  // Attfspecach handlers AFTER refs are bound
+            this._attachLogClickHandlers();
+
+            // Restore last DM if we have one stored in this.Store
+            this.restoreLastDmFromStore();
+
+            // Clear stored DM when the original private chat close button is used
+            const privateCloseButton = document.querySelector('#private_close');
+            if (privateCloseButton) {
+                privateCloseButton.addEventListener('click', () => {
+                    this.clearLastDmUid();
+                });
+            }
 
             if (document.body) {
                 const main_wrapper = document.createElement('div');
@@ -823,6 +832,34 @@
                 const privateCenterEl = this.qs('#private_center');
                 this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
                 this.qs('#message_form').prepend(this.qs('#private_input_box'));
+
+                // --- Enable "Enter to send" in private chat ---
+                const dmTextarea = document.getElementById("message_content");
+                const dmSendBtn = document.querySelector('#private_send, #send_button, #message_form button[type="submit"]');
+
+                if (!dmTextarea) {
+                    console.error("DM textarea #message_content not found");
+                }
+                if (!dmSendBtn) {
+                    console.error("DM send button not found — update selector if needed");
+                }
+
+                dmTextarea.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+
+                        const text = dmTextarea.value.trim();
+                        if (text.length === 0) {
+                            console.warn("Empty private message — not sending");
+                            return;
+                        }
+
+                        dmSendBtn.click();
+                        dmTextarea.value = "";
+                    }
+                });
+
+
                 privateCenterEl.after(privateMenuEl);
                 main_wrapper.appendChild(chatHeadEl);
                 main_wrapper.appendChild(globalChatEl);
@@ -2075,6 +2112,17 @@ Private send interception
                         if (self.isUserListUrl(responseUrl)) {
                             self.processUserListResponse(this.responseText);
                         }
+                    } else if (this.status === 403) {
+                        console.error(
+                            '[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare. Ask the client to refresh the page.',
+                            responseUrl
+                        );
+
+                        if (typeof self.openCloudflarePopup === 'function') {
+                            self.openCloudflarePopup(responseUrl);
+                        } else {
+                            console.warn('[PrivateSend] openCloudflarePopup is not available');
+                        }
                     }
                 });
 
@@ -2213,6 +2261,15 @@ Private send interception
 
         applyLegacyAndOpenDm({uid, name, avatar}) {
             this.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
+
+            if (!uid || !name || !avatar) {
+                console.error('[applyLegacyAndOpenDm] Invalid arguments:', {uid, name, avatar});
+                return;
+            }
+
+            if (uid) {
+                this.setLastDmUid(uid);
+            }
 
             // Legacy toggles
             this.debug('applyLegacyAndOpenDm: Setting legacy toggles');
@@ -2439,25 +2496,37 @@ Private send interception
             c.setAttribute('data-ca-wired', '1');
         }
 
-        /* Update or create user element in managed container */
         _updateOrCreateUserElement(managedList, newEl, user) {
-            const existingEl = this.qs(`.user_item[data-id="${user.uid}"]`, managedList);
+            const selector = `.user_item[data-id="${user.uid}"]`;
+            const existingEl = this.qs(selector, managedList);
+
             if (existingEl) {
-                // Update existing element
                 existingEl.innerHTML = newEl.innerHTML;
-                // Copy all attributes
                 Array.from(newEl.attributes).forEach(attr => {
                     existingEl.setAttribute(attr.name, attr.value);
                 });
                 this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, user.name);
                 return existingEl;
-            } else {
-                const clonedEl = newEl.cloneNode(true);
-                managedList.insertBefore(clonedEl, this.qs('.user_item.ca-replied-messages', managedList) || this.qs('.user_item[data-rank="0"]', managedList) || managedList.lastElementChild);
-                this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
-                return clonedEl;
             }
+
+            const clonedEl = newEl.cloneNode(true);
+            const insertBeforeNode =
+                this.qs('.user_item[data-rank="0"]', managedList) || managedList.lastElementChild;
+
+            if (insertBeforeNode) {
+                managedList.insertBefore(clonedEl, insertBeforeNode);
+            } else {
+                managedList.appendChild(clonedEl);
+            }
+
+            this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
+
+            // Make sure DM link exists on new element
+            this.ensureDmLink(clonedEl, user);
+
+            return clonedEl;
         }
+
 
         /* Check if URL is user_list.php */
         isUserListUrl(u) {
@@ -2556,10 +2625,14 @@ Private send interception
 
                 if (isFemale && (this.isInitialLoad || IsNewOrUpdatedProfile)) {
                     const el = this._updateOrCreateUserElement(managedList, userEl, user);
+                    if (!el || el.nodeType !== 1) {
+                        console.error(`.user_item element not found for user ${uid}`);
+                        return;
+                    }
 
                     // Ensure UI elements for female users if rank allows
                     if (isAllowedRank) {
-                        this.ensureBroadcastCheckbox(el);
+                        this.ensureBroadcastCheckbox(el, user.uid);
                     }
 
                     this.updateProfileChip(user.uid);
@@ -2870,7 +2943,9 @@ Private send interception
             const femaleAccounts = [];
             for (let i = 0; i < els.length; i++) {
                 const uid = this.getUserId(els[i]);
-                if (uid) femaleAccounts.push({el: els[i], uid, name: this.extractUsername(els[i])});
+                if (uid) {
+                    femaleAccounts.push({el: els[i], uid, name: this.extractUsername(els[i])});
+                }
             }
             console.log('Collected female IDs:', femaleAccounts);
             return femaleAccounts;
@@ -3087,10 +3162,139 @@ Private send interception
                 chip = document.createElement('span');
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip);
                 userEl.appendChild(chip);
-                console.log('Created sent chip for user:', userEl);
+                this.verbose('Created sent chip for user:', userEl);
             }
             return chip;
         }
+
+        ensurePopup({id, title, bodyHtml}) {
+            if (!id) {
+                console.error('[321ChatAddons] ensurePopup called without id');
+                return null;
+            }
+
+            let pop = document.getElementById(id);
+            if (pop) {
+                return pop;
+            }
+
+            pop = document.createElement('div');
+            pop.id = id;
+            pop.className = 'ca-pop';
+            pop.style.display = 'none';
+
+            pop.innerHTML =
+                '<div class="ca-pop-header">' +
+                '  <span class="ca-pop-title"></span>' +
+                '  <button class="ca-pop-close" type="button">✕</button>' +
+                '</div>' +
+                '<div class="ca-pop-body"></div>';
+
+            document.body.appendChild(pop);
+
+            const closeBtn = pop.querySelector('.ca-pop-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    pop.style.display = 'none';
+                    if (typeof this.onPopupClosed === 'function') {
+                        this.onPopupClosed(id);
+                    }
+                });
+            }
+
+            const titleEl = pop.querySelector('.ca-pop-title');
+            if (titleEl && typeof title === 'string') {
+                titleEl.textContent = title;
+            }
+
+            const bodyEl = pop.querySelector('.ca-pop-body');
+            if (bodyEl && typeof bodyHtml === 'string') {
+                bodyEl.innerHTML = bodyHtml;
+            }
+
+            return pop;
+        }
+
+        showPopup(id) {
+            const pop = document.getElementById(id);
+            if (!pop) {
+                console.error('[321ChatAddons] showPopup: popup not found:', id);
+                return;
+            }
+
+            pop.style.display = 'block';
+            pop.style.position = 'fixed';
+            pop.style.zIndex = '2147483647';
+        }
+
+        openCloudflarePopup(responseUrl) {
+            const bodyHtml =
+                '<p style="margin-bottom:8px;">' +
+                '  Cloudflare is blocking the chat requests (HTTP 403).<br>' +
+                '  Please refresh the page to continue.' +
+                '</p>' +
+                '<div id="ca-cloudflare-url" class="ca-status" style="margin-bottom:8px;"></div>' +
+                '<div id="ca-cloudflare-countdown" class="ca-status" style="margin-bottom:8px;"></div>' +
+                '<button id="ca-cloudflare-refresh" class="ca-btn ca-btn-slim" type="button">Refresh page</button>';
+
+            const pop = this.ensurePopup({
+                id: 'ca-cloudflare-pop',
+                title: 'Connection issue',
+                bodyHtml
+            });
+
+            const countdownEl = pop.querySelector('#ca-cloudflare-countdown');
+
+            // Wire refresh button once
+            const refreshBtn = pop.querySelector('#ca-cloudflare-refresh');
+            if (refreshBtn && !this._cloudflarePopupWired) {
+                this._cloudflarePopupWired = true;
+
+                refreshBtn.addEventListener('click', () => {
+                    if (this._cloudflareCountdownTimer) {
+                        clearInterval(this._cloudflareCountdownTimer);
+                        this._cloudflareCountdownTimer = null;
+                    }
+                    window.location.reload();
+                });
+            }
+
+            // Reset previous timer
+            if (this._cloudflareCountdownTimer) {
+                clearInterval(this._cloudflareCountdownTimer);
+                this._cloudflareCountdownTimer = null;
+            }
+
+            this._cloudflareCountdownRemaining = 120;
+
+            if (countdownEl) {
+                countdownEl.textContent =
+                    'Page will auto-refresh in ' +
+                    this._cloudflareCountdownRemaining +
+                    ' seconds if you do nothing.';
+            }
+
+            this._cloudflareCountdownTimer = window.setInterval(() => {
+                this._cloudflareCountdownRemaining -= 1;
+
+                if (this._cloudflareCountdownRemaining <= 0) {
+                    clearInterval(this._cloudflareCountdownTimer);
+                    this._cloudflareCountdownTimer = null;
+                    window.location.reload();
+                    return;
+                }
+
+                if (countdownEl) {
+                    countdownEl.textContent =
+                        'Page will auto-refresh in ' +
+                        this._cloudflareCountdownRemaining +
+                        ' seconds if you do nothing.';
+                }
+            }, 1000);
+
+            this.showPopup('ca-cloudflare-pop');
+        }
+
 
         /* ---------- Rank filter & selection checkbox ---------- */
         _isAllowedRank(el) {
@@ -3101,14 +3305,13 @@ Private send interception
         }
 
         // more descriptive and self-contained
-        ensureBroadcastCheckbox(el) {
-            if (!el || el.nodeType !== 1) return;      // skip invalid
-            if (el.getAttribute('data-gender') !== this.FEMALE_CODE) return;
-            if (this.qs('.ca-ck-wrap', el)) return;    // already has one
-            if (!this._isAllowedRank?.(el)) return;
-
-            const uid = this.getUserId?.(el);
-            if (!uid) return;
+        ensureBroadcastCheckbox(el, uid) {
+            if (this.qs('.ca-ck-wrap', el)) {
+                return;    // already has one
+            }
+            if (!this._isAllowedRank?.(el)) {
+                return;
+            }
 
             this._isMakingOwnChanges = true;
 
@@ -3128,6 +3331,52 @@ Private send interception
 
             // (optional) event hookup here if you don’t already wire at container level
             cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
+        }
+
+        getUserThroughUserItem(el) {
+            if (!el || el.nodeType !== 1) {
+                return;
+            }
+
+            // Avoid duplicating the DM icon
+            const existing = this.qs('.ca-dm-from-userlist', el);
+            if (existing) {
+                return;
+            }
+
+            const uid = this.getUserId(el);
+            if (!uid) {
+                console.warn('ensureDmLink: user ID not found for element:', el);
+                return;
+            }
+
+            const user = this.UserStore.getOrFetch(uid);
+            if (!user) {
+                console.warn('ensureDmLink: user not found with uid:', uid);
+                return;
+            }
+        }
+
+        ensureDmLink(el, user) {
+            const target = this.qs('.user_item_data', el) || el;
+
+            const dmLink = document.createElement('a');
+            dmLink.href = '#';
+            dmLink.className = 'ca-dm-from-userlist ca-log-action';
+            dmLink.title = 'Open direct message';
+
+            dmLink.appendChild(this.renderSvgIconWithClass(
+                'lucide lucide-mail',
+                `<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+         <polyline points="3 7,12 13,21 7"></polyline>`
+            ));
+
+            dmLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.applyLegacyAndOpenDm(user);
+            });
+
+            target.appendChild(dmLink);
         }
 
         handleCheckboxChange(e, uid /*, el */) {
@@ -4252,12 +4501,6 @@ Private send interception
             let dotExtraClass = '';
             let dotTitle = '';
 
-            if (kind === 'login') {
-
-                console.error(user)
-            }
-
-
             if (kind === 'event') {
                 dotExtraClass = C.ca_log_dot_gray;
             } else if (user.isLoggedIn) {
@@ -4615,7 +4858,6 @@ Private send interception
                 avatar: ''
             });
         }
-
 
         parseLogDateToNumber(logDateStr) {
             return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
