@@ -3301,6 +3301,8 @@ Private send interception
 
             dmLink.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 this.applyLegacyAndOpenDm(user);
             });
 
