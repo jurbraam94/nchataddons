@@ -405,7 +405,7 @@
     pointer-events: none; /* never intercept clicks */
 }
 
-#my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #chat_left, #private_content {
+#my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #chat_left, #private_content, #chat_right {
     height: 100% !important;
 }
 
@@ -572,10 +572,6 @@
 
 .ca-collapsed .ca-user-list-content {
     display: none;
-}
-
-.ca-user-list-container.ca-expanded {
-    flex: 1 1 50%;
 }
 
 .ca-user-list-container.ca-collapsed {

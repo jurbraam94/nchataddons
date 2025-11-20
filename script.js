@@ -461,6 +461,7 @@
             this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
             this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
             this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
+            this.SHOW_BROADCAST_SELECTION_BOXES_KEY = `${this.STORAGE_KEY_PREFIX}.showBroadcastSelectionBoxes`;
             this.LAST_DM_UID_KEY = `${this.STORAGE_KEY_PREFIX}.lastDmUid`;
             this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
@@ -636,12 +637,7 @@
                     wrapFooter: '#wrap_footer',
                     topChatContainer: '#top_chat_container',
                     caUserListHeader: '.ca-user-list-header'
-                },
-                // Debug checkboxes
-                debug: {
-                    checkbox: '#ca-debug-checkbox',
-                    verboseCheckbox: '#ca-verbose-checkbox',
-                },
+                }
             };
             this.sel.raw = {};
         }
@@ -700,6 +696,9 @@
 
             const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
             this.hideRepliedUsers = storedHide === true || storedHide === 'true';
+
+            const showBroadcastCheckboxes = localStorage.getItem(this.SHOW_BROADCAST_SELECTION_BOXES_KEY) || false;
+            this.showBroadcastCheckboxes = showBroadcastCheckboxes === true || showBroadcastCheckboxes === 'true';
 
             this.NO_LS_MODE = this._readStorageMode(); // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
@@ -3076,8 +3075,7 @@ Private send interception
 
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
-                chip.textContent = '✓';// 🔑 Respect the “Hide replied users” checkbox every time
-                // Respect "hide replied" state
+                chip.textContent = '✓';// 🔑
                 userEl.style.display = this.hideRepliedUsers ? 'none' : '';
 
                 // --- Move user to bottom of container ---
@@ -3212,14 +3210,6 @@ Private send interception
         // more descriptive and self-contained
         ensureBroadcastCheckbox(el, uid) {
             this.verbose('ensureBroadcastCheckbox:', el, uid);
-            if (this.qs('.ca-ck-wrap', el)) {
-                return;    //f already has one
-            }
-            if (!this._isAllowedRank?.(el)) {
-                return;
-            }
-
-            this._isMakingOwnChanges = true;
 
             const wrap = document.createElement('label');
             wrap.className = 'ca-ck-wrap';
@@ -3681,18 +3671,19 @@ Private send interception
 
             this.ui.userContainersWrapper.appendChild(femaleUsersContainer);
 
-            const ckToggle = sub.querySelector('#ca-female-ck-toggle');
-            ckToggle.checked = false;
+            const showBroadcastCheckboxesToggle = sub.querySelector('#ca-female-ck-toggle');
+            showBroadcastCheckboxesToggle.checked = this.showBroadcastCheckboxes;
             femaleUsersContainer.classList.remove('ca-show-ck');
 
-            ckToggle.addEventListener('change', (e) => {
+            showBroadcastCheckboxesToggle.addEventListener('change', (e) => {
                 const checked = !!e.target.checked;
+                this.Store.set(this.SHOW_BROADCAST_SELECTION_BOXES_KEY, checked);
                 femaleUsersContainer.classList.toggle('ca-show-ck', checked);
                 this.verbose('[CA] Female user checkbox visibility:', checked ? 'shown' : 'hidden');
             });
 
             const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
-
+            hideRepliedToggle.checked = this.hideRepliedUsers;
             if (hideRepliedToggle) {
                 hideRepliedToggle.addEventListener('change', (e) => {
                     const hide = !!e.target.checked;
@@ -3711,7 +3702,7 @@ Private send interception
         }
 
         applyHideRepliedUsers(hide) {
-            const repliedEls = this.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.bca_replied_messages}`, this.ui.femaleUsersContainer);
+            const repliedEls = this.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
 
             repliedEls.forEach((el) => {
                 el.style.display = hide ? 'none' : '';
@@ -3969,10 +3960,6 @@ Private send interception
             this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
-
-            this.ui.debugCheckbox = this.qs(this.sel.debug.checkbox);
-            this.ui.verboseCheckbox = this.qs(this.sel.debug.verboseCheckbox);
-
             this.ui.loggingBox = this.qs(this.sel.log.general);
         }
 
