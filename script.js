@@ -1,7 +1,6 @@
 /* ==========================================
    Class-based App with Store classes (no MemoryStorage)
    - KeyValueStore (localStorage-backed)
-   - DraftsStore (depends on KeyValueStore)
    - UsersStore (example of another store)
    - App composes them and exposes CA.App
    ========================================== */
@@ -38,26 +37,6 @@
             const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
             this.storage.setItem(this._key(key), toStore);
             return true;
-        }
-    }
-
-    /** Drafts store that uses a KeyValueStore */
-    class DraftsStore {
-        constructor({kv}) {
-            if (!kv) throw new Error("DraftsStore requires a KeyValueStore");
-            this.keyValueStoreReference = kv;
-        }
-
-        save(key, value) {
-            const k = typeof key === "string" ? key : String(key || "");
-            if (!k) return false;
-            return this.keyValueStoreReference.set(k, value == null ? "" : String(value));
-        }
-
-        bindInput(el, key) {
-            if (!el) return;
-            el.value = String(this.keyValueStoreReference.get(key) ?? "");
-            el.addEventListener("input", () => this.save(key, el.value));
         }
     }
 
@@ -796,12 +775,10 @@
             if (wrapFooterEl) main_wrapper.appendChild(wrapFooterEl);
             document.body.prepend(main_wrapper);
 
-
             // Store + dependent stores
             this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
             this.debug('Initializing app with options:', options);
 
-            this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
             this.UserStore = this.UserStore || new UsersStore({
                 kv: this.Store,
                 cacheKey: this.USERS_KEY,
@@ -837,6 +814,9 @@
             this._bindStaticRefs();
             this._attachLogClickHandlers();
 
+
+            this.installLogImageHoverPreview();
+
             // Restore last DM (cheap) before wiring DM stuff
             await this.restoreLastDmFromStore();
 
@@ -845,16 +825,6 @@
                 privateCloseButton.addEventListener('click', () => {
                     this.clearLastDmUid();
                 });
-            }
-
-            // Drafts for “specific send”
-            if (this.Drafts) {
-                if (this.ui.sendPrivateMessageText) {
-                    this.Drafts.bindInput(this.ui.sendPrivateMessageText, this.STORAGE_PREFIX + 'draftSpecific');
-                }
-                if (this.ui.sendPrivateMessageUser) {
-                    this.Drafts.bindInput(this.ui.sendPrivateMessageUser, this.STORAGE_PREFIX + 'specificUsername');
-                }
             }
 
             this._wireDebugCheckbox();
@@ -1908,6 +1878,125 @@ Private send interception
             this.updateProfileChip(user.uid);
             return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
         }
+
+        installLogImageHoverPreview() {
+            const containers = [
+                this.ui.repliedMessageBox,
+                this.ui.unrepliedMessageBox,
+                this.ui.sentMessagesBox
+            ].filter(Boolean);
+
+            if (!containers.length) {
+                console.warn('[CA] installLogImageHoverPreview: no log containers found');
+                return;
+            }
+
+            // Create a single shared preview bubble
+            const preview = document.createElement('div');
+            preview.id = 'ca-log-image-preview';
+            preview.style.position = 'fixed';
+            preview.style.zIndex = '9999';
+            preview.style.pointerEvents = 'none';
+            preview.style.display = 'none';
+            preview.style.border = '1px solid rgba(0,0,0,0.5)';
+            preview.style.background = 'rgba(0,0,0,0.9)';
+            preview.style.padding = '4px';
+            preview.style.borderRadius = '4px';
+            preview.style.maxWidth = '260px';
+            preview.style.maxHeight = '260px';
+            preview.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+
+            const img = document.createElement('img');
+            img.style.display = 'block';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '250px';
+
+            preview.appendChild(img);
+            document.body.appendChild(preview);
+
+            const hidePreview = () => {
+                preview.style.display = 'none';
+            };
+
+            const positionPreview = (evt) => {
+                const offset = 18;
+                let x = evt.clientX + offset;
+                let y = evt.clientY + offset;
+
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+
+                const estWidth = 260;
+                const estHeight = 260;
+
+                if (x + estWidth > vw) {
+                    x = evt.clientX - estWidth - offset;
+                }
+                if (y + estHeight > vh) {
+                    y = evt.clientY - estHeight - offset;
+                }
+
+                preview.style.left = `${x}px`;
+                preview.style.top = `${y}px`;
+            };
+
+            const showPreview = (evt, src) => {
+                if (!src) {
+                    console.warn('[CA] installLogImageHoverPreview: no src found for image');
+                    return;
+                }
+                img.src = src;
+                positionPreview(evt);
+                preview.style.display = 'block';
+            };
+
+            containers.forEach((container) => {
+                // SHOW on hovering the thumbnail image
+                container.addEventListener('mouseover', (evt) => {
+                    const target = evt.target;
+                    if (!target || !(target instanceof Element)) {
+                        return;
+                    }
+
+                    const imgEl = target.closest('img.chat_image');
+                    if (!imgEl) {
+                        return;
+                    }
+
+                    showPreview(evt, imgEl.src);
+                });
+
+                // MOVE while hovering
+                container.addEventListener('mousemove', (evt) => {
+                    if (preview.style.display === 'none') {
+                        return;
+                    }
+                    positionPreview(evt);
+                });
+
+                // HIDE when leaving the image
+                container.addEventListener('mouseout', (evt) => {
+                    const target = evt.target;
+                    if (!target || !(target instanceof Element)) {
+                        return;
+                    }
+
+                    // Only care when leaving the image itself
+                    if (!target.closest('img.chat_image')) {
+                        return;
+                    }
+
+                    // If we left the image -> hide
+                    const related = evt.relatedTarget;
+                    if (!related || !(related instanceof Element) || !related.closest('img.chat_image')) {
+                        hidePreview();
+                    }
+                });
+            });
+
+            console.log('[CA] Log image hover preview installed');
+        }
+
 
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, privateChatLogs) {
@@ -3104,16 +3193,6 @@ Private send interception
                 '<div class="ca-pop-body"></div>';
 
             document.body.appendChild(pop);
-
-            const closeBtn = pop.querySelector('.ca-pop-close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    pop.style.display = 'none';
-                    if (typeof this.onPopupClosed === 'function') {
-                        this.onPopupClosed(id);
-                    }
-                });
-            }
 
             const titleEl = pop.querySelector('.ca-pop-title');
             if (titleEl && typeof title === 'string') {
@@ -4370,8 +4449,8 @@ Private send interception
             const C = this.sel.raw.log.classes;
 
             // dot color / title
-            let dotExtraClass = '';
-            let dotTitle = '';
+            let dotExtraClass;
+            let dotTitle;
 
             if (kind === 'event') {
                 dotExtraClass = C.ca_log_dot_gray;

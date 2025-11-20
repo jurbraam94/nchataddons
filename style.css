@@ -524,6 +524,13 @@
     font-size: 14px;
 }
 
+/* Bigger inline image previews inside log entries */
+.ca-log-text img.chat_image {
+    max-width: 48px;
+    max-height: 48px;
+    border-radius: 4px;
+}
+
 .ca-user-list-count {
     display: inline-flex;
     align-items: center;
