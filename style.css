@@ -82,16 +82,13 @@
     border: 2px solid #2b90ff;
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(8, 30, 70, .6);
+    display: none;
 }
 
 .ca-popup.ca-popup-open {
     display: block;
     position: fixed;
     z-index: 1000;
-}
-
-.ca-popup.ca-popup-closed {
-    display: none;
 }
 
 .ca-popup-header {
