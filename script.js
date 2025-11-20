@@ -831,14 +831,11 @@
         }
 
         /* Fill the list inside the pop */
-        _renderPredefinedList() {
-            const pop = document.getElementById('ca-predefined-messages-popup');
-            if (!pop) return;
-
-            const listEl = pop.querySelector('#ca-predefined-messages-list');
-            const subjectInput = pop.querySelector('#ca-predefined-messages-subject');
-            const textInput = pop.querySelector('#ca-predefined-messages-text');
-            const indexInput = pop.querySelector('#ca-predefined-messages-index');
+        _renderPredefinedList(popup) {
+            const listEl = popup.querySelector('#ca-predefined-messages-list');
+            const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
+            const textInput = popup.querySelector('#ca-predefined-messages-text');
+            const indexInput = popup.querySelector('#ca-predefined-messages-index');
 
             if (!listEl || !subjectInput || !textInput || !indexInput) {
                 console.error('[CA] _renderPredefinedList: missing elements');
@@ -890,7 +887,7 @@
                     const current = this._getPredefinedMessages().slice();
                     current.splice(index, 1);
                     this._savePredefinedMessages(current);
-                    this._renderPredefinedList();
+                    this._renderPredefinedList(popup);
                     this._refreshAllPredefinedSelects();
                 });
 
@@ -908,7 +905,6 @@
                 li.appendChild(preview);
                 listEl.appendChild(li);
             });
-
         }
 
         _fillPredefinedSelect(selectEl) {
@@ -931,7 +927,7 @@
             });
         }
 
-// Call this whenever templates change, so ALL dropdowns stay in sync
+        // Call this whenever templates change, so ALL dropdowns stay in sync
         _refreshAllPredefinedSelects() {
             const selects = document.querySelectorAll('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
@@ -1139,53 +1135,7 @@
             if (addEl) {
                 addEl.addEventListener('click', (e) => {
                     e.preventDefault();
-
-                    const targetSel = selectEl.dataset.predefinedMessagesTarget;
-                    if (!targetSel) {
-                        console.error('[CA] add-from-chat: missing data-predefined-messages-target');
-                        return;
-                    }
-
-                    const box = this.qs(targetSel) || document.querySelector(targetSel);
-                    if (!box) {
-                        console.error('[CA] add-from-chat: target input not found for selector:', targetSel);
-                        return;
-                    }
-
-                    const currentText = (box.value || '').trim();
-                    if (!currentText) {
-                        console.warn('[CA] No text in chatbox to save as template');
-                        return;
-                    }
-
-                    if (typeof this.openPredefinedPopup === 'function') {
-                        this.openPredefinedPopup();
-                    } else if (typeof this.createPredefinedPopup === 'function') {
-                        const pop = this.createPredefinedPopup();
-                    }
-
-                    const modal =
-                        document.getElementById('ca-predefined-messages-popup') ||
-                        document.getElementById('ca-predefined-modal');
-
-                    if (!modal) {
-                        console.error('[CA] Predefined modal not found after opening');
-                        return;
-                    }
-
-                    const subjectInput = modal.querySelector('#ca-predefined-messages-subject');
-                    const textInput = modal.querySelector('#ca-predefined-messages-text');
-                    const indexInput = modal.querySelector('#ca-predefined-messages-index');
-
-                    if (indexInput) {
-                        indexInput.value = '-1'; // new template
-                    }
-                    if (subjectInput) {
-                        subjectInput.value = subjectInput.value || '';
-                    }
-                    if (textInput) {
-                        textInput.value = currentText;
-                    }
+                    this.openPredefinedPopup(selectEl);
                 });
             }
 
@@ -1195,18 +1145,10 @@
                     e.preventDefault();
 
                     console.log('[CA] Predefined Manage clicked:', manageEl.id || '(no id)');
-
-                    if (typeof this.openPredefinedPopup === 'function') {
-                        this.openPredefinedPopup();
-                    } else if (typeof this.createPredefinedPopup === 'function') {
-                        const pop = this.createPredefinedPopup();
-                    } else {
-                        console.error('[CA] No predefined popup open method defined');
-                    }
+                    this.openPredefinedPopup(selectEl);
                 });
             }
         }
-
 
         // ---- Predefined messages storage helpers ----
         _getPredefinedMessages() {
@@ -1232,57 +1174,111 @@
             this.Store.set(this.PREDEFINED_MESSAGES_KEY, arr);
         }
 
+        createPredefinedMessagesPopup() {
+            const bodyHtml = `
+              <form 
+                id="ca-predefined-messages-form" 
+                class="ca-predefined-messages-form"
+                style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;"
+              >
+                <label>
+                  Subject<br>
+                  <input 
+                    type="text" 
+                    id="ca-predefined-messages-subject" 
+                    class="ca-8" 
+                  >
+                </label>
+            
+                <label>
+                  Text<br>
+                  <textarea 
+                    id="ca-predefined-messages-text" 
+                    class="ca-8" 
+                    rows="4"
+                  ></textarea>
+                </label>
+            
+                <input 
+                  type="hidden" 
+                  id="ca-predefined-messages-index" 
+                  value="-1"
+                >
+            
+                <div style="display:flex; gap:4px; justify-content:flex-end; margin-top:4px;">
+                  <button 
+                    type="button" 
+                    id="ca-predefined-messages-reset" 
+                    class="ca-btn ca-btn-slim"
+                  >
+                    Clear
+                  </button>
+            
+                  <button 
+                    type="submit" 
+                    id="ca-predefined-messages-save" 
+                    class="ca-btn ca-btn-slim"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+              <ul id="ca-predefined-messages-list"></ul>
+            `;
+
+            return this.ensurePopup({
+                id: 'ca-predefined-messages-popup',
+                title: 'Manage predefined messages',
+                bodyHtml
+            });
+        }
+
         /* ---------- Predefined messages popup (ca-popup) ---------- */
-        createPredefinedPopup() {
-            let pop = document.getElementById('ca-predefined-messages-popup');
-            if (pop) return pop;
+        openPredefinedPopup(selectEl) {
+            const popup = this.createPredefinedMessagesPopup();
+            this._renderPredefinedList(popup);
 
-            pop = document.createElement('div');
-            pop.id = 'ca-predefined-messages-popup';
-            pop.className = 'ca-popup';
-            pop.style.display = 'none';
+            const form = popup.querySelector('#ca-predefined-messages-form');
+            const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
+            const textInput = popup.querySelector('#ca-predefined-messages-text');
+            const indexInput = popup.querySelector('#ca-predefined-messages-index');
+            const resetBtn = popup.querySelector('#ca-predefined-messages-reset');
 
-            pop.innerHTML =
-                '<div id="ca-predefined-messages-popup-header" class="ca-popup-header">' +
-                '  <span>Predefined messages</span>' +
-                '  <button id="ca-predefined-messages-popup-close" class="ca-popup-close" type="button">✕</button>' +
-                '</div>' +
-                '<div class="ca-popup-body">' +
-                '  <form id="ca-predefined-messages-form" class="ca-predefined-messages-form" style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;">' +
-                '    <label>Subject<br>' +
-                '      <input type="text" id="ca-predefined-messages-subject" class="ca-8" />' +
-                '    </label>' +
-                '    <label>Text<br>' +
-                '      <textarea id="ca-predefined-messages-text" class="ca-8" rows="4"></textarea>' +
-                '    </label>' +
-                '    <input type="hidden" id="ca-predefined-messages-index" value="-1" />' +
-                '    <div style="display:flex; gap:4px; justify-content:flex-end; margin-top:4px;">' +
-                '      <button type="button" id="ca-predefined-messages-reset" class="ca-btn ca-btn-slim">Clear</button>' +
-                '      <button type="submit" id="ca-predefined-messages-save" class="ca-btn ca-btn-slim">Save</button>' +
-                '    </div>' +
-                '  </form>' +
-                '  <hr>' +
-                '  <ul id="ca-predefined-messages-list"></ul>' +
-                '</div>';
+            if (selectEl) {
+                const targetSel = selectEl.dataset.predefinedMessagesTarget;
+                if (!targetSel) {
+                    console.error('[CA] add-from-chat: missing data-predefined-messages-target');
+                    return;
+                }
 
-            document.body.appendChild(pop);
+                const box = this.qs(targetSel);
+                console.log(box);
+                if (!box) {
+                    console.error('[CA] add-from-chat: target input not found for selector:', targetSel);
+                    return;
+                }
 
-            const closeBtn = pop.querySelector('#ca-predefined-messages-popup-close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    pop.style.display = 'none';
-                });
+                const currentText = (box.value || '').trim();
+                if (!currentText) {
+                    console.warn('[CA] No text in chatbox to save as template');
+                    return;
+                }
+                console.log(currentText, textInput)
+
+                if (indexInput) {
+                    indexInput.value = '-1'; // new template
+                }
+                if (subjectInput) {
+                    subjectInput.value = subjectInput.value || '';
+                }
+                if (textInput) {
+                    textInput.value = currentText;
+                }
             }
-
-            const form = pop.querySelector('#ca-predefined-messages-form');
-            const subjectInput = pop.querySelector('#ca-predefined-messages-subject');
-            const textInput = pop.querySelector('#ca-predefined-messages-text');
-            const indexInput = pop.querySelector('#ca-predefined-messages-index');
-            const resetBtn = pop.querySelector('#ca-predefined-messages-reset');
 
             if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
                 console.error('[CA] createPredefinedPopup: missing form controls');
-                return pop;
+                return null;
             }
 
             resetBtn.addEventListener('click', () => {
@@ -1312,7 +1308,7 @@
                 }
 
                 this._savePredefinedMessages(list);
-                this._renderPredefinedList();
+                this._renderPredefinedList(popup);
                 this._refreshAllPredefinedSelects();
 
 
@@ -1322,39 +1318,7 @@
                 textInput.value = '';
             });
 
-            const hdr = pop.querySelector('#ca-predefined-messages-popup-header');
-            let ox = 0, oy = 0, sx = 0, sy = 0;
-            const mm = (e) => {
-                const dx = e.clientX - sx, dy = e.clientY - sy;
-                pop.style.left = (ox + dx) + 'px';
-                pop.style.top = (oy + dy) + 'px';
-                pop.style.transform = 'none';
-            };
-            const mu = () => {
-                document.removeEventListener('mousemove', mm);
-                document.removeEventListener('mouseup', mu);
-            };
-            if (hdr) {
-                hdr.addEventListener('mousedown', (e) => {
-                    sx = e.clientX;
-                    sy = e.clientY;
-                    const r = pop.getBoundingClientRect();
-                    ox = r.left;
-                    oy = r.top;
-                    document.addEventListener('mousemove', mm);
-                    document.addEventListener('mouseup', mu);
-                });
-            }
-
-            this._renderPredefinedList();
-
-            return pop;
-        }
-
-        openPredefinedPopup() {
-            const pop = this.createPredefinedPopup();
-            if (!pop) return;
-            this._renderPredefinedList();
+            this.togglePopup('ca-predefined-messages-popup')
         }
 
         appendCustomActionsToBar() {
@@ -1474,7 +1438,7 @@
         }
 
         async refreshUserList() {
-            console.log('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
+            this.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
             const formData = new URLSearchParams();
             formData.append('token', utk);
 
@@ -2588,7 +2552,7 @@ Private send interception
             this.isInitialLoad = false;
 
             console.log(
-                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, ` +
+                `%c\n [USER_LIST]%c Refreshed users. Summary: %c${loggedInCount} logged in%c, ` +
                 `%c${newFemaleProfileCount} new female users added%c, ` +
                 `${newMaleProfileCount} male users added, ` +
                 `%c${updatedProfileCount} updated%c, ` +
@@ -3043,30 +3007,31 @@ Private send interception
                 console.error('[321ChatAddons] ensurePopup called without id');
                 return null;
             }
-            let pop = document.createElement('div');
-            pop.id = id;
-            pop.classList.add('ca-popup');
-            pop.classList.add('ca-popup-closed');
+            this.qs(`#${id}`)?.remove();
+            let popup = document.createElement('div');
+            popup.id = id;
+            popup.classList.add('ca-popup');
+            popup.classList.add('ca-popup-closed');
 
-            pop.innerHTML =
+            popup.innerHTML =
                 '<div class="ca-popup-header">' +
                 '  <span class="ca-popup-title"></span>' +
                 '  <button class="ca-popup-close" type="button">✕</button>' +
                 '</div>' +
                 '<div class="ca-popup-body"></div>';
 
-            pop.querySelector('.ca-popup-close')?.addEventListener('click', () => {
-                pop.classList.remove('ca-popup-open');
-                pop.classList.add('ca-popup-closed');
+            popup.querySelector('.ca-popup-close')?.addEventListener('click', () => {
+                console.log('Closing popup:', id);
+                this.qs(`#${id}`).remove();
             });
 
-            const hdr = pop.querySelector('.ca-popup-header');
+            const hdr = popup.querySelector('.ca-popup-header');
             let ox = 0, oy = 0, sx = 0, sy = 0;
             const mm = (e) => {
                 const dx = e.clientX - sx, dy = e.clientY - sy;
-                pop.style.left = (ox + dx) + 'px';
-                pop.style.top = (oy + dy) + 'px';
-                pop.style.transform = 'none';
+                popup.style.left = (ox + dx) + 'px';
+                popup.style.top = (oy + dy) + 'px';
+                popup.style.transform = 'none';
             };
             const mu = () => {
                 document.removeEventListener('mousemove', mm);
@@ -3075,26 +3040,26 @@ Private send interception
             if (hdr) hdr.addEventListener('mousedown', (e) => {
                 sx = e.clientX;
                 sy = e.clientY;
-                const r = pop.getBoundingClientRect();
+                const r = popup.getBoundingClientRect();
                 ox = r.left;
                 oy = r.top;
                 document.addEventListener('mousemove', mm);
                 document.addEventListener('mouseup', mu);
             });
 
-            document.body.appendChild(pop);
+            document.body.appendChild(popup);
 
-            const titleEl = pop.querySelector('.ca-popup-title');
+            const titleEl = popup.querySelector('.ca-popup-title');
             if (titleEl && typeof title === 'string') {
                 titleEl.textContent = title;
             }
 
-            const bodyEl = pop.querySelector('.ca-popup-body');
+            const bodyEl = popup.querySelector('.ca-popup-body');
             if (bodyEl && typeof bodyHtml === 'string') {
                 bodyEl.innerHTML = bodyHtml;
             }
 
-            return pop;
+            return popup;
         }
 
         togglePopup(id) {
