@@ -354,6 +354,10 @@
     position: relative;
 }
 
+.ca-show-ck .ca-ck-wrap {
+    display: inline-flex;
+}
+
 .user_item_icon.icrank {
     display: none;
 }
@@ -374,8 +378,8 @@
 
 .ca-ck-wrap {
     z-index: 2;
-    display: inline-flex;
     align-items: center;
+    display: none;
     gap: 4px;
     padding: 0;
     background: transparent;
@@ -940,28 +944,11 @@ svg.svg-large {
     transform: scale(0.85);
 }
 
-
-/* --- Managed wrapper: hide per-user checkboxes by default --- */
-.ca-user-list-container .ca-ck-wrap {
-    display: none !important; /* hidden until header toggle is ON */
-    position: static !important; /* override earlier absolute positioning */
-    right: auto !important;
-    top: auto !important;
-    margin-right: 6px; /* small gap before username */
-    pointer-events: auto; /* clickable */
-}
-
-/* When header toggle turns ON, show the checkboxes */
-.ca-user-list-container.ca-show-ck .ca-ck-wrap {
-    display: inline-flex !important;
-}
-
 /* Small, neat checkbox */
 .ca-user-list-container .ca-ck-wrap .ca-ck {
     width: 12px;
     height: 12px;
 }
-
 
 /* Make sure the username doesn't get pushed oddly */
 .ca-user-list-container .user_item_data .username {

@@ -695,10 +695,10 @@
                 localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
 
             const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
-            this.hideRepliedUsers = storedHide === true || storedHide === 'true';
+            this.shouldHideRepliedUsers = storedHide === true || storedHide === 'true';
 
             const showBroadcastCheckboxes = localStorage.getItem(this.SHOW_BROADCAST_SELECTION_BOXES_KEY) || false;
-            this.showBroadcastCheckboxes = showBroadcastCheckboxes === true || showBroadcastCheckboxes === 'true';
+            this.shouldShowBroadcastCheckboxes = showBroadcastCheckboxes === true || showBroadcastCheckboxes === 'true';
 
             this.NO_LS_MODE = this._readStorageMode(); // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
@@ -795,6 +795,10 @@
             this._attachLogClickHandlers();
 
             this.installLogImageHoverPreview();
+
+            if (this.shouldShowBroadcastCheckboxes) {
+                document.querySelector('#ca-female-users-container').classList.add("ca-show-ck");
+            }
 
             // Restore last DM (cheap) before wiring DM stuff
             await this.restoreLastDmFromStore();
@@ -3076,7 +3080,7 @@ Private send interception
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.textContent = '✓';// 🔑
-                userEl.style.display = this.hideRepliedUsers ? 'none' : '';
+                userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
 
                 // --- Move user to bottom of container ---
                 this.debug('Moving user to bottom of container:', uid);
@@ -3672,26 +3676,27 @@ Private send interception
             this.ui.userContainersWrapper.appendChild(femaleUsersContainer);
 
             const showBroadcastCheckboxesToggle = sub.querySelector('#ca-female-ck-toggle');
-            showBroadcastCheckboxesToggle.checked = this.showBroadcastCheckboxes;
-            femaleUsersContainer.classList.remove('ca-show-ck');
+            showBroadcastCheckboxesToggle.checked = this.shouldShowBroadcastCheckboxes;
 
             showBroadcastCheckboxesToggle.addEventListener('change', (e) => {
                 const checked = !!e.target.checked;
+                this.shouldShowBroadcastCheckboxes = checked;
                 this.Store.set(this.SHOW_BROADCAST_SELECTION_BOXES_KEY, checked);
                 femaleUsersContainer.classList.toggle('ca-show-ck', checked);
                 this.verbose('[CA] Female user checkbox visibility:', checked ? 'shown' : 'hidden');
             });
 
             const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
-            hideRepliedToggle.checked = this.hideRepliedUsers;
+            hideRepliedToggle.checked = this.shouldHideRepliedUsers;
             if (hideRepliedToggle) {
                 hideRepliedToggle.addEventListener('change', (e) => {
-                    const hide = !!e.target.checked;
-                    console.log('[CA] Hide replied users:', hide);
+                    const checked = !!e.target.checked;
+                    this.verbose('[CA] Hide replied users:', checked);
 
-                    this.Store.set(this.HIDE_REPLIED_USERS_KEY, hide);
+                    this.shouldHideRepliedUsers = checked;
+                    this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
 
-                    this.applyHideRepliedUsers(hide);
+                    this.applyHideRepliedUsers(checked);
                 });
             } else {
                 console.error('.ca-female-hide-replied not found');
@@ -3762,8 +3767,7 @@ Private send interception
                 el.classList.toggle('ca-collapsed', !expanded);
             };
 
-            const onHeaderClick = (clicked, other) => () => {
-                console.log('Header clicked');
+            const onHeaderClick = (clicked) => () => {
                 setExpanded(clicked, !clicked.classList.contains('ca-expanded'));
             };
 
