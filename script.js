@@ -731,96 +731,46 @@
             this.options = options || {};
             this._removeSuperBotMethods();
             this.buildRawTree(this.sel, this.sel.raw);
-            this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' || localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
-            this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' || localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
-            const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
 
+            this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' ||
+                localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
+            this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' ||
+                localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
+
+            const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
             this.hideRepliedUsers = storedHide === true || storedHide === 'true';
 
-
-            this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
+            this.NO_LS_MODE = this._readStorageMode(); // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
-            // build panel + wire refs + handlers
+            // Let layout settle, then remove ads
+            this.removeAds(document);
+            // --- CORE UI SETUP (keep synchronous) ---
             this.buildPanel();
 
-            // Key/value store used all over the App — now with custom backend
-            this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
+            const main_wrapper = document.createElement('div');
+            main_wrapper.id = 'main_wrapper';
 
-            this.debug('Initializing app with options:', options);
+            const globalChatEl = this.qs('#global_chat');
+            const chatHeadEl = this.qs('#chat_head');
+            const wrapFooterEl = this.qs('#wrap_footer');
+            const privateMenuEl = this.qs('#private_menu');
+            const privateCenterEl = this.qs('#private_center');
 
-            // Persist message drafts
-            this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
+            this.qs(this.sel.privateChat.privateInputBox).innerHTML =
+                '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
+            this.qs('#message_form').prepend(this.qs('#private_input_box'));
 
-            // Backing store for users (separate namespace so the map stays tidy)
-            this.UserStore = this.UserStore || new UsersStore({
-                kv: this.Store,
-                cacheKey: this.USERS_KEY,
-                app: this
-            });
-            if (!this.UserStore.get('system')) {
-                this.UserStore.set({
-                    uid: 'system',
-                    name: 'System',
-                    avatar: '',
-                    isFemale: false,
-                    isLoggedIn: true,
-                    rank: 100
-                });
+            const dmTextarea = document.getElementById("message_content");
+            const dmSendBtn = document.querySelector('#private_send, #send_button, #message_form button[type="submit"]');
+
+            if (!dmTextarea) {
+                console.error("DM textarea #message_content not found");
+            }
+            if (!dmSendBtn) {
+                console.error("DM send button not found — update selector if needed");
             }
 
-            // Activity log store (guid-indexed)
-            this.ActivityLogStore = this.ActivityLogStore || new ActivityLogStore({
-                kv: this.Store,
-                cacheKey: this.ACTIVITY_LOG_KEY, // already defined in your App
-                max: 200,
-                app: this
-            });
-
-            this._installAudioAutoplayGate();
-
-            // Initialize watermark once
-            this.initializeGlobalWatermark();
-
-            this._updateStorageToggleUi();
-            this.buildMenuLogPanel();
-            this.createFemaleUsersContainer();
-            this.createPredefinedMessagesSection();
-            this._bindStaticRefs();
-            this._attachLogClickHandlers();
-
-            // Restore last DM if we have one stored in this.Store
-            await this.restoreLastDmFromStore();
-
-            // Clear stored DM when the original private chat close button is used
-            const privateCloseButton = document.querySelector('#private_close');
-            if (privateCloseButton) {
-                privateCloseButton.addEventListener('click', () => {
-                    this.clearLastDmUid();
-                });
-            }
-
-            if (document.body) {
-                const main_wrapper = document.createElement('div');
-                main_wrapper.id = 'main_wrapper';
-                const globalChatEl = this.qs('#global_chat');
-                const chatHeadEl = this.qs('#chat_head');
-                const wrapFooterEl = this.qs('#wrap_footer');
-                const privateMenuEl = this.qs('#private_menu');
-                const privateCenterEl = this.qs('#private_center');
-                this.qs(this.sel.privateChat.privateInputBox).innerHTML = '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
-                this.qs('#message_form').prepend(this.qs('#private_input_box'));
-
-                // --- Enable "Enter to send" in private chat ---
-                const dmTextarea = document.getElementById("message_content");
-                const dmSendBtn = document.querySelector('#private_send, #send_button, #message_form button[type="submit"]');
-
-                if (!dmTextarea) {
-                    console.error("DM textarea #message_content not found");
-                }
-                if (!dmSendBtn) {
-                    console.error("DM send button not found — update selector if needed");
-                }
-
+            if (dmTextarea && dmSendBtn) {
                 dmTextarea.addEventListener("keydown", (event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -835,50 +785,120 @@
                         dmTextarea.value = "";
                     }
                 });
-
-
-                privateCenterEl.after(privateMenuEl);
-                main_wrapper.appendChild(chatHeadEl);
-                main_wrapper.appendChild(globalChatEl);
-                main_wrapper.appendChild(wrapFooterEl);
-                document.body.prepend(main_wrapper);
-
-                // small delay to let layout settle
-                setTimeout(() => {
-                    this.removeAds(document);
-                }, 0);
             }
 
+            if (privateCenterEl && privateMenuEl) {
+                privateCenterEl.after(privateMenuEl);
+            }
 
+            if (chatHeadEl) main_wrapper.appendChild(chatHeadEl);
+            if (globalChatEl) main_wrapper.appendChild(globalChatEl);
+            if (wrapFooterEl) main_wrapper.appendChild(wrapFooterEl);
+            document.body.prepend(main_wrapper);
+
+
+            // Store + dependent stores
+            this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
+            this.debug('Initializing app with options:', options);
+
+            this.Drafts = this.Drafts || new DraftsStore({kv: this.Store});
+            this.UserStore = this.UserStore || new UsersStore({
+                kv: this.Store,
+                cacheKey: this.USERS_KEY,
+                app: this
+            });
+
+            if (!this.UserStore.get('system')) {
+                this.UserStore.set({
+                    uid: 'system',
+                    name: 'System',
+                    avatar: '',
+                    isFemale: false,
+                    isLoggedIn: true,
+                    rank: 100
+                });
+            }
+
+            this.ActivityLogStore = this.ActivityLogStore || new ActivityLogStore({
+                kv: this.Store,
+                cacheKey: this.ACTIVITY_LOG_KEY,
+                max: 200,
+                app: this
+            });
+
+            this._installAudioAutoplayGate();
+            this.initializeGlobalWatermark();
+            this._updateStorageToggleUi();
+
+            // Panel + user containers are visible early
+            this.buildMenuLogPanel();
+            this.createUserContainers();
+            this.createPredefinedMessagesSection();
+            this._bindStaticRefs();
+            this._attachLogClickHandlers();
+
+            // Restore last DM (cheap) before wiring DM stuff
+            await this.restoreLastDmFromStore();
+
+            const privateCloseButton = document.querySelector('#private_close');
+            if (privateCloseButton) {
+                privateCloseButton.addEventListener('click', () => {
+                    this.clearLastDmUid();
+                });
+            }
+
+            // Drafts for “specific send”
             if (this.Drafts) {
-                // persist the “send to specific” message + username
-                if (this.ui.sendPrivateMessageText) this.Drafts.bindInput(this.ui.sendPrivateMessageText, this.STORAGE_PREFIX + 'draftSpecific');
-                if (this.ui.sendPrivateMessageUser) this.Drafts.bindInput(this.ui.sendPrivateMessageUser, this.STORAGE_PREFIX + 'specificUsername');
+                if (this.ui.sendPrivateMessageText) {
+                    this.Drafts.bindInput(this.ui.sendPrivateMessageText, this.STORAGE_PREFIX + 'draftSpecific');
+                }
+                if (this.ui.sendPrivateMessageUser) {
+                    this.Drafts.bindInput(this.ui.sendPrivateMessageUser, this.STORAGE_PREFIX + 'specificUsername');
+                }
             }
 
             this._wireDebugCheckbox();
             this._wireVerboseCheckbox();
             this._wireLogClear();
 
-            await this.restoreLog?.();
+            // Network taps should be ready, but heavy work will happen later
+            this.installNetworkTaps();
+            this.installPrivateSendInterceptor();
 
-            this.installNetworkTaps();   // <— enable fetch/XHR interception
-
-            this.installPrivateSendInterceptor();  // <— enable intercept for native /private_process.php
-
-            // Re-bind counter references after creating the containers
+            // Re-bind counters + add refresh button
             this.ui.femaleUSersCount = this.qs(this.sel.users.femaleUserCount);
             this.ui.maleUsersCount = this.qs(this.sel.users.maleUserCount);
+            this.appendCustomActionsToBar();
 
-            this.appendCustomActionsToBar()
+            // --- HEAVY STUFF: defer to idle so UI appears fast ---
+            this.scheduleIdle(async () => {
+                // restoreLog can be heavy if many entries
+                await this.restoreLog();
 
-            await this.startRefreshUsersLoop({intervalMs: 15000}); // every 60s
-            this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
+                // Start loops; first user refresh happens here
+                await this.startRefreshUsersLoop({intervalMs: 15000, runImmediately: true});
+                this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000});
 
-            this.scrollToBottom(this.ui.repliedMessageBox);
-            this.scrollToBottom(this.ui.unrepliedMessageBox);
-            this.scrollToBottom(this.ui.sentMessagesBox);
+                // scroll after logs have been restored
+                this.scrollToBottom(this.ui.repliedMessageBox);
+                this.scrollToBottom(this.ui.unrepliedMessageBox);
+                this.scrollToBottom(this.ui.sentMessagesBox);
+            });
+
             return this;
+        }
+
+        scheduleIdle(fn, timeout = 1500) {
+            if (typeof fn !== 'function') {
+                console.error('[CA] scheduleIdle: fn must be a function');
+                return;
+            }
+
+            if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+                window.requestIdleCallback(() => fn(), {timeout});
+            } else {
+                setTimeout(() => fn(), 0);
+            }
         }
 
         _removeSuperBotMethods() {
@@ -3544,57 +3564,47 @@ Private send interception
             this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
 
-        createFemaleUsersContainer() {
-            // Anchor: the original chat_right_data (host list)
-            const chatRightData = this.qs(this.sel.users.chatRightData);
+        createUserContainers() {
+            const selUsers = this.sel.users;
+            const rawUsers = this.sel.raw.users;
+
+            const chatRightData = this.qs(selUsers.chatRightData);
             if (!chatRightData) {
                 console.warn(this.LOG, 'chat_right_data not found, cannot create Female users container');
                 return;
             }
 
             // Ensure male wrapper exists (host container)
-            let maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
+            let maleUsersWrapper = this.qs(selUsers.maleUsersWrapper);
             if (!maleUsersWrapper) {
                 maleUsersWrapper = document.createElement('div');
-                maleUsersWrapper.id = this.sel.raw.users.maleUsersWrapper;
+                maleUsersWrapper.id = rawUsers.maleUsersWrapper;
                 maleUsersWrapper.className = 'ca-user-list-container ca-collapsed';
 
                 const maleUsersHeader = document.createElement('div');
                 maleUsersHeader.className = 'ca-user-list-header';
                 maleUsersHeader.innerHTML = `
             <div class="ca-user-list-title">
-                <span class="ca-user-list-count" id="${this.sel.raw.users.maleUserCount}">0</span>
+                <span class="ca-user-list-count" id="${rawUsers.maleUserCount}">0</span>
                 <span>Male users</span>
                 <div class="ca-user-list-toggle">▼</div>
             </div>
         `;
 
-                // Wrap chat_right_data
-                chatRightData.parentNode.insertBefore(maleUsersWrapper, chatRightData);
-                maleUsersWrapper.appendChild(maleUsersHeader);
-
                 const maleUsersContent = document.createElement('div');
                 maleUsersContent.className = 'ca-user-list-content';
 
+                // Wrap chat_right_data
+                chatRightData.parentNode.insertBefore(maleUsersWrapper, chatRightData);
+                maleUsersWrapper.appendChild(maleUsersHeader);
                 maleUsersContent.appendChild(chatRightData);
                 maleUsersWrapper.appendChild(maleUsersContent);
-                this.qs('.user_count', maleUsersWrapper)?.remove();
 
                 this.ui.maleUsersContainer = maleUsersWrapper;
             }
 
-            // Prevent double-creation of female wrapper
-            const existingFemale = this.qs(`#${this.sel.raw.users.femaleUserWrapper}`);
-            if (existingFemale) {
-                console.log(this.LOG, 'Female users container already exists');
-                return;
-            }
-
-            // ======================
-            //  FEMALE WRAPPER (NO CLONE)
-            // ======================
             const femaleUsersWrapper = document.createElement('div');
-            femaleUsersWrapper.id = this.sel.raw.users.femaleUserWrapper;
+            femaleUsersWrapper.id = rawUsers.femaleUserWrapper;
             femaleUsersWrapper.className = 'ca-user-list-container ca-expanded';
 
             // ----- HEADER -----
@@ -3606,7 +3616,7 @@ Private send interception
 
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
-            countSpan.id = this.sel.raw.users.femaleUserCount;
+            countSpan.id = rawUsers.femaleUserCount;
             countSpan.textContent = '0';
 
             const labelSpan = document.createElement('span');
@@ -3620,7 +3630,6 @@ Private send interception
             title.appendChild(labelSpan);
             title.appendChild(toggle);
 
-            // subrow with toggles
             const sub = document.createElement('div');
             sub.className = 'ca-subrow';
             sub.innerHTML = `
@@ -3641,17 +3650,14 @@ Private send interception
             const femaleUsersContent = document.createElement('div');
             femaleUsersContent.className = 'ca-user-list-content';
 
-            // create a fresh chat_right_data-like container for female users
             const clonedChatRight = document.createElement('div');
-            clonedChatRight.id = 'ca-female-uses-chat-right-data'; // keep your original id string
+            clonedChatRight.id = 'ca-female-uses-chat-right-data'; // keep your original id
             clonedChatRight.className = 'crheight';
 
-            // inner container_user for female list
             const clonedContainerUser = document.createElement('div');
             clonedContainerUser.id = 'ca-female-user-container';
             clonedContainerUser.className = 'pad10';
 
-            // you can start with an empty body; you will append .user_item nodes later
             const onlineWrapper = document.createElement('div');
             onlineWrapper.className = 'online_user vpad5';
             clonedContainerUser.appendChild(onlineWrapper);
@@ -3661,14 +3667,11 @@ Private send interception
 
             clonedChatRight.appendChild(clonedContainerUser);
             clonedChatRight.appendChild(clearDiv);
-
             femaleUsersContent.appendChild(clonedChatRight);
 
-            // assemble female wrapper
             femaleUsersWrapper.appendChild(header);
             femaleUsersWrapper.appendChild(femaleUsersContent);
 
-            // append after male wrapper
             if (maleUsersWrapper.parentElement) {
                 maleUsersWrapper.parentElement.appendChild(femaleUsersWrapper);
             } else {
@@ -3677,6 +3680,7 @@ Private send interception
 
             this.ui.femaleUsersContainer = femaleUsersWrapper;
 
+            // ----- TOGGLES -----
             const ckToggle = sub.querySelector('#ca-female-ck-toggle');
             if (ckToggle) {
                 ckToggle.checked = false;
@@ -3689,43 +3693,36 @@ Private send interception
                 });
             }
 
-            // HIDE REPLIED USERS
             const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
             if (hideRepliedToggle) {
-                // Initialize from stored value
-                hideRepliedToggle.checked = !!this.hideRepliedUsers;
-
-                // Apply to current list immediately
-                this.applyHideRepliedUsers(!!this.hideRepliedUsers);
+                const hide = !!this.hideRepliedUsers;
+                hideRepliedToggle.checked = hide;
+                this.applyHideRepliedUsers(hide);
 
                 hideRepliedToggle.addEventListener('change', (e) => {
                     const hide = !!e.target.checked;
                     console.log('[CA] Hide replied users:', hide);
 
-                    // Persist via localStorage + Store
                     this.hideRepliedUsers = hide;
                     localStorage.setItem(this.HIDE_REPLIED_USERS_KEY, String(hide));
                     if (this.Store) {
                         this.Store.set(this.HIDE_REPLIED_USERS_KEY, hide);
                     }
 
-                    // Apply to current DOM
                     this.applyHideRepliedUsers(hide);
                 });
             } else {
-                console.error(`.ca-female-hide-replied not found`);
+                console.error('.ca-female-hide-replied not found');
             }
 
             this.verbose(this.LOG, 'Created female users container without cloning male users wrapper');
 
-            // Keep your existing wiring calls
             this.wireUserClickSelection();
             this.wireExclusiveCollapse(maleUsersWrapper, femaleUsersWrapper);
             this.wireListOptionClicks();
 
             this.updateMaleUsersCount();
         }
-
 
         updateMaleUsersCounter(count) {
             // Update the counter ID in the header
