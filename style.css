@@ -986,6 +986,21 @@ svg.svg-large {
     height: 12px;
 }
 
+.ca-username-row {
+    display: flex;
+    align-items: center;
+}
+
+.ca-username {
+    font-weight: inherit;
+}
+
+.ca-age {
+    opacity: 0.7;
+    font-size: 0.9em;
+    margin-left: 5px;
+}
+
 /* Make sure the username doesn't get pushed oddly */
 .ca-user-list-container .user_item_data .username {
     margin: 0; /* prevent unexpected line breaks/offsets */

@@ -2384,6 +2384,29 @@ Private send interception
             const userEl = hostUserEl.cloneNode(true);
             containerContent.appendChild(userEl);
 
+            const usernameEl = this.qs('.username', userEl);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'ca-username-row';
+
+            // Username
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'ca-username';
+            nameSpan.textContent = user.name || '';
+
+            wrapper.appendChild(nameSpan);
+
+            // Age (only if exists)
+            if (user.age) {
+                const ageSpan = document.createElement('span');
+                ageSpan.className = 'ca-age';
+                ageSpan.textContent = ` (${user.age})`;
+                wrapper.appendChild(ageSpan);
+            }
+
+            // Replace old <p class="username">...</p>
+            usernameEl.replaceWith(wrapper);
+
             this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
 
             this.ensureDmLink(userEl, user);
@@ -2397,28 +2420,65 @@ Private send interception
         }
 
         updateUser(user) {
+            // Update in store first
             user = this.UserStore.set(user);
-            const existingUser = this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper);
 
-            const mapped = {
+            const existingUser = this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper);
+            if (!existingUser) {
+                console.error('[updateUser] No .user_item found for uid:', user.uid);
+                return null;
+            }
+
+            // 1. data-* attributes on root
+            const attrMap = {
+                'data-id': user.uid,
                 'data-name': user.name,
                 'data-avatar': user.avatar,
                 'data-gender': user.gender,
-                'data-is-female': user.isFemale,
-                'data-rank': user.rank,
                 'data-age': user.age,
-                'data-country': user.country
+                'data-country': user.country,
+                'data-rank': user.rank
             };
 
-            Object.entries(mapped).forEach(([attr, value]) => {
-                if (value) {
-                    existingUser.setAttribute(attr, value);
-                }
+            Object.entries(attrMap).forEach(([attr, value]) => {
+                existingUser.setAttribute(attr, value != null ? String(value) : '');
             });
 
-            this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, mapped);
-            return existingUser
+            // 2. Avatar
+            const avatarImg = existingUser.querySelector('.user_item_avatar img.avav');
+            if (avatarImg) {
+                avatarImg.src = user.avatar;
+
+                avatarImg.classList.remove('genfemale', 'genmale', 'genother');
+                if (user.gender === 2 || user.isFemale) {
+                    avatarImg.classList.add('genfemale');
+                } else if (user.gender === 1) {
+                    avatarImg.classList.add('genmale');
+                } else {
+                    avatarImg.classList.add('genother');
+                }
+            }
+
+            const usernameEl = existingUser.querySelector('.ca-username-row .ca-username');
+            usernameEl.textContent = user.name;
+
+            const ageEl = existingUser.querySelector('.ca-username-row .ca-age');
+            ageEl.textContent = user.age;
+
+            // 4. Mood
+            const moodEl = existingUser.querySelector('.user_item_data .list_mood');
+            moodEl.textContent = user.mood;
+
+            // 6. Country flag
+            const flagImg = existingUser.querySelector('.user_item_icon.icflag img.list_flag');
+            if (flagImg && user.country) {
+                flagImg.src = `system/location/flag/${user.country}.png`;
+            }
+
+            this.verbose('[updateUser] Updated user element for', user.uid, attrMap);
+            return existingUser;
         }
+
 
         /* Check if URL is user_list.php */
         isUserListUrl(u) {
@@ -2429,6 +2489,10 @@ Private send interception
         }
 
         extractUserInfoFromEl(userEl) {
+            if (!userEl) {
+                console.error(`no element is passed`);
+                return null;
+            }
             return {
                 uid: this.extractUserId(userEl),
                 name: this.extractUsername(userEl),
@@ -2438,6 +2502,7 @@ Private send interception
                 rank: this.extractRank(userEl),
                 age: this.extractAge(userEl),
                 country: this.extractCountry(userEl),
+                mood: this.extractMood(userEl),
                 isLoggedIn: !!(userEl && !userEl.classList.contains('offline'))
             }
         }
@@ -2795,11 +2860,6 @@ Private send interception
         }
 
         extractUserId(el) {
-            if (!el) {
-                console.error(`no element is passed`);
-                return null;
-            }
-
             return el.getAttribute('data-id') || null;
         }
 
@@ -2823,29 +2883,16 @@ Private send interception
         }
 
         extractAvatar(el) {
-            if (!el) {
-                console.error(`no element is passed`);
-                return null;
-            }
             const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
             const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
             return src ? src.trim() : '';
         }
 
         extractGender(el) {
-            if (!el) {
-                console.error(`no element is passed`);
-                return null;
-            }
-
             return el.getAttribute('data-gender') || null;
         }
 
         extractIsFemale(el) {
-            if (!el) {
-                console.error(`no element is passed`);
-                return null;
-            }
             return el.getAttribute('data-gender') === this.FEMALE_CODE
         }
 
@@ -3152,29 +3199,21 @@ Private send interception
 
         /* ---------- Rank filter & selection checkbox ---------- */
         extractRank(el) {
-            if (!el) {
-                console.error('[321ChatAddons] extractRank: element not found');
-                return null;
-            }
             return el.getAttribute('data-rank') || '';
         }
 
         /* ---------- Rank filter & selection checkbox ---------- */
         extractAge(el) {
-            if (!el) {
-                console.error('[321ChatAddons] extractRank: element not found');
-                return null;
-            }
             return el.getAttribute('data-age') || '';
         }
 
         /* ---------- Rank filter & selection checkbox ---------- */
         extractCountry(el) {
-            if (!el) {
-                console.error('[321ChatAddons] extractRank: element not found');
-                return null;
-            }
             return el.getAttribute('data-country') || '';
+        }
+
+        extractMood(el) {
+            return this.qs(`.list_mood`, el).innerHTML;
         }
 
         /* ---------- Rank filter & selection checkbox ---------- */
@@ -3183,7 +3222,7 @@ Private send interception
         }
 
         // more descriptive and self-contained
-        ensureBroadcastCheckbox(el, uid) {
+        async ensureBroadcastCheckbox(el, uid) {
             this.verbose('ensureBroadcastCheckbox:', el, uid);
 
             const wrap = document.createElement('label');
@@ -3194,7 +3233,7 @@ Private send interception
             cb.type = 'checkbox';
             cb.className = 'ca-ck';
 
-            cb.checked = this.UserStore.isIncludedForBroadcast(uid);
+            cb.checked = await this.UserStore.isIncludedForBroadcast(uid);
 
             wrap.appendChild(cb);
 
@@ -4300,7 +4339,7 @@ Private send interception
                     <span class="ca-log-ts">${displayTs}</span>
         
                     <div class="${C.ca_log_cell}">
-                        <span class="${C.ca_log_dot} ${C.ca_log_dot_gray}"}>
+                        <span class="${C.ca_log_dot} ${C.ca_log_dot_gray}">
                             ●
                         </span>
                     </div>
