@@ -70,6 +70,10 @@
             this.app = app;
         }
 
+        getAllOnlineWomen() {
+            return this.list().filter(user => user.isFemale && user.online);
+        }
+
         // ---- storage helpers (arrays only) ----
         _getAll() {
             const raw = this.kv.get(this.cacheKey);
@@ -328,16 +332,6 @@
             };
         }
 
-        // Merge many patches with existing (NO SAVE)
-        _mergeUsers(changedUsers) {
-            if (!Array.isArray(changedUsers)) {
-                throw new Error('_mergeUsers expects an array');
-            }
-            return changedUsers
-                .filter(u => u && u.uid != null)
-                .map(u => this._mergeUser(u));
-        }
-
         set(user) {
             if (!user || user.uid == null) {
                 console.error('set() requires user.uid');
@@ -346,16 +340,6 @@
             const merged = this._mergeUser(user);
             this.app.verbose(`Saving merged user`, user);
             return this._save(merged);
-        }
-
-        setAll(users) {
-            if (!Array.isArray(users)) {
-                console.error(`setAll expects an array, got ${typeof users}`);
-                return null;
-            }
-            const merged = this._mergeUsers(users);
-            this._saveAll(merged);
-            return merged;
         }
 
         setParsedDmInUpToLog(uid, parsedDmInUpToLog) {
@@ -403,7 +387,7 @@
             return this.list().filter(u => u.isLoggedIn === true);
         }
 
-        getFemalesLoggedIn() {
+        getAllLoggedInFemales() {
             return this.getAllLoggedIn().filter(u => u.isFemale);
         }
 
@@ -412,7 +396,7 @@
         }
 
         getFemalesLoggedInCount() {
-            return this.getFemalesLoggedIn().length;
+            return this.getAllLoggedInFemales().length;
         }
 
         getMalesLoggedInCount() {
@@ -542,19 +526,15 @@
                 debugCheckbox: null,
                 verboseCheckbox: null,
                 otherBox: null,
-                // User list containers
-                managedContainer: null,      // Wrapper div
-                managedList: null,           // Actual list (<div class="online_user">)
-                managedCount: null,          // Counter element
-                hostWrapper: null,           // Wrapper for host container
-                hostContainer: null,         // The host's user list
-                hostCount: null              // Counter for host users
+                femaleUsersList: null,
+                femaleUSersCount: null,
+                maleUsersWrapper: null,
+                maleUsersContainer: null,
+                maleUsersCount: null
             };
 
-            /* ========= Flags / Scheduling ========= */
-            this._lastSendAt = 0;                 // throttle PM sending
+            this._lastSendAt = 0;
 
-            /* ========= Network Taps (originals) ========= */
             this._xhrOpen = null;
             this._xhrSend = null;
 
@@ -673,7 +653,6 @@
                 send: '#ca-bc-send',
                 reset: '#ca-bc-reset',
                 status: '#ca-bc-status',
-                // user list containers (first existing wins)
                 privateChat: {
                     privateCenter: '#private_center',
                     privateInputBox: '#private_input_box',
@@ -681,18 +660,16 @@
                     privInput: '#message_content'
                 },
                 users: {
-                    managed: '#ca-managed-users',  // Our custom container wrapper for female users
-                    managedList: '#ca-managed-list',  // The actual list container inside managed
-                    managedHeader: '#ca-managed-users .ca-user-list-header',
-                    managedCount: '#ca-managed-count',
-                    hostWrapper: '#ca-host-users-wrapper',  // Wrapper for host container
-                    managedUsersWrapper: '#ca-managed-wrapper',
-                    hostCount: '#ca-host-count',
+                    femaleUsers: '#ca-female-users',
+                    femaleUserCount: '.ca-female-users-count',
+                    maleUsersWrapper: '#ca-male-users-wrapper',
+                    femaleUserWrapper: '#ca-female-users-wrapper',
+                    maleUserCount: '#ca-male-users-count',
                     containerUser: '#container_user',
                     online: '.online_user',
                     chatRightData: '#chat_right_data',
                     chatRight: '#chat_right',
-                    combined: '#container_user, .online_user, #chat_right_data', // still handy if you want a fast query
+                    combined: '#container_user, .online_user, #chat_right_data',
                     globalChat: '#global_chat',
                     chatHead: '#chat_head',
                     wrapFooter: '#wrap_footer',
@@ -785,6 +762,7 @@
                     avatar: '',
                     isFemale: false,
                     isLoggedIn: true,
+                    rank: 100
                 });
             }
 
@@ -805,14 +783,13 @@
             this.buildPanel();
             this._updateStorageToggleUi();
             this.buildMenuLogPanel();
-            // Create our managed container for female users
-            this.createManagedUsersContainer();
+            this.createFemaleUsersContainer();
             this.createPredefinedMessagesSection();
             this._bindStaticRefs();
             this._attachLogClickHandlers();
 
             // Restore last DM if we have one stored in this.Store
-            this.restoreLastDmFromStore();
+            await this.restoreLastDmFromStore();
 
             // Clear stored DM when the original private chat close button is used
             const privateCloseButton = document.querySelector('#private_close');
@@ -890,11 +867,10 @@
             this.installPrivateSendInterceptor();  // <— enable intercept for native /private_process.php
 
             // Re-bind counter references after creating the containers
-            this.ui.managedCount = this.qs(this.sel.users.managedCount);
-            this.ui.hostCount = this.qs(this.sel.users.hostCount);
+            this.ui.femaleUSersCount = this.qs(this.sel.users.femaleUserCount);
+            this.ui.maleUsersCount = this.qs(this.sel.users.maleUserCount);
 
             this.appendCustomActionsToBar()
-            this.watchChatRightForHostChanges();
 
             await this.startRefreshUsersLoop({intervalMs: 15000}); // every 60s
             this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000}); // every 5 min
@@ -1024,7 +1000,6 @@
             const selects = document.querySelectorAll('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
         }
-
 
         // Append to any textarea-like input
         _appendPredefinedToBox(template, box) {
@@ -1519,7 +1494,7 @@
                                         intervalMs = 15000,    // default 60s
                                         runImmediately = true
                                     } = {}) {
-            this.stopRefreshUsersLoop?.(); // clear any previous loop
+            this.stopRefreshUsersLoop(); // clear any previous loop
 
             this._refreshUsersIntervalMs = intervalMs;
 
@@ -1587,40 +1562,6 @@
             const html = await res.text();
             this.processUserListResponse(html);
             this.logEventLine(`Refreshed user list at ${this.timeHHMMSS()}`);
-        }
-
-        watchChatRightForHostChanges() {
-            const parent = document.querySelector(`${this.sel.users.hostWrapper} ${this.sel.users.chatRightData}`);
-            if (!parent) {
-                console.warn('[Observer] #chat_right_data not found');
-                return;
-            }
-
-            // Remove all .user_item[data-gender="2"] inside the given container
-            const pruneFemales = (container) => {
-                if (!container) return;
-                const toRemove = container.querySelectorAll(`${this.sel.users.containerUser} .user_item[data-gender="2"]`);
-                toRemove.forEach(el => el.remove());
-                console.log('[Observer] Removed', toRemove.length, 'female user_item(s) in #chat_right_data');
-            };
-
-
-            const observer = new MutationObserver(mutations => {
-                for (const m of mutations) {
-                    if (m.type === 'childList' && m.target === parent) {
-                        pruneFemales(m.target);
-                        break; // one run is enough per mutation batch
-                    }
-                }
-            });
-
-            observer.observe(parent, {
-                childList: true,  // only direct child changes of #chat_right_data
-                subtree: false,   // do NOT react to deeper/internal changes
-            });
-
-            this.verbose('[Observer] Watching #chat_right_data for direct child changes');
-            this._chatRightObserver = observer;
         }
 
         /* ---------- Helpers ---------- */
@@ -1789,12 +1730,10 @@ Private send interception
 
             // If we successfully parsed the profile, save and return it
             if (user.name && user.avatar) {
-                if (this.UserStore?.set) {
-                    user = this.UserStore.set({
-                        ...user,
-                        uid
-                    });
-                }
+                user = this.UserStore.set({
+                    ...user,
+                    uid
+                });
 
                 // Return the parsed user object
                 return user;
@@ -2003,7 +1942,7 @@ Private send interception
                 }
 
                 const initialFetch = user.parsedDmInUpToLog === 0;
-                console.log(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
+                this.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
                 this.verbose(privateChatLog);
                 const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
                 if (res.accepted) {
@@ -2278,7 +2217,6 @@ Private send interception
             if (!this.safeCall(window, 'hideModal')) return false;
             if (!this.safeCall(window, 'hideOver')) return false;
 
-            // Host hook
             const openDm = this.resolveHostFn('openPrivate');
             this.debug('applyLegacyAndOpenDm: openPrivate function found:', !!openDm);
             if (!openDm) {
@@ -2332,21 +2270,31 @@ Private send interception
         }
 
         buildBroadcastList() {
-            const list = this.collectFemaleIds();
             const out = [];
-            for (let i = 0; i < list.length; i++) {
-                const el = list[i].el, uid = list[i].uid;
-                if (!this._isAllowedRank?.(el)) continue;
-                if (this.ActivityLogStore.hasSentMessageToUser(uid)) {
-                    console.log(`Skipping message to ${el.name} (already replied)`);
-                    continue;
-                }
-                const cb = el ? el.querySelector('.ca-ck') : null;
+            const loggedInFemaleUsers = this.UserStore.getAllLoggedInFemales();
 
-                if (cb ? cb.checked : !this.UserStore.isIncludedForBroadcast(uid)) {
-                    out.push(list[i]);
+            loggedInFemaleUsers.forEach((femaleUser) => {
+                const uid = femaleUser.uid;
+
+                // Rank filter
+                if (!this._isAllowedRank(femaleUser.rank)) {
+                    this.verbose('Skipping user:', uid, 'due to rank:', femaleUser.rank);
+                    return;
                 }
-            }
+
+                // Skip if already replied
+                if (this.ActivityLogStore.hasSentMessageToUser(uid)) {
+                    console.log(`Skipping message to ${femaleUser.name} (already replied)`);
+                    return;
+                }
+
+                let shouldInclude = !this.UserStore.isIncludedForBroadcast(uid);
+
+                if (shouldInclude) {
+                    out.push(femaleUser);
+                }
+            });
+
             return out;
         }
 
@@ -2465,7 +2413,7 @@ Private send interception
 
         /* ===================== USER CLICK SELECTION ===================== */
         wireUserClickSelection() {
-            const c = this.getContainer();
+            const c = this.getFemaleUsersContainer();
             if (!c) return;
             if (c.getAttribute('data-ca-wired') === '1') return;
 
@@ -2491,9 +2439,9 @@ Private send interception
             c.setAttribute('data-ca-wired', '1');
         }
 
-        _updateOrCreateUserElement(managedList, newEl, user) {
+        _updateOrCreateUserElement(femaleUsersList, newEl, user) {
             const selector = `.user_item[data-id="${user.uid}"]`;
-            const existingEl = this.qs(selector, managedList);
+            const existingEl = this.qs(selector, femaleUsersList);
 
             if (existingEl) {
                 existingEl.innerHTML = newEl.innerHTML;
@@ -2506,17 +2454,16 @@ Private send interception
 
             const clonedEl = newEl.cloneNode(true);
             const insertBeforeNode =
-                this.qs('.user_item[data-rank="0"]', managedList) || managedList.lastElementChild;
+                this.qs('.user_item[data-rank="0"]', femaleUsersList) || femaleUsersList.lastElementChild;
 
             if (insertBeforeNode) {
-                managedList.insertBefore(clonedEl, insertBeforeNode);
+                femaleUsersList.insertBefore(clonedEl, insertBeforeNode);
             } else {
-                managedList.appendChild(clonedEl);
+                femaleUsersList.appendChild(clonedEl);
             }
 
             this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
 
-            // Make sure DM link exists on new element
             this.ensureDmLink(clonedEl, user);
 
             return clonedEl;
@@ -2542,10 +2489,9 @@ Private send interception
             const context = this.isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
             this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
 
-            // Get managed container (created once in init, never removed)
-            const managedList = this.getContainer();
-            if (!managedList) {
-                console.error(this.LOG, '[USER_LIST] Managed container not found - should have been created in init()');
+            const femaleUsersContainer = this.getFemaleUsersContainer();
+            if (!femaleUsersContainer) {
+                console.error(this.LOG, '[USER_LIST] Female users container not found - should have been created in init()');
                 return;
             }
 
@@ -2562,11 +2508,14 @@ Private send interception
                 return;
             }
 
-            // Move/update female users to managed container immediately
+            // Move/update female users to Female users container immediately
             let loggedInCount = 0;
             let updatedProfileCount = 0;
             let loggedOffCount = 0;
-            let newProfileCount = 0;
+            let newMaleProfileCount = 0;
+            let newFemaleProfileCount = 0;
+            let totalMaleProfileCount = 0;
+            let totalFemaleProfileCount = 0;
 
             const seenLoggedIn = new Set();
 
@@ -2576,7 +2525,8 @@ Private send interception
                 const name = this.extractUsername(userEl) || uid;
                 const avatar = this.extractAvatar(userEl);
                 const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
-                const isAllowedRank = this._isAllowedRank(userEl);
+                const rank = this.extractRank(userEl);
+                const isAllowedRank = this._isAllowedRank(rank);
 
                 let user = this.UserStore.get(uid);
                 let IsNewOrUpdatedProfile = false;
@@ -2584,7 +2534,6 @@ Private send interception
 
                 if (!user) {
                     this.debug(this.LOG, `[USER_LIST] Adding non existing user ${uid}`);
-                    newProfileCount++;
                     IsNewOrUpdatedProfile = true;
                 } else if (user.name !== name ||
                     user.avatar !== avatar ||
@@ -2604,11 +2553,14 @@ Private send interception
                         avatar,
                         isFemale,
                         isLoggedIn: true,
+                        rank
                     });
+
+                    user.isFemale ? newFemaleProfileCount++ : newMaleProfileCount++;
 
                     if (newLogin && !this.isInitialLoad) {
                         loggedInCount++;
-                        console.log(this.LOG, `[LOGIN] ✅ ${user.name} (${user.uid}) logging in`);
+                        this.debug(this.LOG, `[LOGIN] ✅ ${user.name} (${user.uid}) logging in`);
                         if (isFemale) {
                             this.logLine('login', null, user);
                         }
@@ -2616,10 +2568,14 @@ Private send interception
                     }
                 }
 
+                if (user.isLoggedIn) {
+                    user.isFemale ? totalFemaleProfileCount++ : totalMaleProfileCount++;
+                }
+
                 this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
 
                 if (isFemale && (this.isInitialLoad || IsNewOrUpdatedProfile)) {
-                    const el = this._updateOrCreateUserElement(managedList, userEl, user);
+                    const el = this._updateOrCreateUserElement(femaleUsersContainer, userEl, user);
                     if (!el || el.nodeType !== 1) {
                         console.error(`.user_item element not found for user ${uid}`);
                         return;
@@ -2632,7 +2588,7 @@ Private send interception
 
                     this.updateProfileChip(user.uid);
                     userEl.remove();
-                    this.qs(`.user_item[data-id="${uid}"]`, this.ui.hostContainer)?.remove();
+                    this.qs(`.user_item[data-id="${uid}"]`, this.ui.maleUsersContainer)?.remove();
                 }
             });
 
@@ -2640,12 +2596,14 @@ Private send interception
             const currentlyLoggedIn = this.UserStore.getAllLoggedIn();
             for (let user of currentlyLoggedIn) {
                 const uid = String(user.uid);
-                if (seenLoggedIn.has(uid)) continue;
+                if (seenLoggedIn.has(uid)) {
+                    continue;
+                }
 
                 user = this.UserStore.setLoggedIn(uid, false);
 
                 if (!this.isInitialLoad) {
-                    console.log(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
+                    this.debug(this.LOG, `[LOGOUT] ❌ ${user.name} (${user.uid}) logging out`);
                 } else {
                     this.verbose(`[INIT] User ${user.name} (${user.uid}) initially logged out - no log entry`);
                 }
@@ -2653,11 +2611,11 @@ Private send interception
                 if (user.isFemale) {
                     if (!this.isInitialLoad) {
                         this.logLine('logout', null, user);
-                        const elementToRemove = this.qs(`.user_item[data-id="${uid}"]`, managedList);
-                        this.debug(`Removing element from managed females container ${user.uid} (${user.name}) to logoff`);
+                        const elementToRemove = this.qs(`.user_item[data-id="${uid}"]`, femaleUsersContainer);
+                        this.debug(`Removing element from female users container ${user.uid} (${user.name}) to logoff`);
                         if (elementToRemove) elementToRemove.remove();
                         else {
-                            console.warn(`Couldn't remove user ${uid} from managed container because the user is probably offline already.`);
+                            console.warn(`Couldn't remove user ${uid} from Female users container because the user is probably offline already.`);
                         }
                         this.setLogDotsLoggedInStatusForUid(uid, false);
                     }
@@ -2667,7 +2625,7 @@ Private send interception
             }
 
             console.log(
-                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${newProfileCount} new users added%c, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
+                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${newFemaleProfileCount} new female users added%c, ${newMaleProfileCount} male users added, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
                 'color: #7ea9d1; font-weight: 600;',
                 'color: inherit;',
                 'color: #6bbf73; font-weight: 500;',
@@ -2681,36 +2639,10 @@ Private send interception
                 'color: #64b5f6; font-weight: 500;'
             );
 
-            // Clean up temporary DOM element
+            this.updateMaleUsersCount(totalMaleProfileCount);
+            this.updateFemaleUserCounter(totalFemaleProfileCount);
+
             tempDiv.innerHTML = '';
-
-            // Update counters AFTER all processing is complete using requestAnimationFrame
-            // This ensures all DOM mutations have completed
-            requestAnimationFrame(() => {
-                if (!this.ui.managedCount) {
-                    this.ui.managedCount = this.qs(this.sel.users.managedCount);
-                }
-                if (!this.ui.hostCount) {
-                    this.ui.hostCount = this.qs(this.sel.users.hostCount);
-                }
-
-                if (this.ui.managedCount) {
-                    this.ui.managedCount.textContent = String(this.qsa('.user_item', managedList).length);
-                }
-
-                // Update host users count - count actual DOM elements in
-                if (this.ui.hostContainer) {
-                    // Count ALL users in host (should be only males now)
-                    const hostUsers = this.qsa('.user_item', this.ui.hostContainer);
-                    const hostCount = hostUsers.length;
-                    if (this.ui.hostCount) {
-                        this.ui.hostCount.textContent = String(hostCount);
-                        console.log(this.LOG, '[USER_LIST] Updated host counter to:', hostCount, 'users');
-                    } else {
-                        console.warn(this.LOG, '[USER_LIST] hostCount element not found - selector:', this.sel.users.hostCount);
-                    }
-                }
-            });
             this.isInitialLoad = false;
         }
 
@@ -2925,27 +2857,6 @@ Private send interception
             return src ? src.trim() : '';
         }
 
-        /* ---------- Collect female IDs ---------- */
-        collectFemaleIds() {
-            // Only collect from managed container, never from host container
-            const c = this.getContainer();
-            if (!c) {
-                console.warn(this.LOG, 'Managed container not found for collecting female IDs');
-                return [];
-            }
-            const els = this.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, c);
-            console.log('Collecting female IDs from managed container:', els.length);
-            const femaleAccounts = [];
-            for (let i = 0; i < els.length; i++) {
-                const uid = this.getUserId(els[i]);
-                if (uid) {
-                    femaleAccounts.push({el: els[i], uid, name: this.extractUsername(els[i])});
-                }
-            }
-            console.log('Collected female IDs:', femaleAccounts);
-            return femaleAccounts;
-        }
-
         /* ---------- Token + POST helpers ---------- */
         getToken() {
             if (typeof utk !== 'undefined' && utk) return utk;
@@ -3059,17 +2970,15 @@ Private send interception
         /* ---------- DOM find helper ---------- */
 
         /* ---------- DOM find helper ---------- */
-        findManagedUserElementById(uid) {
+        findFemaleUserById(uid) {
             if (!uid) {
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
 
-            // Prefer the managed female container so we don't accidentally
-            // grab the host list item that might be removed right after.
-            const managed = this.getContainer();
-            if (managed) {
-                const el = this.qs(`.user_item[data-id="${uid}"]`, managed);
+            const femaleUsersContainer = this.getFemaleUsersContainer();
+            if (femaleUsersContainer) {
+                const el = this.qs(`.user_item[data-id="${uid}"]`, femaleUsersContainer);
                 if (el) return el;
             }
 
@@ -3081,7 +2990,7 @@ Private send interception
         updateProfileChip(uid) {
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
-            const userEl = this.findManagedUserElementById(uid);
+            const userEl = this.findFemaleUserById(uid);
             this.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
             if (!userEl) {
@@ -3117,7 +3026,7 @@ Private send interception
 
                 // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                console.log(
+                this.verbose(
                     'Adding all read chip to user:',
                     uid,
                     ', unread received messages count: ',
@@ -3138,9 +3047,13 @@ Private send interception
                 userEl.style.display = this.hideRepliedUsers ? 'none' : '';
 
                 // --- Move user to bottom of container ---
-                console.log('Moving user to bottom of container:', uid);
+                this.debug('Moving user to bottom of container:', uid);
                 container.insertBefore(userEl, this.qs('.user_item[data-rank="0"]', container) || container.lastElementChild);
 
+            } else {
+                userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
+                this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl)?.remove();
+                this.debug('Removing sent chip from user:', uid);
             }
 
         }
@@ -3150,7 +3063,7 @@ Private send interception
 
             if (!userEl.classList.contains('chataddons-sent')) {
                 userEl.classList.add('chataddons-sent');
-                console.log('Adding sent chip to user:', userEl.getAttribute('data-id'));
+                this.verbose('Adding sent chip to user:', userEl.getAttribute('data-id'));
             }
 
             if (!chip) {
@@ -3246,13 +3159,18 @@ Private send interception
             this.showPopup('ca-cloudflare-pop');
         }
 
+        /* ---------- Rank filter & selection checkbox ---------- */
+        extractRank(el) {
+            if (!el) {
+                console.error('[321ChatAddons] extractRank: element not found');
+                return null;
+            }
+            return el.getAttribute('data-rank') || '';
+        }
 
         /* ---------- Rank filter & selection checkbox ---------- */
-        _isAllowedRank(el) {
-            const rankAttr = el ? (el.getAttribute('data-rank') || '') : '';
-            const roomRankIcon = this.safeQuery(el, '.list_rank');
-            const roomRank = roomRankIcon ? (roomRankIcon.getAttribute('data-r') || '') : '';
-            return (rankAttr === '1' || rankAttr === '50') && (roomRank !== '4');
+        _isAllowedRank(rank) {
+            return (rank === '1' || rank === '50') && (roomRank !== '4');
         }
 
         // more descriptive and self-contained
@@ -3641,66 +3559,52 @@ Private send interception
             this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
 
-        createManagedUsersContainer() {
-            // Check if already exists
-            const existing = this.qs('#ca-managed-wrapper');
-            if (existing) {
-                console.log(this.LOG, 'Managed users container already exists');
-                return;
-            }
-
-            // Find chat_right_data as the anchor point
+        createFemaleUsersContainer() {
             const chatRightData = this.qs(this.sel.users.chatRightData);
             if (!chatRightData) {
-                console.warn(this.LOG, 'chat_right_data not found, cannot create managed container');
+                console.warn(this.LOG, 'chat_right_data not found, cannot create Female users container');
                 return;
             }
 
-            // Wrap chat_right_data in collapsible container if not already wrapped
-            let hostWrapper = this.qs(this.sel.users.hostWrapper);
-            if (!hostWrapper) {
-                hostWrapper = document.createElement('div');
-                hostWrapper.id = this.sel.raw.users.hostWrapper;
-                hostWrapper.className = 'ca-user-list-container ca-collapsed'; // Start collapsed
+            let maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
+            if (!maleUsersWrapper) {
+                maleUsersWrapper = document.createElement('div');
+                maleUsersWrapper.id = this.sel.raw.users.maleUsersWrapper;
+                maleUsersWrapper.className = 'ca-user-list-container ca-collapsed';
 
-                // Create header for host container
-                const hostHeader = document.createElement('div');
-                hostHeader.className = 'ca-user-list-header';
-                hostHeader.innerHTML = `
+                const maleUsersHeader = document.createElement('div');
+                maleUsersHeader.className = 'ca-user-list-header';
+                maleUsersHeader.innerHTML = `
                     <div class="ca-user-list-title">
-                     <span class="ca-user-list-count" id="${this.sel.raw.users.hostCount}">0</span>
+                     <span class="ca-user-list-count" id="${this.sel.raw.users.maleUserCount}">0</span>
                         <span>Male users</span>
                        <div class="ca-user-list-toggle">▼</div>
                     </div>
                 `;
 
                 // Wrap chat_right_data
-                chatRightData.parentNode.insertBefore(hostWrapper, chatRightData);
-                hostWrapper.appendChild(hostHeader);
+                chatRightData.parentNode.insertBefore(maleUsersWrapper, chatRightData);
+                maleUsersWrapper.appendChild(maleUsersHeader);
 
-                const hostContent = document.createElement('div');
-                hostContent.className = 'ca-user-list-content';
+                const maleUsersContent = document.createElement('div');
+                maleUsersContent.className = 'ca-user-list-content';
 
-                hostContent.appendChild(chatRightData);
-                hostWrapper.appendChild(hostContent);
-                this.qs('.user_count', hostWrapper)?.remove();
+                maleUsersContent.appendChild(chatRightData);
+                maleUsersWrapper.appendChild(maleUsersContent);
+                this.qs('.user_count', maleUsersWrapper)?.remove();
 
-                // Find and cache the .online_user container inside chat_right_data
-                this.ui.hostContainer = hostWrapper;
+                this.ui.maleUsersContainer = maleUsersWrapper;
 
             }
 
-            // Clone the entire host wrapper
-            const managedWrapper = hostWrapper.cloneNode(true);
+            const femaleUsersWrapper = maleUsersWrapper.cloneNode(true);
 
-            // Update wrapper ID and make it expanded by default
-            managedWrapper.id = 'ca-managed-wrapper';
-            managedWrapper.className = 'ca-user-list-container ca-expanded';
+            femaleUsersWrapper.id = `${this.sel.raw.users.femaleUserWrapper}`;
+            femaleUsersWrapper.className = 'ca-user-list-container ca-expanded';
 
-            // Update the header title and make it female-styled
-            const header = this.qs('.ca-user-list-header', managedWrapper);
+            const header = this.qs('.ca-user-list-header', femaleUsersWrapper);
             if (header) {
-                header.className = 'ca-user-list-header ca-female-header';
+                header.className = 'ca-user-list-header ca-female-users-header';
                 const titleSpan = this.qs('.ca-user-list-title span:not(.ca-user-list-count)', header);
                 if (titleSpan) {
                     titleSpan.textContent = 'Female Users';
@@ -3710,30 +3614,30 @@ Private send interception
                 sub.className = 'ca-subrow';
                 sub.innerHTML = `
     <label>
-      <input id="ca-managed-ck-toggle" type="checkbox" />
+      <input id="ca-female-ck-toggle" type="checkbox" />
       <span>Show selection boxes</span>
     </label>
     <label style="margin-left: 8px;">
-      <input id="ca-managed-hide-replied" type="checkbox" />
+      <input id="ca-female-hide-replied" type="checkbox" />
       <span>Hide replied users</span>
     </label>
   `;
                 header.appendChild(sub);
 
 // existing show-selection-boxes wiring
-                const ckToggle = sub.querySelector('#ca-managed-ck-toggle');
+                const ckToggle = sub.querySelector('#ca-female-ck-toggle');
                 if (ckToggle) {
                     ckToggle.checked = false;
-                    managedWrapper.classList.remove('ca-show-ck');
+                    femaleUsersWrapper.classList.remove('ca-show-ck');
 
                     ckToggle.addEventListener('change', (e) => {
-                        managedWrapper.classList.toggle('ca-show-ck', e.target.checked);
-                        console.log('[CA] Managed checkbox visibility:', e.target.checked ? 'shown' : 'hidden');
+                        femaleUsersWrapper.classList.toggle('ca-show-ck', e.target.checked);
+                        console.log('[CA] Female user checkbox visibility:', e.target.checked ? 'shown' : 'hidden');
                     });
                 }
 
 // NEW: hide-replied wiring
-                const hideRepliedToggle = sub.querySelector('#ca-managed-hide-replied');
+                const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
                 if (hideRepliedToggle) {
                     // Initialize from stored value
                     hideRepliedToggle.checked = !!this.hideRepliedUsers;
@@ -3760,22 +3664,15 @@ Private send interception
 
             }
 
-            // Update the counter ID in the header
-            const headerCounter = this.qs('.ca-user-list-count', managedWrapper);
-            if (headerCounter) {
-                headerCounter.id = this.sel.raw.users.managedCount;
-                headerCounter.textContent = '0';
-            }
-
             // Find chat_right_data inside the clone
-            const clonedChatRight = this.qs('[id$="chat_right_data"]', managedWrapper);
+            const clonedChatRight = this.qs('[id$="chat_right_data"]', femaleUsersWrapper);
             if (clonedChatRight) {
-                clonedChatRight.id = 'ca-managed-chat-right-data';
+                clonedChatRight.id = 'ca-female-uses-chat-right-data';
 
                 // Find container_user inside and update its ID
                 const clonedContainerUser = this.qs('[id$="container_user"]', clonedChatRight);
                 if (clonedContainerUser) {
-                    clonedContainerUser.id = 'ca-managed-container-user';
+                    clonedContainerUser.id = 'ca-female-user-container';
 
                     // Update the "Online" text to "Female" in the user_count section
                     const bcell = this.qs('.bcell', clonedContainerUser);
@@ -3788,58 +3685,49 @@ Private send interception
                             }
                         }
                     }
-
-                    // Update the counter in user_count section
-                    const countSpan = this.qs('.ucount', clonedContainerUser);
-                    if (countSpan) {
-                        countSpan.id = this.sel.raw.users.managedCount;
-                        countSpan.textContent = '0';
-                    }
-
-                    // Find the .online_user div and clear it
-                    const onlineUserDiv = this.qs('.online_user', clonedContainerUser);
-                    if (onlineUserDiv) {
-                        onlineUserDiv.innerHTML = '';
-                        onlineUserDiv.id = this.sel.raw.users.managedList;
-                        this.verbose(this.LOG, '[createManagedUsersContainer] Cleared and updated .online_user div');
-                    } else {
-                        console.error(this.LOG, '[createManagedUsersContainer] .online_user not found in clone');
-                    }
                 }
             }
 
-            // Insert BEFORE host wrapper
-            hostWrapper.parentElement.appendChild(managedWrapper);
+            maleUsersWrapper.parentElement.appendChild(femaleUsersWrapper);
 
-            this.verbose(this.LOG, 'Created managed users container by cloning host wrapper');
+            this.verbose(this.LOG, 'Created female users container by cloning male userscreateManagedUsersContainer wrapper');
 
-            // Wire click selection for the managed container
             this.wireUserClickSelection();
-            // after you’ve inserted managedWrapper and updated counts:
-            this.wireExclusiveCollapse(hostWrapper, managedWrapper);
-// ... existing end of createManagedUsersContainer()
-            this.wireListOptionClicks();    // <-- add this line
+            this.wireExclusiveCollapse(maleUsersWrapper, femaleUsersWrapper);
+            this.wireListOptionClicks();
 
+            this.updateMaleUsersCount();
+        }
 
-            // Update host users count initially
-            this.updateHostUsersCount();
+        updateFemaleUserCounter(count) {
+            // Update the counter ID in the header
+            const headerCounter = this.qs('#ca-female-users-wrapper .ca-user-list-count', this.sel.raw.femaleUserWrapper);
+            if (headerCounter) {
+                headerCounter.id = this.sel.raw.users.femaleUserCount;
+                headerCounter.textContent = `${count}`;
+            } else {
+                console.error('[CA] updateFemaleUserCounter: #ca-female-users-wrapper .ca-user-list-count not found');
+            }
+        }
+
+        updateMaleUsersCounter(count) {
+            // Update the counter ID in the header
+            const headerCounter = this.qs('#ca-male-users-wrapper .ca-user-list-count', this.sel.raw.maleUsersWrapper);
+            if (headerCounter) {
+                headerCounter.id = this.sel.raw.users.maleUserCount;
+                headerCounter.textContent = `${count}`;
+            } else {
+                console.error('[CA] updateMaleUsersCounter: #ca-male-users-wrapper .ca-user-list-count not found');
+            }
         }
 
         applyHideRepliedUsers(hide) {
-            const managedList = this.getContainer ? this.getContainer() : this.qs(this.sel.users.managedList);
-            if (!managedList) {
-                console.error('[CA] applyHideRepliedUsers: managed list not found');
-                return;
-            }
-
-            const selector = `${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`;
-            const repliedEls = this.qsa(selector, managedList);
+            const repliedEls = this.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.getFemaleUsersContainer());
 
             repliedEls.forEach((el) => {
                 el.style.display = hide ? 'none' : '';
             });
         }
-
 
         // Reuse the same explicit expander you already use
         _setExpanded(wrapper, expanded) {
@@ -3877,14 +3765,14 @@ Private send interception
 
             const defer = (fn) => requestAnimationFrame(() => setTimeout(fn, 0));
 
-            const expandHostCollapseManaged = () => {
-                this._setExpanded(document.querySelector('#ca-host-users-wrapper'), true);
-                this._setExpanded(document.querySelector('#ca-managed-wrapper'), false);
+            const expandMaleUsersCollapsed = () => {
+                this._setExpanded(document.querySelector(this.sel.raw.users.maleUsersWrapper), true);
+                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUserWrapper), false);
             };
 
-            const expandManagedCollapseHost = () => {
-                this._setExpanded(document.querySelector('#ca-managed-wrapper'), true);
-                this._setExpanded(document.querySelector('#ca-host-users-wrapper'), false);
+            const expandMFemaleUsersCollapse = () => {
+                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUserWrapper), true);
+                this._setExpanded(document.querySelector(this.sel.raw.users.maleUsersWrapper), false);
             };
 
             // Friends and Search tabs → collapse females, expand default, hide headers
@@ -3893,7 +3781,7 @@ Private send interception
                 btn._caWired = true;
                 btn.addEventListener('click', () => {
                     defer(() => {
-                        expandHostCollapseManaged();
+                        expandMaleUsersCollapsed();
                         this._setHeadersVisible(false); // hide headers for other tabs
                     });
                 });
@@ -3905,10 +3793,10 @@ Private send interception
                 usersBtn.addEventListener('click', () => {
                     defer(() => {
                         if (this._isStaffListView()) {
-                            expandHostCollapseManaged();
+                            expandMaleUsersCollapsed();
                             this._setHeadersVisible(false); // hide headers for Staff list
                         } else {
-                            expandManagedCollapseHost();
+                            expandMFemaleUsersCollapse();
                             this._setHeadersVisible(true);  // show headers for normal User list
                         }
                     });
@@ -3917,15 +3805,15 @@ Private send interception
         }
 
 
-        wireExclusiveCollapse(hostWrapper, managedWrapper) {
-            if (!hostWrapper || !managedWrapper) {
+        wireExclusiveCollapse(maleUsersWrapper, femaleUsersWrapper) {
+            if (!maleUsersWrapper || !femaleUsersWrapper) {
                 console.error('[CA] wireExclusiveCollapse: wrappers missing');
                 return;
             }
 
             const pairs = [
-                {wrapper: hostWrapper, other: managedWrapper},
-                {wrapper: managedWrapper, other: hostWrapper}
+                {wrapper: maleUsersWrapper, other: femaleUsersWrapper},
+                {wrapper: femaleUsersWrapper, other: maleUsersWrapper}
             ];
 
             const setExpanded = (el, expanded) => {
@@ -3946,21 +3834,20 @@ Private send interception
                 header.addEventListener('click', onHeaderClick(wrapper, other));
             }
 
-            // initial state: if neither expanded, open host by default
-            if (!hostWrapper.classList.contains('ca-expanded') &&
-                !managedWrapper.classList.contains('ca-expanded')) {
-                setExpanded(hostWrapper, true);
-                setExpanded(managedWrapper, false);
+            if (!maleUsersWrapper.classList.contains('ca-expanded') &&
+                !femaleUsersWrapper.classList.contains('ca-expanded')) {
+                setExpanded(maleUsersWrapper, true);
+                setExpanded(femaleUsersWrapper, false);
             }
         }
 
 
-        updateHostUsersCount() {
-            if (!this.ui.hostContainer) return;
+        updateMaleUsersCount() {
+            if (!this.ui.maleUsersContainer) return;
 
-            const maleUsers = this.qsa(`.user_item:not([data-gender="${this.FEMALE_CODE}"])`, this.ui.hostContainer);
-            if (this.ui.hostCount) {
-                this.ui.hostCount.textContent = String(maleUsers.length);
+            const maleUsers = this.qsa(`.user_item:not([data-gender="${this.FEMALE_CODE}"])`, this.ui.maleUsersContainer);
+            if (this.ui.maleUsersCount) {
+                this.ui.maleUsersCount.textContent = String(maleUsers.length);
             }
         }
 
@@ -4153,12 +4040,11 @@ Private send interception
             this.ui.debugCheckbox = this.qs(this.sel.debug.checkbox);
             this.ui.verboseCheckbox = this.qs(this.sel.debug.verboseCheckbox);
 
-            // user list containers - will be bound after createManagedUsersContainer()
-            this.ui.managedContainer = this.qs(this.sel.users.managed);
-            this.ui.managedList = this.qs(this.sel.users.managedList);
-            this.ui.managedCount = this.qs(this.sel.users.managedCount);
-            this.ui.hostWrapper = this.qs(this.sel.users.hostWrapper);
-            this.ui.hostCount = this.qs(this.sel.users.hostCount);
+            // user list containers - will be bound after createFemaleUsersContainer()
+            this.ui.femaleUsersContainer = this.qs(this.sel.users.femaleUsers);
+            this.ui.femaleUSersCount = this.qs(this.sel.users.femaleUserCount);
+            this.ui.maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
+            this.ui.maleUsersCount = this.qs(this.sel.users.maleUserCount);
 
             this.ui.otherBox = this.qs(this.sel.log.other);
         }
@@ -4330,37 +4216,69 @@ Private send interception
 
         ensureExpandButtonFor_(containerEl, textEl, kind) {
             if (!containerEl || !textEl) {
-                console.error("ensureExpandButtonFor_: missing container/text element");
+                console.error("ensureExpandButtonFor_: missing container/text element", {
+                    containerEl,
+                    textEl,
+                    kind
+                });
                 return;
             }
 
             const expandEl = containerEl.querySelector(this.sel.log.classes.ca_expand_indicator);
             const actionsEl = containerEl.querySelector(this.sel.log.classes.ca_log_actions);
 
-            // Only manage the chevron for sent messages
+            if (!actionsEl) {
+                console.error("[CA] ensureExpandButtonFor_: .ca-log-actions not found on log entry", {
+                    containerEl,
+                    kind
+                });
+                return;
+            }
+
+            // Only manage the chevron + collapse for sent messages
             if (kind !== "dm-out") {
+                // Clean up any leftover indicator + inline styles
                 if (expandEl) expandEl.remove();
+                containerEl.classList.remove("ca-expanded");
+
+                textEl.style.removeProperty("display");
+                textEl.style.removeProperty("overflow");
+                textEl.style.removeProperty("-webkit-box-orient");
+                textEl.style.removeProperty("-webkit-line-clamp");
+                textEl.style.removeProperty("line-clamp");
+
                 return;
             }
 
-            // Correctly detect expanded state
+            // Expanded state is driven by the wrapper class
             const expanded = containerEl.classList.contains("ca-expanded");
-            const capped = this.isVisuallyTruncated_(textEl);
-            const shouldHaveButton = expanded || capped;
 
-            if (!shouldHaveButton) {
-                if (expandEl) expandEl.remove();
-                return;
+            // Apply a *forced* collapsed style when not expanded
+            if (!expanded) {
+                // 3-line clamp, collapsed by default
+                textEl.style.display = "-webkit-box";
+                textEl.style.overflow = "hidden";
+                textEl.style.setProperty("-webkit-box-orient", "vertical");
+                textEl.style.setProperty("-webkit-line-clamp", "3");
+                textEl.style.setProperty("line-clamp", "3");
+            } else {
+                // Show full text when expanded
+                textEl.style.removeProperty("display");
+                textEl.style.removeProperty("overflow");
+                textEl.style.removeProperty("-webkit-box-orient");
+                textEl.style.removeProperty("-webkit-line-clamp");
+                textEl.style.removeProperty("line-clamp");
             }
 
-            // Ensure a button exists and is placed BEFORE the DM button
-            const ind = expandEl || this.createExpandIndicator_();
-            ind.textContent = expanded ? "▴" : "▾";
-            ind.setAttribute("aria-expanded", expanded ? "true" : "false");
-
-            if (!expandEl) {
+            // Ensure a chevron exists and is placed BEFORE the DM button
+            let ind = expandEl;
+            if (!ind) {
+                ind = this.createExpandIndicator_();
                 actionsEl.insertBefore(ind, actionsEl.firstChild);
             }
+
+            ind.textContent = expanded ? "▴" : "▾";
+            ind.setAttribute("aria-expanded", expanded ? "true" : "false");
         }
 
 
@@ -4703,23 +4621,17 @@ Private send interception
             });
         }
 
-        /* ---------- Containers / lists ---------- */
-        getContainer() {
-            // Always return ONLY our managed container for female users
-            // This ensures we never accidentally query or modify male users in the host container
-            if (!this.ui.managedList) {
-                // Try to bind if not already cached
-                this.ui.managedList = this.qs(this.sel.users.managedList);
+        getFemaleUsersContainer() {
+            if (!this.ui.femaleUsersList) {
+                this.ui.femaleUsersList = this.qs(`${this.sel.users.femaleUserWrapper} .ca-user-list-content`);
             }
-            if (!this.ui.managedList) {
-                console.warn(this.LOG, 'Managed container not found - female user operations will not work');
+            if (!this.ui.femaleUsersList) {
+                console.warn(this.LOG, 'Female users container not found - female user operations will not work');
             }
-            return this.ui.managedList;
+            return this.ui.femaleUsersList;
         }
 
-        /* ---------- Global watermark helpers (uses this.Store) ---------- */
         getGlobalWatermark() {
-            // expects this.Store with get(key)
             return this.Store?.get(this.GLOBAL_WATERMARK_KEY) || '';
         }
 
