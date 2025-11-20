@@ -1570,12 +1570,12 @@ Private send interception
             return s.indexOf('system/action/private_process.php') !== -1;
         }
 
-        processPrivateSendResponse(data, targetUid) {
+        async processPrivateSendResponse(data, targetUid) {
             const logData = data.log || {};
             const content = logData.log_content || '';
 
             // Look up user - ensure we always have a valid user object
-            let dmSentToUser = this.UserStore.get(targetUid);
+            let dmSentToUser = await this.UserStore.get(targetUid);
 
             if (!dmSentToUser) {
                 console.error(`[PrivateSend] Could not find user with ID ${targetUid}. Could not process outgoing private message`);
@@ -1609,7 +1609,7 @@ Private send interception
                 }
 
                 if (this._ca_pm_isTarget && capturedBody) {
-                    this.addEventListener('readystatechange', () => {
+                    this.addEventListener('readystatechange', async () => {
                         if (this.readyState === 4 && this.status === 200) {
                             let data = self.toPrivateSendResponse(JSON.parse(String(this?.responseText)));
 
@@ -1618,7 +1618,7 @@ Private send interception
                                 return;
                             }
                             const targetId = new URLSearchParams(capturedBody).get('target');
-                            self.processPrivateSendResponse(data, targetId);
+                            await self.processPrivateSendResponse(data, targetId);
                         }
                     });
                 }
@@ -2625,7 +2625,7 @@ Private send interception
                         existingUser.avatar !== avatar ||
                         existingUser.isFemale !== isFemale ||
                         existingUser.rank !== rank) {
-                        console.log(`[USER_LIST] Updating metadata of existing user ${uid}`, existingUser, name, avatar, isFemale, rank);
+                        this.verbose(`[USER_LIST] Updating metadata of existing user ${uid}`, existingUser, name, avatar, isFemale, rank);
                         updatedProfileCount++;
                         upsertedUser = this.updateUser(userEl, existingUser);
                         this.setLogDotsLoggedInStatusForUid(upsertedUser.uid, upsertedUser.isLoggedIn);
@@ -2958,7 +2958,7 @@ Private send interception
                         'X-Requested-With': 'XMLHttpRequest'
                     },
                     body
-                }).then(res => res.text().then(response => {
+                }).then(res => res.text().then(async response => {
                     let jsonResponse = JSON.parse(String(response));
                     let data = this.toPrivateSendResponse(jsonResponse);
 
@@ -2967,7 +2967,7 @@ Private send interception
                         return {ok: false, status: res.status, body: jsonResponse || response};
                     }
 
-                    this.processPrivateSendResponse(data, String(target));
+                    await this.processPrivateSendResponse(data, String(target));
                     return {ok: res.ok, status: res.status, body: jsonResponse || response};
                 }));
             }, 15000);
@@ -3777,9 +3777,8 @@ Private send interception
             }
         }
 
-
         updateFemaleUserCount(count) {
-            console.log('Updating female user count:', count);
+            this.verbose('Updating female user count:', count);
             const headerCounter = this.qs(this.sel.users.femaleUserCount);
             headerCounter.textContent = `${count}`;
         }
