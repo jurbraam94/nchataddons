@@ -2496,11 +2496,11 @@ Private send interception
             }
 
             // Parse the HTML into a proper DOM structure
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = html;
+            const tempUserListResponseDiv = document.createElement('div');
+            tempUserListResponseDiv.innerHTML = html;
 
             // Find all female users using proper DOM queries
-            const users = this.qsa('.online_user .user_item', tempDiv);
+            const users = this.qsa('.online_user .user_item', tempUserListResponseDiv);
             console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
 
             if (users.length === 0) {
@@ -2642,7 +2642,7 @@ Private send interception
             this.updateMaleUsersCount(totalMaleProfileCount);
             this.updateFemaleUserCounter(totalFemaleProfileCount);
 
-            tempDiv.innerHTML = '';
+            tempUserListResponseDiv.innerHTML = '';
             this.isInitialLoad = false;
         }
 
