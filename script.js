@@ -2505,6 +2505,8 @@ Private send interception
 
             const seenLoggedIn = new Set();
 
+            const femaleUsersContainer = this.getFemaleUsersContainer();
+
             users.forEach(userEl => {
                 // Extract user data from DOM
                 const uid = this.getUserId(userEl);
