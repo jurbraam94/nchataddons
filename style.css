@@ -71,7 +71,7 @@
 }
 
 /* Draggable popup */
-.ca-pop {
+.ca-popup {
     position: fixed;
     top: 18vh;
     left: 50%;
@@ -82,10 +82,19 @@
     border: 2px solid #2b90ff;
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(8, 30, 70, .6);
-    z-index: 2147483647;
 }
 
-.ca-pop-header {
+.ca-popup.ca-popup-open {
+    display: block;
+    position: fixed;
+    z-index: 1000;
+}
+
+.ca-popup.ca-popup-closed {
+    display: none;
+}
+
+.ca-popup-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -99,7 +108,7 @@
     border-top-right-radius: 10px;
 }
 
-.ca-pop-close {
+.ca-popup-close {
     appearance: none;
     border: 0;
     background: transparent;
@@ -110,14 +119,14 @@
     color: #93c5fd;
 }
 
-.ca-pop-body {
+.ca-popup-body {
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
-.ca-pop-actions {
+.ca-popup-actions {
     margin-top: 6px;
     display: flex;
     align-items: center;
@@ -126,7 +135,7 @@
 }
 
 /* Popup-specific widgets: ensure consistent colors and rounded inputs */
-.ca-pop input[type="text"], .ca-pop textarea {
+.ca-popup input[type="text"], .ca-popup textarea {
     font-size: 14px;
     line-height: 1.3;
     border: 1px solid #334155;
@@ -135,37 +144,37 @@
     color: #e5e7eb;
 }
 
-.ca-pop input[type="text"] {
+.ca-popup input[type="text"] {
     padding: 8px 10px;
     width: 100%;
 }
 
-.ca-pop textarea {
+.ca-popup textarea {
     padding: 10px;
     width: 100%;
     resize: vertical;
 }
 
-.ca-pop textarea.ca-8 {
+.ca-popup textarea.ca-8 {
     min-height: calc(5 * 1.3em + 20px);
 }
 
 /* Accent button in popup: match standard .ca-btn styling */
-.ca-pop .ca-btn {
+.ca-popup .ca-btn {
     border: 1px solid #334155;
     background: linear-gradient(#1f2937, #111827);
     color: #e5e7eb;
 }
 
-.ca-pop .ca-btn:hover {
+.ca-popup .ca-btn:hover {
     background: linear-gradient(#192231, #0e1420);
 }
 
 /* Ensure popup action buttons (send, broadcast, etc.) match .ca-btn styling; keep reset as anchor */
-.ca-pop button:not(.ca-pop-close),
-.ca-pop input[type="button"],
-.ca-pop input[type="submit"],
-.ca-pop .ca-pop-actions a {
+.ca-popup button:not(.ca-popup-close),
+.ca-popup input[type="button"],
+.ca-popup input[type="submit"],
+.ca-popup .ca-popup-actions a {
     appearance: button;
     -webkit-appearance: button;
     display: inline-flex;
@@ -182,24 +191,24 @@
     text-decoration: none;
 }
 
-.ca-pop button:not(.ca-pop-close):hover,
-.ca-pop input[type="button"]:hover,
-.ca-pop input[type="submit"]:hover,
-.ca-pop .ca-pop-actions a:hover {
+.ca-popup button:not(.ca-popup-close):hover,
+.ca-popup input[type="button"]:hover,
+.ca-popup input[type="submit"]:hover,
+.ca-popup .ca-popup-actions a:hover {
     background: linear-gradient(#192231, #0e1420);
     color: #e5e7eb;
 }
 
-.ca-pop button[disabled],
-.ca-pop input[type="button"][disabled],
-.ca-pop input[type="submit"][disabled] {
+.ca-popup button[disabled],
+.ca-popup input[type="button"][disabled],
+.ca-popup input[type="submit"][disabled] {
     opacity: .6;
     cursor: not-allowed;
 }
 
 /* Popup Reset tracking stays an anchor: bold + white, inline with Send */
-.ca-pop .ca-reset-link,
-.ca-pop .ca-reset {
+.ca-popup .ca-reset-link,
+.ca-popup .ca-reset {
     background: transparent;
     border: none;
     padding: 0;
@@ -211,8 +220,8 @@
     cursor: pointer;
 }
 
-.ca-pop .ca-reset-link:hover,
-.ca-pop .ca-reset:hover {
+.ca-popup .ca-reset-link:hover,
+.ca-popup .ca-reset:hover {
     color: #ffffff;
     text-decoration: underline;
 }
@@ -305,9 +314,16 @@
     font-weight: 600;
 }
 
+#ca-specific-status.success {
+    color: green;
+}
+
+#ca-specific-status.error {
+    color: red;
+}
+
 .ca-status {
     font-size: 12px;
-    color: #cbd5e1;
     min-height: 18px;
 }
 
@@ -517,12 +533,6 @@
     max-width: 48px;
     max-height: 48px;
     border-radius: 4px;
-}
-
-.ca-pop {
-    display: block;
-    position: fixed;
-    z-index: 2147483647;
 }
 
 /* Hover image preview for chat log thumbnails */
@@ -840,11 +850,6 @@
     .ca-log-controls-header .ca-log-ctl {
         font-size: 11px;
     }
-}
-
-/* Ensure popups are hidden by default but show when JS sets display:block */
-.ca-pop {
-    display: none;
 }
 
 /* Use the same first-line height as your log text */

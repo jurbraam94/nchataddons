@@ -288,6 +288,10 @@
             return this._getAll().find(u => String(u.uid) === String(uid)) || null;
         }
 
+        getByName(name) {
+            return this._getAll().find(u => String(u.name) === String(name)) || null;
+        }
+
         has(uid) {
             return !!this.get(uid);
         }
@@ -377,23 +381,26 @@
         }
 
         async getOrFetch(id) {
-            let u = this.get(id);
-            if (!u && this.app?.searchUserRemote) {
+            let user = this.get(id);
+            if (!user) {
                 const fetched = await this.app.searchUserRemote(String(id));
                 if (fetched) {
-                    u = this.set({...fetched, uid: String(fetched.uid ?? id)});
+                    user = this.set({...fetched, uid: String(fetched.uid ?? id)});
                 }
             }
-            return u || null;
+            return user || null;
         }
 
-        async getOrFetchByName(q) {
-            const needle = String(q || '').toLowerCase();
-            const local = this.list().filter(
-                u => (u.name || String(u.uid)).toLowerCase() === needle
-            );
-            if (local.length) return local;
-            return [];
+        async getOrFetchByName(name) {
+            let user = this.getByName(name);
+            let users = [];
+
+            if (!user) {
+                users = await this.app.searchUserRemoteByUsername(String(name));
+            } else {
+                users.push(user);
+            }
+            return users || null;
         }
 
         includeUserForBroadcast(uid, include) {
@@ -482,11 +489,6 @@
             this.ui = {
                 panel: null,
                 panelNav: null,
-                sendPrivateMessageUser: null,
-                sendPrivateMessageText: null,
-                sendPrivateMessageButton: null,
-                broadcastMessage: null,
-                broadcastSendButton: null,
                 sentMessagesBox: null,
                 receivedMessagesBox: null,
                 presenceBox: null,
@@ -537,14 +539,6 @@
 
             this.sel = {
                 rightPanel: '#right-panel',
-                // specific send section
-                specific: {
-                    username: '#ca-specific-username',
-                    msg: '#ca-specific-msg',
-                    send: '#ca-specific-send',
-                    status: '#ca-specific-status',
-                    reset: '#ca-specific-reset',
-                },
                 // logs
                 log: {
                     classes: {
@@ -588,33 +582,6 @@
                     spec: '#ca-nav-specific',
                     bc: '#ca-nav-bc',
                 },
-                // broadcast popup
-                bcPop: {
-                    container: '#ca-bc-pop',
-                    header: '#ca-bc-pop-header',
-                    close: '#ca-bc-pop-close',
-                    msg: '#ca-bc-msg',
-                    send: '#ca-bc-send',
-                    reset: '#ca-bc-reset',
-                    status: '#ca-bc-status',
-                },
-                specificPop: {
-                    container: '#ca-specific-pop',
-                    header: '#ca-specific-pop-header',
-                    close: '#ca-specific-pop-close',
-                    username: '#ca-specific-username',
-                    msg: '#ca-specific-msg',
-                    send: '#ca-specific-send',
-                    reset: '#ca-specific-reset',
-                    status: '#ca-specific-status',
-                },
-                container: '#ca-bc-pop',
-                header: '#ca-bc-pop-header',
-                close: '#ca-bc-pop-close',
-                msg: '#ca-bc-msg',
-                send: '#ca-bc-send',
-                reset: '#ca-bc-reset',
-                status: '#ca-bc-status',
                 privateChat: {
                     privateCenter: '#private_center',
                     privateInputBox: '#private_input_box',
@@ -865,7 +832,7 @@
 
         /* Fill the list inside the pop */
         _renderPredefinedList() {
-            const pop = document.getElementById('ca-predefined-messages-pop');
+            const pop = document.getElementById('ca-predefined-messages-popup');
             if (!pop) return;
 
             const listEl = pop.querySelector('#ca-predefined-messages-list');
@@ -1198,7 +1165,7 @@
                     }
 
                     const modal =
-                        document.getElementById('ca-predefined-messages-pop') ||
+                        document.getElementById('ca-predefined-messages-popup') ||
                         document.getElementById('ca-predefined-modal');
 
                     if (!modal) {
@@ -1265,22 +1232,22 @@
             this.Store.set(this.PREDEFINED_MESSAGES_KEY, arr);
         }
 
-        /* ---------- Predefined messages popup (ca-pop) ---------- */
+        /* ---------- Predefined messages popup (ca-popup) ---------- */
         createPredefinedPopup() {
-            let pop = document.getElementById('ca-predefined-messages-pop');
+            let pop = document.getElementById('ca-predefined-messages-popup');
             if (pop) return pop;
 
             pop = document.createElement('div');
-            pop.id = 'ca-predefined-messages-pop';
-            pop.className = 'ca-pop';
+            pop.id = 'ca-predefined-messages-popup';
+            pop.className = 'ca-popup';
             pop.style.display = 'none';
 
             pop.innerHTML =
-                '<div id="ca-predefined-messages-pop-header" class="ca-pop-header">' +
+                '<div id="ca-predefined-messages-popup-header" class="ca-popup-header">' +
                 '  <span>Predefined messages</span>' +
-                '  <button id="ca-predefined-messages-pop-close" class="ca-pop-close" type="button">✕</button>' +
+                '  <button id="ca-predefined-messages-popup-close" class="ca-popup-close" type="button">✕</button>' +
                 '</div>' +
-                '<div class="ca-pop-body">' +
+                '<div class="ca-popup-body">' +
                 '  <form id="ca-predefined-messages-form" class="ca-predefined-messages-form" style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;">' +
                 '    <label>Subject<br>' +
                 '      <input type="text" id="ca-predefined-messages-subject" class="ca-8" />' +
@@ -1300,7 +1267,7 @@
 
             document.body.appendChild(pop);
 
-            const closeBtn = pop.querySelector('#ca-predefined-messages-pop-close');
+            const closeBtn = pop.querySelector('#ca-predefined-messages-popup-close');
             if (closeBtn) {
                 closeBtn.addEventListener('click', () => {
                     pop.style.display = 'none';
@@ -1355,7 +1322,7 @@
                 textInput.value = '';
             });
 
-            const hdr = pop.querySelector('#ca-predefined-messages-pop-header');
+            const hdr = pop.querySelector('#ca-predefined-messages-popup-header');
             let ox = 0, oy = 0, sx = 0, sy = 0;
             const mm = (e) => {
                 const dx = e.clientX - sx, dy = e.clientY - sy;
@@ -1607,11 +1574,11 @@ Private send interception
 
                 if (this._ca_pm_isTarget && capturedBody) {
                     this.addEventListener('readystatechange', async () => {
+                        console.log(this._ca_pm_isTarget)
                         if (this.readyState === 4 && this.status === 200) {
                             let data = self.toPrivateSendResponse(JSON.parse(String(this?.responseText)));
 
                             if (!data) {
-                                console.error(`[PrivateSend] Could not parse response from native message send:`, data);
                                 return;
                             }
                             const targetId = new URLSearchParams(capturedBody).get('target');
@@ -2398,52 +2365,6 @@ Private send interception
                 });
         }
 
-        /* ===================== BROADCAST (unified) ===================== */
-        wireBroadcastButton() {
-            // Rebind refs for popup controls
-            this.ui.broadcastMessage = this.qs('#ca-bc-msg');
-            this.ui.broadcastSendButton = this.qs('#ca-bc-send');
-
-            if (!this.ui.broadcastSendButton) {
-                console.error('[BROADCAST] Send button not found');
-                return;
-            }
-            if (this.ui.broadcastSendButton._wired) {
-                return;
-            }
-            this.ui.broadcastSendButton._wired = true;
-
-            this.ui.broadcastSendButton.addEventListener('click', () => {
-                const broadcastSendEl = this.ui.broadcastSendButton;
-                const broadcastMsgEl = this.ui.broadcastMessage;
-
-                const raw = (broadcastMsgEl && 'value' in broadcastMsgEl) ? broadcastMsgEl.value : '';
-                const text = this.trim ? this.trim(raw) : String(raw || '').trim();
-
-                if (!text) {
-                    console.warn('[BROADCAST] Empty message, nothing to send');
-                    return;
-                }
-
-                const broadcastReceiveList = this.buildBroadcastList();
-
-                if (!broadcastReceiveList.length) {
-                    this.logEventLine('[BROADCAST] No new recipients for this message (after exclusions/rank filter).');
-                    return;
-                }
-
-                broadcastSendEl.disabled = true;
-
-                this._runBroadcast(broadcastReceiveList, text)
-                    .then(({ok, fail}) => {
-                        this.logEventLine(`[BROADCAST] Done. Success: ${ok}, Failed: ${fail}.`);
-                    })
-                    .finally(() => {
-                        broadcastSendEl.disabled = false;
-                    });
-            });
-        }
-
         /**
          * Send a broadcast in batches with throttling.
          * Uses this.sendWithThrottle(uid, text).
@@ -2539,6 +2460,16 @@ Private send interception
             return s.indexOf('system/panel/user_list.php') !== -1;
         }
 
+        extractUserInfoFromEl(userEl) {
+            return {
+                uid: this.extractUserId(userEl),
+                name: this.extractUsername(userEl),
+                avatar: this.extractAvatar(userEl),
+                isFemale: this.extractIsFemale(userEl),
+                rank: this.extractRank(userEl)
+            }
+        }
+
         /* Parse user_list.php HTML response and process users */
         processUserListResponse(html) {
             if (!html || typeof html !== 'string') {
@@ -2577,34 +2508,29 @@ Private send interception
             }
 
             users.forEach(userEl => {
-                const uid = this.getUserId(userEl);
+                const uid = this.extractUserId(userEl);
                 if (!uid) {
                     console.warn('[USER_LIST] Skipping user with missing uid');
                     return;
                 }
 
-                const name = this.extractUsername(userEl);
-                const avatar = this.extractAvatar(userEl);
-                const isFemale = userEl.getAttribute('data-gender') === this.FEMALE_CODE;
-                const rank = this.extractRank(userEl);
+                const user = this.extractUserInfoFromEl(userEl);
                 const existingUser = this.UserStore.get(uid);
                 let upsertedUser;
 
                 if (!existingUser) {
                     this.debug(`[USER_LIST] Adding non existing user ${uid}`);
-                    if (isFemale) {
+                    if (user.isFemale) {
                         newFemaleProfileCount++;
                     } else {
                         newMaleProfileCount++;
                     }
                     upsertedUser = this.UserStore.set({
-                        uid,
-                        name,
-                        avatar,
-                        isFemale,
                         isLoggedIn: true,
-                        rank
+                        ...user
                     });
+
+                    this.handleLogin(upsertedUser);
 
                     this.verbose(`User ${uid} didn't exist in store, creating element.`);
                     this._createUserElement(userEl, upsertedUser);
@@ -2625,18 +2551,22 @@ Private send interception
                         this.updateProfileChipByUid(uid);
                     }
 
-                    if (existingUser.name !== name ||
-                        existingUser.avatar !== avatar ||
-                        existingUser.isFemale !== isFemale ||
-                        existingUser.rank !== rank) {
-                        this.verbose(`[USER_LIST] Updating metadata of existing user ${uid}`, existingUser, name, avatar, isFemale, rank);
+                    if (existingUser.name !== user.name ||
+                        existingUser.avatar !== user.avatar ||
+                        existingUser.isFemale !== user.isFemale ||
+                        existingUser.rank !== user.rank) {
+                        this.verbose(`[USER_LIST] Updating metadata of existing user ${uid}`, existingUser, user);
                         updatedProfileCount++;
-                        upsertedUser = this.updateUser(userEl, existingUser);
+                        upsertedUser = this.updateUser(userEl, user);
                         this.setLogDotsLoggedInStatusForUid(upsertedUser.uid, upsertedUser.isLoggedIn);
+                    }
+
+                    if (!upsertedUser) {
+                        upsertedUser = existingUser
                     }
                 }
 
-                if (upsertedUser?.isFemale || existingUser?.isFemale) {
+                if (upsertedUser?.isFemale) {
                     totalFemaleProfileCount++;
                 } else {
                     totalMaleProfileCount++;
@@ -2862,60 +2792,50 @@ Private send interception
             return '';
         }
 
-        /* ---------- ID/Name/Avatar extraction ---------- */
-        getUserId(el) {
-            if (!el) return null;
-            const ds = el.dataset || {};
-            let id = ds.uid || ds.userid || ds.user || ds.id;
-            if (!id) {
-                let n = this.qs('[data-uid]', el);
-                if (n?.dataset?.uid) id = n.dataset.uid;
-                if (!id) {
-                    n = this.qs('[data-userid]', el);
-                    if (n?.dataset?.userid) id = n.dataset.userid;
-                }
-                if (!id) {
-                    n = this.qs('[data-user]', el);
-                    if (n?.dataset?.user) id = n.dataset.user;
-                }
-                if (!id) {
-                    n = this.qs('[data-id]', el);
-                    if (n?.dataset?.id) id = n.dataset.id;
-                }
+        extractUserId(el) {
+            if (!el) {
+                console.error(`no element is passed`);
+                return null;
             }
-            if (!id) {
-                let a = this.qs('a[href*="profile"]', el), m = a && a.href.match(/(?:\/profile\/|[?&]uid=)(\d+)/);
-                if (m?.[1]) id = m[1];
-                if (!id) {
-                    a = this.qs('a[href*="user"]', el);
-                    m = a && a.href.match(/(?:\/user\/|[?&]id=)(\d+)/);
-                    if (m?.[1]) id = m[1];
-                }
-            }
-            return id ? String(id) : null;
+
+            return el.getAttribute('data-id') || null;
         }
 
         extractUsername(el) {
-            if (!el) return '';
             const v = el.getAttribute('data-name');
-            if (v) return v.trim();
+            if (v) {
+                return v.trim();
+            }
             let n = this.qs('.user_name,.username,.name', el);
-            if (n?.textContent) return n.textContent.trim();
+            if (n?.textContent) {
+                return n.textContent.trim();
+            }
             let t = el.getAttribute('title');
-            if (t) return t.trim();
+            if (t) {
+                return t.trim();
+            }
             const text = (el.textContent || '').trim();
-            if (!text) return '';
             const parts = text.split(/\s+/).filter(Boolean);
-            if (!parts.length) return '';
             parts.sort((a, b) => a.length - b.length);
             return parts[0];
         }
 
         extractAvatar(el) {
-            if (!el) return '';
+            if (!el) {
+                console.error(`no element is passed`);
+                return null;
+            }
             const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
             const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
             return src ? src.trim() : '';
+        }
+
+        extractIsFemale(el) {
+            if (!el) {
+                console.error(`no element is passed`);
+                return null;
+            }
+            return el.getAttribute('data-gender') === this.FEMALE_CODE
         }
 
         /* ---------- Token + POST helpers ---------- */
@@ -2977,14 +2897,15 @@ Private send interception
             }, 15000);
         }
 
-        async searchUsersRemote(query) {
+        async searchUserRemoteByUsername(username) {
             const token = this.getToken();
-            if (!token || !query) return [];
+
+            console.log(`Starting remote search for profile with username ${username}`);
 
             const body = new URLSearchParams({
                 token,
                 cp: 'chat',
-                query: String(query),
+                query: String(username),
                 search_type: '1',
                 search_order: '0'
             }).toString();
@@ -3009,22 +2930,12 @@ Private send interception
             tmp.innerHTML = html;
             const nodes = tmp.querySelectorAll('.user_item[data-id]');
             const out = [];
-            for (let i = 0; i < nodes.length; i++) {
-                const el = nodes[i];
-                if (el.getAttribute('data-gender') !== this.FEMALE_CODE) continue;
-                const id = el.getAttribute('data-id');
-                if (!id) continue;
-                let name = '';
-                const p = el.querySelector('.username');
-                if (p?.textContent) name = p.textContent.trim();
-                if (!name) {
-                    const dn = el.getAttribute('data-name');
-                    if (dn) name = dn.trim();
+            for (const node of nodes) {
+                const user = this.extractUserInfoFromEl(node);
+                if (user?.uid) {
+                    out.push(user);
                 }
-                out.push({el: null, uid: String(id), name});
             }
-            // Clean up temporary DOM element
-            tmp.innerHTML = '';
             return out;
         }
 
@@ -3132,32 +3043,53 @@ Private send interception
                 console.error('[321ChatAddons] ensurePopup called without id');
                 return null;
             }
-
-            let pop = document.getElementById(id);
-            if (pop) {
-                return pop;
-            }
-
-            pop = document.createElement('div');
+            let pop = document.createElement('div');
             pop.id = id;
-            pop.className = 'ca-pop';
-            pop.style.display = 'none';
+            pop.classList.add('ca-popup');
+            pop.classList.add('ca-popup-closed');
 
             pop.innerHTML =
-                '<div class="ca-pop-header">' +
-                '  <span class="ca-pop-title"></span>' +
-                '  <button class="ca-pop-close" type="button">✕</button>' +
+                '<div class="ca-popup-header">' +
+                '  <span class="ca-popup-title"></span>' +
+                '  <button class="ca-popup-close" type="button">✕</button>' +
                 '</div>' +
-                '<div class="ca-pop-body"></div>';
+                '<div class="ca-popup-body"></div>';
+
+            pop.querySelector('.ca-popup-close')?.addEventListener('click', () => {
+                pop.classList.remove('ca-popup-open');
+                pop.classList.add('ca-popup-closed');
+            });
+
+            const hdr = pop.querySelector('.ca-popup-header');
+            let ox = 0, oy = 0, sx = 0, sy = 0;
+            const mm = (e) => {
+                const dx = e.clientX - sx, dy = e.clientY - sy;
+                pop.style.left = (ox + dx) + 'px';
+                pop.style.top = (oy + dy) + 'px';
+                pop.style.transform = 'none';
+            };
+            const mu = () => {
+                document.removeEventListener('mousemove', mm);
+                document.removeEventListener('mouseup', mu);
+            };
+            if (hdr) hdr.addEventListener('mousedown', (e) => {
+                sx = e.clientX;
+                sy = e.clientY;
+                const r = pop.getBoundingClientRect();
+                ox = r.left;
+                oy = r.top;
+                document.addEventListener('mousemove', mm);
+                document.addEventListener('mouseup', mu);
+            });
 
             document.body.appendChild(pop);
 
-            const titleEl = pop.querySelector('.ca-pop-title');
+            const titleEl = pop.querySelector('.ca-popup-title');
             if (titleEl && typeof title === 'string') {
                 titleEl.textContent = title;
             }
 
-            const bodyEl = pop.querySelector('.ca-pop-body');
+            const bodyEl = pop.querySelector('.ca-popup-body');
             if (bodyEl && typeof bodyHtml === 'string') {
                 bodyEl.innerHTML = bodyHtml;
             }
@@ -3165,16 +3097,25 @@ Private send interception
             return pop;
         }
 
-        showPopup(id) {
+        togglePopup(id) {
             const pop = document.getElementById(id);
+
             if (!pop) {
-                console.error('[321ChatAddons] showPopup: popup not found:', id);
+                console.error('[321ChatAddons] togglePopup: popup not found:', id);
                 return;
             }
 
-            pop.style.display = 'block';
-            pop.style.position = 'fixed';
-            pop.style.zIndex = '2147483647';
+            const isOpen = pop.classList.contains('ca-popup-open');
+
+            if (isOpen) {
+                // CLOSE
+                pop.classList.remove('ca-popup-open');
+                pop.classList.add('ca-popup-closed');
+            } else {
+                // OPEN
+                pop.classList.remove('ca-popup-closed');
+                pop.classList.add('ca-popup-open');
+            }
         }
 
         openCloudflarePopup() {
@@ -3187,7 +3128,7 @@ Private send interception
                 '<button id="ca-cloudflare-refresh" class="ca-btn ca-btn-slim" type="button">Refresh page</button>';
 
             const pop = this.ensurePopup({
-                id: 'ca-cloudflare-pop',
+                id: 'ca-cloudflare-popup',
                 title: 'Connection issue',
                 bodyHtml
             });
@@ -3198,7 +3139,7 @@ Private send interception
                 window.location.reload();
             });
 
-            this.showPopup('ca-cloudflare-pop');
+            this.togglePopup('ca-cloudflare-popup');
         }
 
         /* ---------- Rank filter & selection checkbox ---------- */
@@ -3793,165 +3734,185 @@ Private send interception
         }
 
         createBroadcastPopup() {
-            let pop = document.getElementById('ca-bc-pop');
-            if (pop) return pop;
+            const bodyHtml = `
 
-            pop = document.createElement('div');
-            pop.id = 'ca-bc-pop';
-            pop.className = 'ca-pop';
-            pop.innerHTML =
-                '<div id="ca-bc-pop-header" class="ca-pop-header">' +
-                '  <span>Broadcast</span>' +
-                '  <button id="ca-bc-pop-close" class="ca-pop-close" type="button">✕</button>' +
-                '</div>' +
-                '<div class="ca-pop-body">' +
-                '  <textarea id="ca-bc-msg" class="ca-8" rows="5" placeholder="Type the broadcast message..."></textarea>' +
-                '  <div class="ca-controls" style="margin-top:4px;">' +
-                '    <span id="ca-bc-status" class="ca-status"></span>' +
-                '    <a id="ca-bc-reset" href="#" class="ca-reset-link" style="margin-left:auto">Reset tracking</a>' +
-                '  </div>' +
-                '  <div class="ca-pop-actions">' +
-                '    <button id="ca-bc-send" class="ca-btn ca-btn-slim" type="button">Send</button>' +
-                '  </div>' +
-                '</div>';
+                  <textarea 
+                    id="ca-bc-msg" 
+                    class="ca-8" 
+                    rows="5" 
+                    placeholder="Type the broadcast message..."
+                  ></textarea>
+                
+                  <div class="ca-controls" style="margin-top:4px;">
+                    <span id="ca-bc-status" class="ca-status"></span>
+                    <a 
+                      id="ca-bc-reset" 
+                      href="#" 
+                      class="ca-reset-link" 
+                      style="margin-left:auto"
+                    >
+                      Reset tracking
+                    </a>
+                  </div>
+                
+                  <div class="ca-popup-actions">
+                    <button 
+                      id="ca-bc-send" 
+                      class="ca-btn ca-btn-slim" 
+                      type="button"
+                    >
+                      Send
+                    </button>
+                  </div>
+                `;
 
-            document.body.appendChild(pop);
-
-            const popBodyEl = pop.querySelector('.ca-pop-body');
-            if (popBodyEl) {
-                this.createPredefinedMessagesBar({
-                    container: popBodyEl,
-                    messageBarName: 'ca-predefined-messages-select-broadcast',
-                    targetSelector: '#ca-bc-msg',
-                    appendAtStart: true
-                });
-            } else {
-                console.error('[CA] createBroadcastPopup: .ca-pop-body not found');
-            }
-
-            const closeBtn = pop.querySelector('#ca-bc-pop-close');
-            if (closeBtn) closeBtn.addEventListener('click', () => {
-                pop.style.display = 'none';
+            return this.ensurePopup({
+                id: 'ca-broadcast-popup',
+                title: 'Broadcast message',
+                bodyHtml
             });
-
-            const hdr = pop.querySelector('#ca-bc-pop-header');
-            let ox = 0, oy = 0, sx = 0, sy = 0;
-            const mm = (e) => {
-                const dx = e.clientX - sx, dy = e.clientY - sy;
-                pop.style.left = (ox + dx) + 'px';
-                pop.style.top = (oy + dy) + 'px';
-                pop.style.transform = 'none';
-            };
-            const mu = () => {
-                document.removeEventListener('mousemove', mm);
-                document.removeEventListener('mouseup', mu);
-            };
-            if (hdr) hdr.addEventListener('mousedown', (e) => {
-                sx = e.clientX;
-                sy = e.clientY;
-                const r = pop.getBoundingClientRect();
-                ox = r.left;
-                oy = r.top;
-                document.addEventListener('mousemove', mm);
-                document.addEventListener('mouseup', mu);
-            });
-
-            return pop;
         }
 
 
         createSpecificPopup() {
-            let pop = document.getElementById('ca-specific-pop');
-            if (pop) return pop;
+            const bodyHtml = `
+              <div class="ca-row">
+                <input 
+                  id="ca-specific-username" 
+                  class="ca-input-slim" 
+                  type="text" 
+                  placeholder="Enter username (case-insensitive)"
+                >
+                <button 
+                  id="ca-specific-send" 
+                  class="ca-btn ca-btn-slim" 
+                  type="button"
+                >
+                  Send
+                </button>
+              </div>
+            
+              <div id="ca-specific-status" class="ca-status"></div>
+            
+              <textarea 
+                id="ca-specific-message" 
+                class="ca-8" 
+                rows="5" 
+                placeholder="Type the message..."
+              ></textarea>
+            
+              <div class="ca-popup-actions">
+                <a 
+                  id="ca-specific-reset" 
+                  href="#" 
+                  class="ca-reset-link"
+                >
+                  Reset tracking
+                </a>
+              </div>
+            `;
 
-            pop = document.createElement('div');
-            pop.id = 'ca-specific-pop';
-            pop.className = 'ca-pop';
-            pop.innerHTML =
-                '<div id="ca-specific-pop-header" class="ca-pop-header">' +
-                '  <span>Send to specific user</span>' +
-                '  <button id="ca-specific-pop-close" class="ca-pop-close" type="button">✕</button>' +
-                '</div>' +
-                '<div class="ca-pop-body">' +
-                '  <div class="ca-row">' +
-                '    <input id="ca-specific-username" class="ca-input-slim" type="text" placeholder="Enter username (case-insensitive)">' +
-                '    <button id="ca-specific-send" class="ca-btn ca-btn-slim" type="button">Send</button>' +
-                '  </div>' +
-                '  <div id="ca-specific-status" class="ca-status"></div>' +
-                '  <textarea id="ca-specific-msg" class="ca-8" rows="5" placeholder="Type the message..."></textarea>' +
-                '  <div class="ca-pop-actions">' +
-                '    <a id="ca-specific-reset" href="#" class="ca-reset-link">Reset tracking</a>' +
-                '  </div>' +
-                '</div>';
-            document.body.appendChild(pop);
-
-            const closeBtn = pop.querySelector('#ca-specific-pop-close');
-            if (closeBtn) closeBtn.addEventListener('click', () => {
-                pop.style.display = 'none';
+            return this.ensurePopup({
+                id: 'ca-specific-popup',
+                title: 'Send message',
+                bodyHtml
             });
+        }
 
-            // draggable header
-            const hdr = pop.querySelector('#ca-specific-pop-header');
-            let ox = 0, oy = 0, sx = 0, sy = 0;
-            const mm = (e) => {
-                const dx = e.clientX - sx, dy = e.clientY - sy;
-                pop.style.left = (ox + dx) + 'px';
-                pop.style.top = (oy + dy) + 'px';
-                pop.style.transform = 'none';
-            };
-            const mu = () => {
-                document.removeEventListener('mousemove', mm);
-                document.removeEventListener('mouseup', mu);
-            };
-            if (hdr) hdr.addEventListener('mousedown', (e) => {
-                sx = e.clientX;
-                sy = e.clientY;
-                const r = pop.getBoundingClientRect();
-                ox = r.left;
-                oy = r.top;
-                document.addEventListener('mousemove', mm);
-                document.addEventListener('mouseup', mu);
-            });
+        printModalStatus(message) {
+            const statusEl = this.qs('#ca-specific-status');
+            statusEl.textContent = message;
+            return statusEl;
+        }
 
-            return pop;
+        printModalErrorStatus(errorMessage) {
+            const el = this.printModalStatus(errorMessage);
+            el.classList.add('error');
+            el.classList.remove('success');
+            console.warn(errorMessage);
+        }
+
+        printModalSuccessStatus(successMessage) {
+            const el = this.printModalStatus(successMessage);
+            el.classList.add('success');
+            el.classList.remove('error');
+            console.log(successMessage);
         }
 
         openSendMessageModal() {
             const pop = this.createSpecificPopup();
-            this.verbose('Specific popup element:', pop);
-            if (pop) {
 
-                if (!this.openSendMessageModal._wired) {
-                    this.wireSpecificControls();
-                    this.openSendMessageModal._wired = true;
+            this.qs('#ca-specific-status', pop).textContent = '';
+
+            this.qs('#ca-specific-send', pop).addEventListener('click', async () => {
+                const sendPrivateMessageUser = this.qs('#ca-specific-username').value;
+                const sendPrivateMessageText = this.qs('#ca-specific-message').value;
+                console.log(`[CA] Sending private message to ${sendPrivateMessageUser}:`, sendPrivateMessageText);
+                const result = await this.UserStore.getOrFetchByName(sendPrivateMessageUser);
+                console.log(result)
+
+                if (Array.isArray(result) && result.length > 1) {
+                    console.warn(`Invalid result:`, result);
+                    return this.printModalErrorStatus(`Multiple users were found. Make a more specific search.`);
+                } else if ((Array.isArray(result) && result.length === 0) || !result[0]) {
+                    return this.printModalErrorStatus(`User ${sendPrivateMessageUser} not found`);
                 }
-            } else {
-                console.error('Failed to create specific popup');
-            }
-        }
 
-        wireSpecificControls() {
-            // Rebind specific refs to popup controls
-            this.ui.sendPrivateMessageUser = this.qs(this.sel.specificPop.username);
-            this.ui.sendPrivateMessageText = this.qs(this.sel.specificPop.msg);
-            this.ui.sendPrivateMessageButton = this.qs(this.sel.specificPop.send);
+                const user = result[0];
+
+                if (!user?.uid) {
+                    console.warn(`Invalid user: `, user);
+                    return this.printModalErrorStatus(`Returned user doesn't have a uid.`);
+                }
+
+                const sendPrivateMessageResponse = await this.sendWithThrottle(user.uid, sendPrivateMessageText)
+                    .catch(_ => {
+                        return this.printModalErrorStatus(`Error sending private message to ${sendPrivateMessageUser}`);
+                    });
+
+                if (sendPrivateMessageResponse.ok) {
+                    this.logEventLine(`Sent to ${user.name || user.uid}.`)
+                    return this.printModalSuccessStatus(`Private message to ${sendPrivateMessageUser} has been successfully sent`);
+                } else {
+                    return this.printModalErrorStatus(`Error sending private message to ${sendPrivateMessageUser}`);
+                }
+            });
+
+            this.togglePopup('ca-specific-popup');
         }
 
         openBroadcastModal() {
-            console.log('openBroadcast() called');
-            const pop = this.createBroadcastPopup();
-            console.log('Broadcast popup element:', pop);
-            if (pop) {
-                // Ensure it's visible and styled as modal
+            const broadcastSendEl = this.createBroadcastPopup().querySelector('#ca-bc-send');
 
-                console.log('Set popup display to block, current display:', pop.style.display);
-                if (!this.openBroadcastModal._wired) {
-                    this.wireBroadcastButton();
-                    this.openBroadcastModal._wired = true;
+            broadcastSendEl.addEventListener('click', () => {
+                const broadcastMsgEl = this.qs('#ca-bc-msg');
+                const raw = (broadcastMsgEl && 'value' in broadcastMsgEl) ? broadcastMsgEl.value : '';
+                const text = this.trim ? this.trim(raw) : String(raw || '').trim();
+
+                if (!text) {
+                    console.warn('[BROADCAST] Empty message, nothing to send');
+                    return;
                 }
-            } else {
-                console.error('Failed to create broadcast popup');
-            }
+
+                const broadcastReceiveList = this.buildBroadcastList();
+
+                if (!broadcastReceiveList.length) {
+                    this.logEventLine('[BROADCAST] No new recipients for this message (after exclusions/rank filter).');
+                    return;
+                }
+
+                broadcastSendEl.disabled = true;
+
+                this._runBroadcast(broadcastReceiveList, text)
+                    .then(({ok, fail}) => {
+                        this.logEventLine(`[BROADCAST] Done. Success: ${ok}, Failed: ${fail}.`);
+                    })
+                    .finally(() => {
+                        broadcastSendEl.disabled = false;
+                    });
+            });
+
+            this.togglePopup('ca-broadcast-popup');
         }
 
         _bindStaticRefs() {
