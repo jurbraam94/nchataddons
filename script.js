@@ -526,7 +526,7 @@
                 debugCheckbox: null,
                 verboseCheckbox: null,
                 otherBox: null,
-                femaleUsersList: null,
+                femaleUsersContainer: null,
                 femaleUSersCount: null,
                 maleUsersWrapper: null,
                 maleUsersContainer: null,
@@ -2439,36 +2439,28 @@ Private send interception
             c.setAttribute('data-ca-wired', '1');
         }
 
-        _updateOrCreateUserElement(femaleUsersList, newEl, user) {
-            const selector = `.user_item[data-id="${user.uid}"]`;
-            const existingEl = this.qs(selector, femaleUsersList);
+        _updateOrCreateUserElement(userEl, user) {
+            const existingUser = this.qs(`.user_item[data-id="${user.uid}"]`, this.getFemaleUsersContainer());
+            const femaleUsersContainer = this.getFemaleUsersContainer();
 
-            if (existingEl) {
-                existingEl.innerHTML = newEl.innerHTML;
-                Array.from(newEl.attributes).forEach(attr => {
-                    existingEl.setAttribute(attr.name, attr.value);
+            if (existingUser) {
+                existingUser.innerHTML = userEl.innerHTML;
+                Array.from(userEl.attributes).forEach(attr => {
+                    existingUser.setAttribute(attr.name, attr.value);
                 });
                 this.verbose('[_updateOrCreateUserElement] Updated existing user element for', user.uid, user.name);
-                return existingEl;
+                return existingUser
             }
 
-            const clonedEl = newEl.cloneNode(true);
-            const insertBeforeNode =
-                this.qs('.user_item[data-rank="0"]', femaleUsersList) || femaleUsersList.lastElementChild;
-
-            if (insertBeforeNode) {
-                femaleUsersList.insertBefore(clonedEl, insertBeforeNode);
-            } else {
-                femaleUsersList.appendChild(clonedEl);
-            }
+            const userIemEl = userEl.cloneNode(true);
+            femaleUsersContainer.appendChild(userIemEl);
 
             this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
 
-            this.ensureDmLink(clonedEl, user);
+            this.ensureDmLink(userIemEl, user);
 
-            return clonedEl;
+            return userIemEl;
         }
-
 
         /* Check if URL is user_list.php */
         isUserListUrl(u) {
@@ -2489,18 +2481,12 @@ Private send interception
             const context = this.isInitialLoad ? '[INITIAL]' : '[USER_LIST]';
             this.verbose(this.LOG, context, 'Processing user list response, length:', html.length);
 
-            const femaleUsersContainer = this.getFemaleUsersContainer();
-            if (!femaleUsersContainer) {
-                console.error(this.LOG, '[USER_LIST] Female users container not found - should have been created in init()');
-                return;
-            }
-
             // Parse the HTML into a proper DOM structure
-            const tempUserListResponseDiv = document.createElement('div');
-            tempUserListResponseDiv.innerHTML = html;
+            const tempUserListReponseDiv = document.createElement('div');
+            tempUserListReponseDiv.innerHTML = html;
 
             // Find all female users using proper DOM queries
-            const users = this.qsa('.online_user .user_item', tempUserListResponseDiv);
+            const users = this.qsa('.online_user .user_item', tempUserListReponseDiv);
             console.log(this.LOG, '[USER_LIST] Total users found:', users.length);
 
             if (users.length === 0) {
@@ -2575,7 +2561,7 @@ Private send interception
                 this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
 
                 if (isFemale && (this.isInitialLoad || IsNewOrUpdatedProfile)) {
-                    const el = this._updateOrCreateUserElement(femaleUsersContainer, userEl, user);
+                    const el = this._updateOrCreateUserElement(userEl, user);
                     if (!el || el.nodeType !== 1) {
                         console.error(`.user_item element not found for user ${uid}`);
                         return;
@@ -2640,9 +2626,9 @@ Private send interception
             );
 
             this.updateMaleUsersCount(totalMaleProfileCount);
-            this.updateFemaleUserCounter(totalFemaleProfileCount);
+            this.updateFemaleUserCount(totalFemaleProfileCount);
 
-            tempUserListResponseDiv.innerHTML = '';
+            tempUserListReponseDiv.innerHTML = '';
             this.isInitialLoad = false;
         }
 
@@ -2967,23 +2953,16 @@ Private send interception
             return out;
         }
 
-        /* ---------- DOM find helper ---------- */
-
-        /* ---------- DOM find helper ---------- */
         findFemaleUserById(uid) {
             if (!uid) {
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
 
-            const femaleUsersContainer = this.getFemaleUsersContainer();
-            if (femaleUsersContainer) {
-                const el = this.qs(`.user_item[data-id="${uid}"]`, femaleUsersContainer);
-                if (el) return el;
+            const el = this.qs(`.user_item[data-id="${uid}"]`, this.getFemaleUsersContainer());
+            if (el) {
+                return el;
             }
-
-            // Fallback (mostly for debugging / safety)
-            return this.qs(`.user_item[data-id="${uid}"]`);
         }
 
         /* ---------- Sent chip & badges ---------- */
@@ -3560,12 +3539,14 @@ Private send interception
         }
 
         createFemaleUsersContainer() {
+            // Anchor: the original chat_right_data (host list)
             const chatRightData = this.qs(this.sel.users.chatRightData);
             if (!chatRightData) {
                 console.warn(this.LOG, 'chat_right_data not found, cannot create Female users container');
                 return;
             }
 
+            // Ensure male wrapper exists (host container)
             let maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
             if (!maleUsersWrapper) {
                 maleUsersWrapper = document.createElement('div');
@@ -3575,12 +3556,12 @@ Private send interception
                 const maleUsersHeader = document.createElement('div');
                 maleUsersHeader.className = 'ca-user-list-header';
                 maleUsersHeader.innerHTML = `
-                    <div class="ca-user-list-title">
-                     <span class="ca-user-list-count" id="${this.sel.raw.users.maleUserCount}">0</span>
-                        <span>Male users</span>
-                       <div class="ca-user-list-toggle">▼</div>
-                    </div>
-                `;
+            <div class="ca-user-list-title">
+                <span class="ca-user-list-count" id="${this.sel.raw.users.maleUserCount}">0</span>
+                <span>Male users</span>
+                <div class="ca-user-list-toggle">▼</div>
+            </div>
+        `;
 
                 // Wrap chat_right_data
                 chatRightData.parentNode.insertBefore(maleUsersWrapper, chatRightData);
@@ -3594,104 +3575,142 @@ Private send interception
                 this.qs('.user_count', maleUsersWrapper)?.remove();
 
                 this.ui.maleUsersContainer = maleUsersWrapper;
-
             }
 
-            const femaleUsersWrapper = maleUsersWrapper.cloneNode(true);
+            // Prevent double-creation of female wrapper
+            const existingFemale = this.qs(`#${this.sel.raw.users.femaleUserWrapper}`);
+            if (existingFemale) {
+                console.log(this.LOG, 'Female users container already exists');
+                return;
+            }
 
-            femaleUsersWrapper.id = `${this.sel.raw.users.femaleUserWrapper}`;
+            // ======================
+            //  FEMALE WRAPPER (NO CLONE)
+            // ======================
+            const femaleUsersWrapper = document.createElement('div');
+            femaleUsersWrapper.id = this.sel.raw.users.femaleUserWrapper;
             femaleUsersWrapper.className = 'ca-user-list-container ca-expanded';
 
-            const header = this.qs('.ca-user-list-header', femaleUsersWrapper);
-            if (header) {
-                header.className = 'ca-user-list-header ca-female-users-header';
-                const titleSpan = this.qs('.ca-user-list-title span:not(.ca-user-list-count)', header);
-                if (titleSpan) {
-                    titleSpan.textContent = 'Female Users';
-                }
+            // ----- HEADER -----
+            const header = document.createElement('div');
+            header.className = 'ca-user-list-header ca-female-users-header';
 
-                const sub = document.createElement('div');
-                sub.className = 'ca-subrow';
-                sub.innerHTML = `
-    <label>
-      <input id="ca-female-ck-toggle" type="checkbox" />
-      <span>Show selection boxes</span>
-    </label>
-    <label style="margin-left: 8px;">
-      <input id="ca-female-hide-replied" type="checkbox" />
-      <span>Hide replied users</span>
-    </label>
-  `;
-                header.appendChild(sub);
+            const title = document.createElement('div');
+            title.className = 'ca-user-list-title';
 
-// existing show-selection-boxes wiring
-                const ckToggle = sub.querySelector('#ca-female-ck-toggle');
-                if (ckToggle) {
-                    ckToggle.checked = false;
-                    femaleUsersWrapper.classList.remove('ca-show-ck');
+            const countSpan = document.createElement('span');
+            countSpan.className = 'ca-user-list-count';
+            countSpan.id = this.sel.raw.users.femaleUserCount;
+            countSpan.textContent = '0';
 
-                    ckToggle.addEventListener('change', (e) => {
-                        femaleUsersWrapper.classList.toggle('ca-show-ck', e.target.checked);
-                        console.log('[CA] Female user checkbox visibility:', e.target.checked ? 'shown' : 'hidden');
-                    });
-                }
+            const labelSpan = document.createElement('span');
+            labelSpan.textContent = 'Female Users';
 
-// NEW: hide-replied wiring
-                const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
-                if (hideRepliedToggle) {
-                    // Initialize from stored value
-                    hideRepliedToggle.checked = !!this.hideRepliedUsers;
+            const toggle = document.createElement('div');
+            toggle.className = 'ca-user-list-toggle';
+            toggle.textContent = '▼';
 
-                    // Apply to current list immediately
-                    this.applyHideRepliedUsers(!!this.hideRepliedUsers);
+            title.appendChild(countSpan);
+            title.appendChild(labelSpan);
+            title.appendChild(toggle);
 
-                    hideRepliedToggle.addEventListener('change', (e) => {
-                        const hide = !!e.target.checked;
-                        console.log('[CA] Hide replied users:', hide);
+            // subrow with toggles
+            const sub = document.createElement('div');
+            sub.className = 'ca-subrow';
+            sub.innerHTML = `
+        <label>
+            <input id="ca-female-ck-toggle" type="checkbox" />
+            <span>Show selection boxes</span>
+        </label>
+        <label style="margin-left: 8px;">
+            <input id="ca-female-hide-replied" type="checkbox" />
+            <span>Hide replied users</span>
+        </label>
+    `;
 
-                        // Persist via localStorage + Store
-                        this.hideRepliedUsers = hide;
-                        localStorage.setItem(this.HIDE_REPLIED_USERS_KEY, String(hide));
-                        if (this.Store) {
-                            this.Store.set(this.HIDE_REPLIED_USERS_KEY, hide);
-                        }
+            header.appendChild(title);
+            header.appendChild(sub);
 
-                        // Apply to current DOM
-                        this.applyHideRepliedUsers(hide);
-                    });
+            // ----- CONTENT -----
+            const femaleUsersContent = document.createElement('div');
+            femaleUsersContent.className = 'ca-user-list-content';
 
-                }
+            // create a fresh chat_right_data-like container for female users
+            const clonedChatRight = document.createElement('div');
+            clonedChatRight.id = 'ca-female-uses-chat-right-data'; // keep your original id string
+            clonedChatRight.className = 'crheight';
 
+            // inner container_user for female list
+            const clonedContainerUser = document.createElement('div');
+            clonedContainerUser.id = 'ca-female-user-container';
+            clonedContainerUser.className = 'pad10';
+
+            // you can start with an empty body; you will append .user_item nodes later
+            const onlineWrapper = document.createElement('div');
+            onlineWrapper.className = 'online_user vpad5';
+            clonedContainerUser.appendChild(onlineWrapper);
+
+            const clearDiv = document.createElement('div');
+            clearDiv.className = 'clear';
+
+            clonedChatRight.appendChild(clonedContainerUser);
+            clonedChatRight.appendChild(clearDiv);
+
+            femaleUsersContent.appendChild(clonedChatRight);
+
+            // assemble female wrapper
+            femaleUsersWrapper.appendChild(header);
+            femaleUsersWrapper.appendChild(femaleUsersContent);
+
+            // append after male wrapper
+            if (maleUsersWrapper.parentElement) {
+                maleUsersWrapper.parentElement.appendChild(femaleUsersWrapper);
+            } else {
+                console.error(this.LOG, 'Male users wrapper has no parent, cannot append female users wrapper');
             }
 
-            // Find chat_right_data inside the clone
-            const clonedChatRight = this.qs('[id$="chat_right_data"]', femaleUsersWrapper);
-            if (clonedChatRight) {
-                clonedChatRight.id = 'ca-female-uses-chat-right-data';
+            this.ui.femaleUsersContainer = femaleUsersWrapper;
 
-                // Find container_user inside and update its ID
-                const clonedContainerUser = this.qs('[id$="container_user"]', clonedChatRight);
-                if (clonedContainerUser) {
-                    clonedContainerUser.id = 'ca-female-user-container';
+            const ckToggle = sub.querySelector('#ca-female-ck-toggle');
+            if (ckToggle) {
+                ckToggle.checked = false;
+                femaleUsersWrapper.classList.remove('ca-show-ck');
 
-                    // Update the "Online" text to "Female" in the user_count section
-                    const bcell = this.qs('.bcell', clonedContainerUser);
-                    if (bcell) {
-                        // Get the first text node
-                        for (let i = 0; i < bcell.childNodes.length; i++) {
-                            if (bcell.childNodes[i].nodeType === 3) { // Text node
-                                bcell.childNodes[i].textContent = 'Female ';
-                                break;
-                            }
-                        }
+                ckToggle.addEventListener('change', (e) => {
+                    const checked = !!e.target.checked;
+                    femaleUsersWrapper.classList.toggle('ca-show-ck', checked);
+                    console.log('[CA] Female user checkbox visibility:', checked ? 'shown' : 'hidden');
+                });
+            }
+
+            // HIDE REPLIED USERS
+            const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
+            if (hideRepliedToggle) {
+                // Initialize from stored value
+                hideRepliedToggle.checked = !!this.hideRepliedUsers;
+
+                // Apply to current list immediately
+                this.applyHideRepliedUsers(!!this.hideRepliedUsers);
+
+                hideRepliedToggle.addEventListener('change', (e) => {
+                    const hide = !!e.target.checked;
+                    console.log('[CA] Hide replied users:', hide);
+
+                    // Persist via localStorage + Store
+                    this.hideRepliedUsers = hide;
+                    localStorage.setItem(this.HIDE_REPLIED_USERS_KEY, String(hide));
+                    if (this.Store) {
+                        this.Store.set(this.HIDE_REPLIED_USERS_KEY, hide);
                     }
-                }
+
+                    // Apply to current DOM
+                    this.applyHideRepliedUsers(hide);
+                });
             }
 
-            maleUsersWrapper.parentElement.appendChild(femaleUsersWrapper);
+            this.verbose(this.LOG, 'Created female users container without cloning male users wrapper');
 
-            this.verbose(this.LOG, 'Created female users container by cloning male userscreateManagedUsersContainer wrapper');
-
+            // Keep your existing wiring calls
             this.wireUserClickSelection();
             this.wireExclusiveCollapse(maleUsersWrapper, femaleUsersWrapper);
             this.wireListOptionClicks();
@@ -3699,16 +3718,6 @@ Private send interception
             this.updateMaleUsersCount();
         }
 
-        updateFemaleUserCounter(count) {
-            // Update the counter ID in the header
-            const headerCounter = this.qs('#ca-female-users-wrapper .ca-user-list-count', this.sel.raw.femaleUserWrapper);
-            if (headerCounter) {
-                headerCounter.id = this.sel.raw.users.femaleUserCount;
-                headerCounter.textContent = `${count}`;
-            } else {
-                console.error('[CA] updateFemaleUserCounter: #ca-female-users-wrapper .ca-user-list-count not found');
-            }
-        }
 
         updateMaleUsersCounter(count) {
             // Update the counter ID in the header
@@ -3841,6 +3850,17 @@ Private send interception
             }
         }
 
+
+        updateFemaleUserCount(count) {
+            // Update the counter ID in the header
+            const headerCounter = this.qs('#ca-female-users-wrapper .ca-user-list-count', this.sel.raw.femaleUserWrapper);
+            if (headerCounter) {
+                headerCounter.id = this.sel.raw.users.femaleUserCount;
+                headerCounter.textContent = `${count}`;
+            } else {
+                console.error('[CA] updateFemaleUserCounter: #ca-female-users-wrapper .ca-user-list-count not found');
+            }
+        }
 
         updateMaleUsersCount() {
             if (!this.ui.maleUsersContainer) return;
@@ -4040,7 +4060,6 @@ Private send interception
             this.ui.debugCheckbox = this.qs(this.sel.debug.checkbox);
             this.ui.verboseCheckbox = this.qs(this.sel.debug.verboseCheckbox);
 
-            // user list containers - will be bound after createFemaleUsersContainer()
             this.ui.femaleUsersContainer = this.qs(this.sel.users.femaleUsers);
             this.ui.femaleUSersCount = this.qs(this.sel.users.femaleUserCount);
             this.ui.maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
@@ -4510,7 +4529,6 @@ Private send interception
             };
 
             this.renderLogEntry(entry, user);
-            // keep existing persistence call but ensure it stores unread too (see next step)
             this.saveLogEntry(entry.ts, entry.kind, entry.content, entry.uid, entry.guid);
         }
 
@@ -4621,14 +4639,19 @@ Private send interception
             });
         }
 
+        d
+
         getFemaleUsersContainer() {
-            if (!this.ui.femaleUsersList) {
-                this.ui.femaleUsersList = this.qs(`${this.sel.users.femaleUserWrapper} .ca-user-list-content`);
+            if (!this.ui.femaleUsersContainer) {
+                if (!this.sel.users.femaleUserWrapper) {
+                    console.error('[CA] getFemaleUsersContainer: .ca-female-users-wrapper not found');
+                    return null;
+                }
+
+                this.ui.femaleUsersContainer = this.qs(`${this.sel.users.femaleUserWrapper} .ca-user-list-content`);
             }
-            if (!this.ui.femaleUsersList) {
-                console.warn(this.LOG, 'Female users container not found - female user operations will not work');
-            }
-            return this.ui.femaleUsersList;
+
+            return this.ui.femaleUsersContainer;
         }
 
         getGlobalWatermark() {
