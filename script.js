@@ -1195,7 +1195,6 @@
                         this.openPredefinedPopup();
                     } else if (typeof this.createPredefinedPopup === 'function') {
                         const pop = this.createPredefinedPopup();
-                        if (pop) pop.style.display = 'block';
                     }
 
                     const modal =
@@ -1234,7 +1233,6 @@
                         this.openPredefinedPopup();
                     } else if (typeof this.createPredefinedPopup === 'function') {
                         const pop = this.createPredefinedPopup();
-                        if (pop) pop.style.display = 'block';
                     } else {
                         console.error('[CA] No predefined popup open method defined');
                     }
@@ -1390,7 +1388,6 @@
             const pop = this.createPredefinedPopup();
             if (!pop) return;
             this._renderPredefinedList();
-            pop.style.display = 'block';
         }
 
         appendCustomActionsToBar() {
@@ -1862,54 +1859,52 @@ Private send interception
             ].filter(Boolean);
 
             if (!containers.length) {
-                console.warn('[CA] installLogImageHoverPreview: no log containers found');
+                console.error('[CA] installLogImageHoverPreview: no log containers found');
                 return;
             }
 
             // Create a single shared preview bubble
             const preview = document.createElement('div');
             preview.id = 'ca-log-image-preview';
-            preview.style.position = 'fixed';
-            preview.style.zIndex = '9999';
-            preview.style.pointerEvents = 'none';
-            preview.style.display = 'none';
-            preview.style.border = '1px solid rgba(0,0,0,0.5)';
-            preview.style.background = 'rgba(0,0,0,0.9)';
-            preview.style.padding = '4px';
-            preview.style.borderRadius = '4px';
-            preview.style.maxWidth = '260px';
-            preview.style.maxHeight = '260px';
-            preview.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
 
             const img = document.createElement('img');
-            img.style.display = 'block';
-            img.style.maxWidth = '100%';
-            img.style.maxHeight = '250px';
-
             preview.appendChild(img);
+
             document.body.appendChild(preview);
 
             const hidePreview = () => {
-                preview.style.display = 'none';
+                preview.classList.remove('ca-visible');
             };
 
             const positionPreview = (evt) => {
-                const offset = 18;
-                let x = evt.clientX + offset;
-                let y = evt.clientY + offset;
+                if (!evt) {
+                    return;
+                }
 
                 const vw = window.innerWidth;
                 const vh = window.innerHeight;
 
-                const estWidth = 260;
-                const estHeight = 260;
+                // Use the actual rendered size of the preview (this includes the image width/height)
+                const rect = preview.getBoundingClientRect();
+                const w = rect.width || 260;
+                const h = rect.height || 260;
 
-                if (x + estWidth > vw) {
-                    x = evt.clientX - estWidth - offset;
+                let x = evt.clientX;
+                let y = evt.clientY;
+
+                // If going off the right edge, show it to the left of the mouse
+                if (x + w > vw) {
+                    x = evt.clientX - w;
                 }
-                if (y + estHeight > vh) {
-                    y = evt.clientY - estHeight - offset;
+
+                // If going off the bottom edge, show it above the mouse
+                if (y + h > vh) {
+                    y = evt.clientY - h;
                 }
+
+                // Clamp just in case
+                if (x < 0) x = 0;
+                if (y < 0) y = 0;
 
                 preview.style.left = `${x}px`;
                 preview.style.top = `${y}px`;
@@ -1917,15 +1912,25 @@ Private send interception
 
             const showPreview = (evt, src) => {
                 if (!src) {
-                    console.warn('[CA] installLogImageHoverPreview: no src found for image');
+                    console.warn('[CA] installLogImageHoverPreview: missing src');
                     return;
                 }
+
+                // When the image is loaded, we know the true size -> then position
+                img.onload = () => {
+                    preview.classList.add('ca-visible');
+                    positionPreview(evt);
+                };
+
                 img.src = src;
-                positionPreview(evt);
-                preview.style.display = 'block';
             };
 
             containers.forEach((container) => {
+                if (!container) {
+                    console.warn('[CA] installLogImageHoverPreview: container missing');
+                    return;
+                }
+
                 // SHOW on hovering the thumbnail image
                 container.addEventListener('mouseover', (evt) => {
                     const target = evt.target;
@@ -1943,7 +1948,7 @@ Private send interception
 
                 // MOVE while hovering
                 container.addEventListener('mousemove', (evt) => {
-                    if (preview.style.display === 'none') {
+                    if (!preview.classList.contains('ca-visible')) {
                         return;
                     }
                     positionPreview(evt);
@@ -1961,7 +1966,6 @@ Private send interception
                         return;
                     }
 
-                    // If we left the image -> hide
                     const related = evt.relatedTarget;
                     if (!related || !(related instanceof Element) || !related.closest('img.chat_image')) {
                         hidePreview();
@@ -2338,7 +2342,7 @@ Private send interception
                     : null;
 
             this.debug('openProfileOnHost: getProfile function found:', !!getProfile);
-            console.log(`Open profile on host for uid=${uid}`);
+            this.verbose(`Open profile on host for uid=${uid}`);
 
             if (getProfile) {
                 const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
@@ -3916,11 +3920,7 @@ Private send interception
             const pop = this.createSpecificPopup();
             this.verbose('Specific popup element:', pop);
             if (pop) {
-                // Ensure it's visible and styled as modal
-                pop.style.display = 'block';
-                pop.style.position = 'fixed';
-                pop.style.zIndex = '2147483647';
-                console.log('Set popup display to block, current display:', pop.style.display);
+
                 if (!this.openSendMessageModal._wired) {
                     this.wireSpecificControls();
                     this.openSendMessageModal._wired = true;
@@ -3943,9 +3943,7 @@ Private send interception
             console.log('Broadcast popup element:', pop);
             if (pop) {
                 // Ensure it's visible and styled as modal
-                pop.style.display = 'block';
-                pop.style.position = 'fixed';
-                pop.style.zIndex = '2147483647';
+
                 console.log('Set popup display to block, current display:', pop.style.display);
                 if (!this.openBroadcastModal._wired) {
                     this.wireBroadcastButton();

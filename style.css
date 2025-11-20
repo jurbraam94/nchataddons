@@ -519,6 +519,40 @@
     border-radius: 4px;
 }
 
+.ca-pop {
+    display: block;
+    position: fixed;
+    z-index: 2147483647;
+}
+
+/* Hover image preview for chat log thumbnails */
+#ca-log-image-preview {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    display: none;
+
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.9);
+    padding: 4px;
+    border-radius: 4px;
+    max-width: 260px;
+    max-height: 260px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+#ca-log-image-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 250px;
+}
+
+/* visible state */
+#ca-log-image-preview.ca-visible {
+    display: block;
+}
+
+
 .ca-user-list-count {
     display: inline-flex;
     align-items: center;
