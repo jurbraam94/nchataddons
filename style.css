@@ -531,6 +531,15 @@
     border-radius: 4px;
 }
 
+/* Hide original built-in user list completely */
+#chat_right_data #container_user .online_user {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
 .ca-user-list-count {
     display: inline-flex;
     align-items: center;
@@ -917,7 +926,10 @@ svg.svg-large {
     display: none;
 }
 
-/* Put Presence and Other logs next to each other */
+#chat_right_data {
+    display: none;
+}
+
 .ca-log-dual {
     display: flex;
     gap: 12px;

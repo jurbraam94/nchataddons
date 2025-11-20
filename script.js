@@ -1,9 +1,3 @@
-/* ==========================================
-   Class-based App with Store classes (no MemoryStorage)
-   - KeyValueStore (localStorage-backed)
-   - UsersStore (example of another store)
-   - App composes them and exposes CA.App
-   ========================================== */
 (async function () {
     const root = (typeof window !== "undefined" ? window : globalThis);
     root.CA = root.CA || {};
@@ -494,21 +488,19 @@
                 sendPrivateMessageButton: null,
                 broadcastMessage: null,
                 broadcastSendButton: null,
-                bReset: null,
                 sentMessagesBox: null,
                 receivedMessagesBox: null,
                 presenceBox: null,
                 logClear: null,
                 repliedMessageBox: null,
                 unrepliedMessageBox: null,
-                navBc: null,
                 debugCheckbox: null,
                 verboseCheckbox: null,
-                otherBox: null,
+                loggingBox: null,
+                maleUsersContainer: null,
                 femaleUsersContainer: null,
                 femaleUSersCount: null,
                 maleUsersWrapper: null,
-                maleUsersContainer: null,
                 maleUsersCount: null
             };
 
@@ -518,11 +510,6 @@
             this._xhrSend = null;
 
             this.isInitialLoad = true;
-
-            /* ========= Small Helpers (bound) =========
-               (If you later move these to class methods, remove these lambdas.) */
-            this.qs = (sel, rootEl) => (rootEl || document).querySelector(sel);
-            this.qsa = (sel, rootEl) => Array.from((rootEl || document).querySelectorAll(sel));
 
             /* ========= Audio Autoplay Gate (policy-safe) ========= */
             this._audioGate = {
@@ -598,7 +585,7 @@
                     unreplied: '#ca-log-received-unreplied',
                     presence: '#ca-log-box-presence',
                     clear: '#ca-log-clear',
-                    other: '#ca-log-box-other'
+                    general: '#ca-logs-box'
                 },
                 // nav
                 nav: {
@@ -640,9 +627,9 @@
                 },
                 users: {
                     femaleUsers: '#ca-female-users',
-                    femaleUserCount: '.ca-female-users-count',
+                    femaleUserCount: '#ca-female-users-count',
                     maleUsersWrapper: '#ca-male-users-wrapper',
-                    femaleUserWrapper: '#ca-female-users-wrapper',
+                    femaleUsersWrapper: '#ca-female-users-wrapper',
                     maleUserCount: '#ca-male-users-count',
                     containerUser: '#container_user',
                     online: '.online_user',
@@ -809,7 +796,8 @@
 
             // Panel + user containers are visible early
             this.buildMenuLogPanel();
-            this.createUserContainers();
+            this.createMaleUsersContainer();
+            this.createFemaleUsersContainer();
             this.createPredefinedMessagesSection();
             this._bindStaticRefs();
             this._attachLogClickHandlers();
@@ -1378,7 +1366,6 @@
                 textInput.value = '';
             });
 
-            // draggable header (same pattern as other pops)
             const hdr = pop.querySelector('#ca-predefined-messages-pop-header');
             let ox = 0, oy = 0, sx = 0, sy = 0;
             const mm = (e) => {
@@ -1506,17 +1493,14 @@
 
         // ===== Clear Event Logs loop =====
         startClearEventLogLoop({
-                                   intervalMs = 5 * 60 * 1000, // default: 5 minutes
+                                   intervalMs = 5 * 60 * 1000,
                                    runImmediately = true
                                } = {}) {
-            this.stopClearEventLogLoop?.(); // clear any previous loop
+            this.stopClearEventLogLoop?.();
 
             const clearEvents = () => {
-                // clear all "event" entries from localStorage
                 const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
-
-                // clear the UI container
-                if (this.ui?.otherBox) this.ui.otherBox.innerHTML = '';
+                this.ui.loggingBox.innerHTML = '';
 
                 this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
                 this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
@@ -2227,7 +2211,7 @@ Private send interception
                 this.ui.presenceBox,
                 this.ui.unrepliedMessageBox,
                 this.ui.repliedMessageBox,
-                this.ui.otherBox
+                this.ui.loggingBox
             ];
             boxes.forEach(box => {
                 if (!box || box._caGenericWired) return;
@@ -2549,8 +2533,8 @@ Private send interception
         }
 
         _updateOrCreateUserElement(userEl, user) {
-            const existingUser = this.qs(`.user_item[data-id="${user.uid}"]`, this.getFemaleUsersContainer());
             const femaleUsersContainer = this.getFemaleUsersContainer();
+            const existingUser = this.qs(`.user_item[data-id="${user.uid}"]`, femaleUsersContainer);
 
             if (existingUser) {
                 existingUser.innerHTML = userEl.innerHTML;
@@ -3361,12 +3345,12 @@ Private send interception
                 </div>
                  <div class="ca-section ca-log-section">
               <div class="ca-section-title">
-                <span>Other Logs</span>
+                <span>Logs</span>
                   <span class="clear-logs"
                     data-kinds="event"
                     role="button" tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.other}"
+              <div id="${this.sel.raw.log.general}"
                    class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
@@ -3630,7 +3614,7 @@ Private send interception
             this.ui.sentMessagesBox.innerHTML = '';
             this.ui.unrepliedMessageBox.innerHTML = '';
             this.ui.repliedMessageBox.innerHTML = '';
-            this.ui.otherBox.innerHTML = '';
+            this.ui.loggingBox.innerHTML = '';
 
             const removedIn = this.ActivityLogStore.clearByKind('dm-in') || 0;
             const removedOut = this.ActivityLogStore.clearByKind('dm-out') || 0;
@@ -3643,47 +3627,61 @@ Private send interception
             this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
 
-        createUserContainers() {
-            const selUsers = this.sel.users;
-            const rawUsers = this.sel.raw.users;
+        createMaleUsersContainer() {
+            const wrapper = document.createElement('div');
+            wrapper.id = this.sel.raw.users.maleUsersWrapper;
+            wrapper.className = 'ca-user-list-container ca-expanded';
 
-            const chatRightData = this.qs(selUsers.chatRightData);
-            if (!chatRightData) {
-                console.warn(this.LOG, 'chat_right_data not found, cannot create Female users container');
-                return;
-            }
+            const header = document.createElement('div');
+            header.className = 'ca-user-list-header';
 
-            // Ensure male wrapper exists (host container)
-            let maleUsersWrapper = this.qs(selUsers.maleUsersWrapper);
-            if (!maleUsersWrapper) {
-                maleUsersWrapper = document.createElement('div');
-                maleUsersWrapper.id = rawUsers.maleUsersWrapper;
-                maleUsersWrapper.className = 'ca-user-list-container ca-collapsed';
+            header.innerHTML = `
+        <div class="ca-user-list-title">
+            <span class="ca-user-list-count" id="${this.sel.raw.users.maleUserCount}">0</span>
+            <span>Male Users</span>
+            <div class="ca-user-list-toggle">▼</div>
+        </div>
+    `;
 
-                const maleUsersHeader = document.createElement('div');
-                maleUsersHeader.className = 'ca-user-list-header';
-                maleUsersHeader.innerHTML = `
-            <div class="ca-user-list-title">
-                <span class="ca-user-list-count" id="${rawUsers.maleUserCount}">0</span>
-                <span>Male users</span>
-                <div class="ca-user-list-toggle">▼</div>
-            </div>
-        `;
+            wrapper.appendChild(header);
 
-                const maleUsersContent = document.createElement('div');
-                maleUsersContent.className = 'ca-user-list-content';
+            // CONTENT
+            const content = document.createElement('div');
+            content.className = 'ca-user-list-content';
 
-                // Wrap chat_right_data
-                chatRightData.parentNode.insertBefore(maleUsersWrapper, chatRightData);
-                maleUsersWrapper.appendChild(maleUsersHeader);
-                maleUsersContent.appendChild(chatRightData);
-                maleUsersWrapper.appendChild(maleUsersContent);
+            const chatRight = document.createElement('div');
+            chatRight.id = 'ca-male-managed-chat-right';
+            chatRight.className = 'crheight';
 
-                this.ui.maleUsersContainer = maleUsersWrapper;
-            }
+            const container = document.createElement('div');
+            container.id = 'ca-male-managed-user-container';
+            container.className = 'pad10';
 
-            const femaleUsersWrapper = document.createElement('div');
-            femaleUsersWrapper.id = rawUsers.femaleUserWrapper;
+            const onlineWrapper = document.createElement('div');
+            onlineWrapper.className = 'online_user vpad5';
+
+            container.appendChild(onlineWrapper);
+            chatRight.appendChild(container);
+            chatRight.appendChild(Object.assign(document.createElement("div"), {className: "clear"}));
+            content.appendChild(chatRight);
+
+            wrapper.appendChild(content);
+
+            this.qs('#chat_right')?.appendChild(wrapper)
+
+            this.ui.maleManagedContainer = wrapper;
+            this.ui.maleManagedUserContainer = onlineWrapper;
+
+            console.log('[CA] Created managed male users container');
+        }
+
+
+        createFemaleUsersContainer() {
+            let femaleUsersWrapper = this.qs(`${this.sel.users.femaleUsersWrapper}`);
+            const chatRight = this.qs('#chat_right');
+
+            femaleUsersWrapper = document.createElement('div');
+            femaleUsersWrapper.id = this.sel.raw.users.femaleUsersWrapper;
             femaleUsersWrapper.className = 'ca-user-list-container ca-expanded';
 
             // ----- HEADER -----
@@ -3695,7 +3693,7 @@ Private send interception
 
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
-            countSpan.id = rawUsers.femaleUserCount;
+            countSpan.id = this.sel.raw.users.femaleUserCount;
             countSpan.textContent = '0';
 
             const labelSpan = document.createElement('span');
@@ -3751,15 +3749,10 @@ Private send interception
             femaleUsersWrapper.appendChild(header);
             femaleUsersWrapper.appendChild(femaleUsersContent);
 
-            if (maleUsersWrapper.parentElement) {
-                maleUsersWrapper.parentElement.appendChild(femaleUsersWrapper);
-            } else {
-                console.error(this.LOG, 'Male users wrapper has no parent, cannot append female users wrapper');
-            }
+            chatRight.appendChild(femaleUsersWrapper);
 
             this.ui.femaleUsersContainer = femaleUsersWrapper;
 
-            // ----- TOGGLES -----
             const ckToggle = sub.querySelector('#ca-female-ck-toggle');
             if (ckToggle) {
                 ckToggle.checked = false;
@@ -3797,21 +3790,8 @@ Private send interception
             this.verbose(this.LOG, 'Created female users container without cloning male users wrapper');
 
             this.wireUserClickSelection();
-            this.wireExclusiveCollapse(maleUsersWrapper, femaleUsersWrapper);
             this.wireListOptionClicks();
-
             this.updateMaleUsersCount();
-        }
-
-        updateMaleUsersCounter(count) {
-            // Update the counter ID in the header
-            const headerCounter = this.qs('#ca-male-users-wrapper .ca-user-list-count', this.sel.raw.maleUsersWrapper);
-            if (headerCounter) {
-                headerCounter.id = this.sel.raw.users.maleUserCount;
-                headerCounter.textContent = `${count}`;
-            } else {
-                console.error('[CA] updateMaleUsersCounter: #ca-male-users-wrapper .ca-user-list-count not found');
-            }
         }
 
         applyHideRepliedUsers(hide) {
@@ -3822,7 +3802,6 @@ Private send interception
             });
         }
 
-        // Reuse the same explicit expander you already use
         _setExpanded(wrapper, expanded) {
             if (!wrapper) {
                 console.error('[CA] _setExpanded: wrapper missing');
@@ -3832,7 +3811,6 @@ Private send interception
             wrapper.classList.toggle('ca-collapsed', !expanded);
         }
 
-        /** Detect current title text that may say "Staff list" */
         _isStaffListView() {
             // Try a few likely title holders; fallback to document.title
             const titleEl =
@@ -3842,7 +3820,6 @@ Private send interception
             return txt.includes('staff list');
         }
 
-        /** Hide or show all headers */
         _setHeadersVisible(visible) {
             const headers = document.querySelectorAll('.ca-user-list-header');
             headers.forEach(h => {
@@ -3850,7 +3827,6 @@ Private send interception
             });
         }
 
-        /** Wire the Friends/Users/Search tabs to expand the right list + hide headers */
         wireListOptionClicks() {
             const friendsBtn = document.querySelector('#friends_option');
             const usersBtn = document.querySelector('#users_option');
@@ -3860,37 +3836,35 @@ Private send interception
 
             const expandMaleUsersCollapsed = () => {
                 this._setExpanded(document.querySelector(this.sel.raw.users.maleUsersWrapper), true);
-                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUserWrapper), false);
+                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUsersWrapper), false);
             };
 
             const expandMFemaleUsersCollapse = () => {
-                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUserWrapper), true);
+                this._setExpanded(document.querySelector(this.sel.raw.users.femaleUsersWrapper), true);
                 this._setExpanded(document.querySelector(this.sel.raw.users.maleUsersWrapper), false);
             };
 
-            // Friends and Search tabs → collapse females, expand default, hide headers
             [friendsBtn, searchBtn].forEach(btn => {
                 if (!btn || btn._caWired) return;
                 btn._caWired = true;
                 btn.addEventListener('click', () => {
                     defer(() => {
                         expandMaleUsersCollapsed();
-                        this._setHeadersVisible(false); // hide headers for other tabs
+                        this._setHeadersVisible(false);
                     });
                 });
             });
 
-            // Users tab → depends on whether it's the Staff list or normal User list
             if (usersBtn && !usersBtn._caWired) {
                 usersBtn._caWired = true;
                 usersBtn.addEventListener('click', () => {
                     defer(() => {
                         if (this._isStaffListView()) {
                             expandMaleUsersCollapsed();
-                            this._setHeadersVisible(false); // hide headers for Staff list
+                            this._setHeadersVisible(false);
                         } else {
                             expandMFemaleUsersCollapse();
-                            this._setHeadersVisible(true);  // show headers for normal User list
+                            this._setHeadersVisible(true);
                         }
                     });
                 });
@@ -3920,11 +3894,11 @@ Private send interception
                 if (willExpand && other) setExpanded(other, false);
             };
 
-            for (const {wrapper, other} of pairs) {
+            for (const {wrapper, otherWrapperEl} of pairs) {
                 const header = wrapper.querySelector('.ca-user-list-header .ca-user-list-title');
                 if (!header || header._caWired) continue;
                 header._caWired = true;
-                header.addEventListener('click', onHeaderClick(wrapper, other));
+                header.addEventListener('click', onHeaderClick(wrapper, otherWrapperEl));
             }
 
             if (!maleUsersWrapper.classList.contains('ca-expanded') &&
@@ -3936,23 +3910,14 @@ Private send interception
 
 
         updateFemaleUserCount(count) {
-            // Update the counter ID in the header
-            const headerCounter = this.qs('#ca-female-users-wrapper .ca-user-list-count', this.sel.raw.femaleUserWrapper);
-            if (headerCounter) {
-                headerCounter.id = this.sel.raw.users.femaleUserCount;
-                headerCounter.textContent = `${count}`;
-            } else {
-                console.error('[CA] updateFemaleUserCounter: #ca-female-users-wrapper .ca-user-list-count not found');
-            }
+            console.log('Updating female user count:', count);
+            const headerCounter = this.qs(this.sel.users.femaleUserCount);
+            headerCounter.textContent = `${count}`;
         }
 
-        updateMaleUsersCount() {
-            if (!this.ui.maleUsersContainer) return;
-
-            const maleUsers = this.qsa(`.user_item:not([data-gender="${this.FEMALE_CODE}"])`, this.ui.maleUsersContainer);
-            if (this.ui.maleUsersCount) {
-                this.ui.maleUsersCount.textContent = String(maleUsers.length);
-            }
+        updateMaleUsersCount(count) {
+            const headerCounter = this.qs(this.sel.users.maleUserCount);
+            headerCounter.textContent = `${count}`;
         }
 
         createBroadcastPopup() {
@@ -3997,7 +3962,6 @@ Private send interception
                 pop.style.display = 'none';
             });
 
-            // ... existing drag code and other logic ...
             const hdr = pop.querySelector('#ca-bc-pop-header');
             let ox = 0, oy = 0, sx = 0, sy = 0;
             const mm = (e) => {
@@ -4136,10 +4100,6 @@ Private send interception
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
 
-            // nav
-            this.ui.navBc = this.qs(this.sel.nav.bc);
-            this.ui.navSpec = this.qs(this.sel.nav.spec);
-
             // debug checkbox
             this.ui.debugCheckbox = this.qs(this.sel.debug.checkbox);
             this.ui.verboseCheckbox = this.qs(this.sel.debug.verboseCheckbox);
@@ -4149,7 +4109,7 @@ Private send interception
             this.ui.maleUsersWrapper = this.qs(this.sel.users.maleUsersWrapper);
             this.ui.maleUsersCount = this.qs(this.sel.users.maleUserCount);
 
-            this.ui.otherBox = this.qs(this.sel.log.other);
+            this.ui.loggingBox = this.qs(this.sel.log.general);
         }
 
         _wireDebugCheckbox() {
@@ -4208,7 +4168,7 @@ Private send interception
             }
 
             if (hasEvt) {
-                boxes.add(this.ui.otherBox);
+                boxes.add(this.ui.loggingBox);
             }
 
             return Array.from(boxes);
@@ -4420,7 +4380,7 @@ Private send interception
                     break;
 
                 case 'event':
-                    targetContainer = this.ui.otherBox;
+                    targetContainer = this.ui.loggingBox;
                     break;
 
                 default:
@@ -4727,12 +4687,7 @@ Private send interception
 
         getFemaleUsersContainer() {
             if (!this.ui.femaleUsersContainer) {
-                if (!this.sel.users.femaleUserWrapper) {
-                    console.error('[CA] getFemaleUsersContainer: .ca-female-users-wrapper not found');
-                    return null;
-                }
-
-                this.ui.femaleUsersContainer = this.qs(`${this.sel.users.femaleUserWrapper} .ca-user-list-content`);
+                this.ui.femaleUsersContainer = this.qs(`${this.sel.users.femaleUsersWrapper} .ca-user-list-content`);
             }
 
             return this.ui.femaleUsersContainer;
@@ -4767,7 +4722,6 @@ Private send interception
             }
         }
 
-        /* ---------- Last DM helpers (uses this.Store) ---------- */
         getLastDmUid() {
             if (!this.Store) return '';
             const raw = this.Store.get(this.LAST_DM_UID_KEY);
@@ -4778,7 +4732,6 @@ Private send interception
         setLastDmUid(uid) {
             if (!this.Store) return;
             if (!uid) {
-                // Clear by storing empty string (same pattern as other helpers)
                 this.Store.set(this.LAST_DM_UID_KEY, '');
                 return;
             }
