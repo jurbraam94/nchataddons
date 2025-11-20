@@ -740,6 +740,8 @@
 
             this.NO_LS_MODE = this._readStorageMode();           // 'allow' | 'wipe' | 'block'
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
+            // build panel + wire refs + handlers
+            this.buildPanel();
 
             // Key/value store used all over the App — now with custom backend
             this.Store = this.Store || new KeyValueStore({storage: this._chooseStorage(this.NO_LS_MODE)});
@@ -779,8 +781,6 @@
             // Initialize watermark once
             this.initializeGlobalWatermark();
 
-            // build panel + wire refs + handlers
-            this.buildPanel();
             this._updateStorageToggleUi();
             this.buildMenuLogPanel();
             this.createFemaleUsersContainer();
@@ -1545,7 +1545,7 @@
         }
 
         async refreshUserList() {
-            console.log('Start refreshing user list');
+            console.log('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
             const formData = new URLSearchParams();
             formData.append('token', utk);
 
@@ -2473,7 +2473,6 @@ Private send interception
         /* Parse user_list.php HTML response and process users */
         processUserListResponse(html) {
             if (!html || typeof html !== 'string') return;
-            console.log("\n========== START PARSING NEW USER LIST ==========");
             if (html.includes('ca-hidden')) {
                 console.error(`RESPONSE CONTAINS HIDDEN USER ITEMS!!`);
             }
@@ -2613,19 +2612,24 @@ Private send interception
             }
 
             console.log(
-                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${newFemaleProfileCount} new female users added%c, ${newMaleProfileCount} male users added, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online`,
-                'color: #7ea9d1; font-weight: 600;',
-                'color: inherit;',
-                'color: #6bbf73; font-weight: 500;',
-                'color: inherit;',
-                'color: #d8b35a; font-weight: 500;',
-                'color: inherit;',
-                'color: #d66b6b; font-weight: 500;',
-                'color: inherit;',
-                'color: #ba68c8; font-weight: 500;',
-                'color: inherit;',
-                'color: #64b5f6; font-weight: 500;'
+                `%c\n [USER_LIST]%c Summary: %c${loggedInCount} logged in%c, %c${newFemaleProfileCount} new female users added%c, ${newMaleProfileCount} male users added, %c${updatedProfileCount} updated%c, %c${loggedOffCount} users logged off%c, %c${this.UserStore.getFemalesLoggedInCount()} women online%c, %c${this.UserStore.getMalesLoggedInCount()} men online%c`,
+
+                "color:#9cf",                   // 1
+                "color:white",                 // 2
+                "color:yellow",                // 3
+                "color:white",                 // 4
+                "color:#f99",                  // 5
+                "color:white",                 // 6
+                "color:#9f9",                  // 7
+                "color:white",                 // 8
+                "color:#aaa",                  // 9
+                "color:white",                 // 10
+                "color:#ff55ff",               // 11 (women count)
+                "color:white",                 // 12
+                "color:#55aaff",               // 13 (men count)
+                "color:white"
             );
+
 
             this.updateMaleUsersCount(totalMaleProfileCount);
             this.updateFemaleUserCount(totalFemaleProfileCount);
@@ -3708,6 +3712,8 @@ Private send interception
                     // Apply to current DOM
                     this.applyHideRepliedUsers(hide);
                 });
+            } else {
+                console.error(`.ca-female-hide-replied not found`);
             }
 
             this.verbose(this.LOG, 'Created female users container without cloning male users wrapper');
