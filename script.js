@@ -1187,7 +1187,7 @@
                         return;
                     }
 
-                    this.openPredefinedPopup(currentText);
+                    this.openPredefinedPopup(barEl, currentText);
                 });
             }
 
@@ -1197,7 +1197,7 @@
                     e.preventDefault();
 
                     console.log('[CA] Predefined Manage clicked:', manageEl.id || '(no id)');
-                    this.openPredefinedPopup();
+                    this.openPredefinedPopup(barEl);
                 });
             }
         }
@@ -1286,7 +1286,7 @@
         }
 
         /* ---------- Predefined messages popup (ca-popup) ---------- */
-        openPredefinedPopup(prefilledText = null) {
+        openPredefinedPopup(wrapper, prefilledText = null) {
             const popup = this.createPredefinedMessagesPopup();
             this._renderPredefinedList(popup);
 
@@ -1780,7 +1780,9 @@ Private send interception
             const containers = [
                 this.ui.repliedMessageBox,
                 this.ui.unrepliedMessageBox,
-                this.ui.sentMessagesBox
+                this.ui.sentMessagesBox,
+                // NEW: also enable hover preview in the user list
+                this.ui.userContainersWrapper
             ].filter(Boolean);
 
             if (!containers.length) {
@@ -1850,6 +1852,9 @@ Private send interception
                 img.src = src;
             };
 
+            // We treat both chat images and user avatars as hoverable:
+            const HOVER_SELECTOR = 'img.chat_image, img.avav';
+
             containers.forEach((container) => {
                 if (!container) {
                     console.warn('[CA] installLogImageHoverPreview: container missing');
@@ -1863,12 +1868,18 @@ Private send interception
                         return;
                     }
 
-                    const imgEl = target.closest('img.chat_image');
+                    const imgEl = target.closest(HOVER_SELECTOR);
                     if (!imgEl) {
                         return;
                     }
 
-                    showPreview(evt, imgEl.src);
+                    const src = imgEl.getAttribute('src');
+                    if (!src) {
+                        console.warn('[CA] installLogImageHoverPreview: image without src');
+                        return;
+                    }
+
+                    showPreview(evt, src);
                 });
 
                 // MOVE while hovering
@@ -1886,21 +1897,20 @@ Private send interception
                         return;
                     }
 
-                    // Only care when leaving the image itself
-                    if (!target.closest('img.chat_image')) {
+                    // Only care when leaving one of our hoverable images
+                    if (!target.closest(HOVER_SELECTOR)) {
                         return;
                     }
 
                     const related = evt.relatedTarget;
-                    if (!related || !(related instanceof Element) || !related.closest('img.chat_image')) {
+                    if (!related || !(related instanceof Element) || !related.closest(HOVER_SELECTOR)) {
                         hidePreview();
                     }
                 });
             });
 
-            console.log('[CA] Log image hover preview installed');
+            console.log('[CA] Log image hover preview installed (logs + user list)');
         }
-
 
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, privateChatLogs) {
@@ -2170,6 +2180,8 @@ Private send interception
 
                 if (action === 'open-profile') {
                     e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
                     this.openProfileOnHost(entry.getAttribute('data-uid') || '');
                     return;
                 }
@@ -2286,6 +2298,8 @@ Private send interception
             const out = [];
             const loggedInFemaleUsers = this.UserStore.getAllLoggedInFemales();
 
+            console.log('Logged in female users:', loggedInFemaleUsers);
+
             loggedInFemaleUsers.forEach((femaleUser) => {
                 const uid = femaleUser.uid;
 
@@ -2396,6 +2410,13 @@ Private send interception
 
             wrapper.appendChild(nameSpan);
 
+            wrapper.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.openProfileOnHost(user.uid);
+            });
+
             // Age (only if exists)
             if (user.age) {
                 const ageSpan = document.createElement('span');
@@ -2410,6 +2431,7 @@ Private send interception
             this.verbose('[_updateOrCreateUserElement] Created new user element for', user.uid, user.name);
 
             this.ensureDmLink(userEl, user);
+
 
             if (user.isFemale && this._isAllowedRank(user.rank)) {
                 this.ensureBroadcastCheckbox(userEl, user.uid);
@@ -3947,7 +3969,17 @@ Private send interception
         }
 
         openBroadcastModal() {
-            const broadcastSendEl = this.createBroadcastPopup().querySelector('#ca-bc-send');
+            const broadcastPopupEl = this.createBroadcastPopup();
+            const broadcastSendEl = broadcastPopupEl.querySelector('#ca-bc-send');
+
+            const broadcastPopupBodyEl = broadcastPopupEl.querySelector('.ca-popup-body');
+
+            this.createPredefinedMessagesBar({
+                container: broadcastPopupBodyEl,
+                messageBarName: 'ca-predefined-messages-select-broadcast',
+                targetTextBoxSelector: '#ca-bc-msg',
+                appendAtStart: true
+            });
 
             broadcastSendEl.addEventListener('click', () => {
                 const broadcastMsgEl = this.qs('#ca-bc-msg');
