@@ -549,6 +549,7 @@
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
 
             this.MAX_LOGIDS_PER_CONVERSATION = 100;
+            this.activeTextInput = null;
 
             /* ========= App State ========= */
             this.options = {};
@@ -844,7 +845,6 @@
             this.createFemaleUsersContainer();
             this.wireListOptionClicks();
             this.wireUserContainerHeaders();
-            this.createPredefinedMessagesSection();
             this._bindStaticRefs();
             this._attachLogClickHandlers();
 
@@ -867,6 +867,7 @@
             this._wireDebugCheckbox();
             this._wireVerboseCheckbox();
             this._wireLogClear();
+            this._wireTextboxTrackers();
 
             // Network taps should be ready, but heavy work will happen later
             this.installNetworkTaps();
@@ -884,6 +885,67 @@
 
             return this;
         }
+
+        _wireTextboxTrackers() {
+            // Track last-focused input/textarea globally
+            document.addEventListener('focusin', (event) => {
+                const target = event.target;
+
+                if (!target) {
+                    console.warn('[CA] focusin event without target');
+                    return;
+                }
+
+                if (
+                    (target.tagName === 'TEXTAREA') ||
+                    (target.tagName === 'INPUT' && target.type === 'text')
+                ) {
+                    this.activeTextInput = target;
+                }
+            });
+
+// ❌ Remove this whole block:
+// document.addEventListener('focusout', (event) => {
+//     const target = event.target;
+//
+//     if (!target) {
+//         console.warn('[CA] focusout event without target');
+//         return;
+//     }
+//
+//     if (this.activeTextInput === target) {
+//         this.activeTextInput = null;
+//     }
+// });
+
+        }
+
+        _getActiveTextBox() {
+            if (!this.activeTextInput) {
+                console.warn('[CA] No active text box to insert template into');
+                return null;
+            }
+
+            if (!document.body.contains(this.activeTextInput)) {
+                console.warn('[CA] Active text box is no longer in the DOM');
+                this.activeTextInput = null;
+                return null;
+            }
+
+            return this.activeTextInput;
+        }
+
+        _appendPredefinedToActiveBox(template) {
+            const box = this._getActiveTextBox();
+
+            if (!box) {
+                console.warn('[CA] No active textbox found when trying to insert template');
+                return;
+            }
+
+            this._appendPredefinedToBox(template, box);
+        }
+
 
         scheduleIdle(fn, timeout = 1500) {
             if (typeof fn !== 'function') {
@@ -911,7 +973,6 @@
             };
         }
 
-        /* Fill the list inside the pop */
         _renderPredefinedList(popup) {
             const listEl = popup.querySelector('#ca-predefined-messages-list');
             const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
@@ -939,14 +1000,29 @@
                 const actions = document.createElement('div');
                 actions.className = 'ca-predefined-messages-actions';
 
+                // INSERT into active field
+                const insertBtn = document.createElement('button');
+                insertBtn.type = 'button';
+                insertBtn.className = 'ca-btn ca-btn-slim';
+                insertBtn.textContent = 'Insert';
+                insertBtn.title = 'Insert into active text field';
+
+                insertBtn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    this._appendPredefinedToActiveBox(item);
+                });
+
                 // EDIT (pencil)
                 const editLink = document.createElement('a');
                 editLink.href = "#";
                 editLink.className = 'ca-log-action ca-edit-link';
                 editLink.title = "Edit template";
-                editLink.appendChild(this.renderSvgIconWithClass("lucide lucide-lucide-pencil",
-                    `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`));
-
+                editLink.appendChild(
+                    this.renderSvgIconWithClass(
+                        "lucide lucide-lucide-pencil",
+                        `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
+                    )
+                );
                 editLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
                     this.predefinedEditIndex = index;
@@ -955,14 +1031,18 @@
                     textInput.value = item.text || '';
                 });
 
+                // DELETE
                 const deleteLink = document.createElement('a');
                 deleteLink.href = "#";
                 deleteLink.className = 'ca-log-action ca-del-link';
                 deleteLink.title = "Delete template";
-                deleteLink.appendChild(this.renderSvgIconWithClass("lucide lucide-x",
-                    ` <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>`));
-
+                deleteLink.appendChild(
+                    this.renderSvgIconWithClass(
+                        "lucide lucide-x",
+                        `<line x1="18" y1="6" x2="6" y2="18"></line>
+                 <line x1="6" y1="6" x2="18" y2="18"></line>`
+                    )
+                );
                 deleteLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
                     const current = this._getPredefinedMessages().slice();
@@ -972,6 +1052,8 @@
                     this._refreshAllPredefinedSelects();
                 });
 
+                // Put actions together: Insert | Edit | Delete
+                actions.appendChild(insertBtn);
                 actions.appendChild(editLink);
                 actions.appendChild(deleteLink);
 
@@ -987,6 +1069,18 @@
                 listEl.appendChild(li);
             });
         }
+
+        openGlobalPredefinedTemplatesPopup() {
+            const popup = this.createPredefinedMessagesPopup();
+            if (!popup) {
+                console.error('[CA] Could not create predefined messages popup');
+                return;
+            }
+
+            this._renderPredefinedList(popup);
+            this.togglePopup('ca-predefined-messages-popup');
+        }
+
 
         _fillPredefinedSelect(selectEl) {
             if (!selectEl) {
@@ -1050,22 +1144,6 @@
             box.focus();
         }
 
-        createPredefinedMessagesSection() {
-            const privateBoxEl =
-                document.getElementById('priv_input');
-
-            if (!privateBoxEl) {
-                console.warn('[CA] createPredefinedMessagesSection: private area not found');
-                return;
-            }
-
-            this.createPredefinedMessagesBar({
-                container: privateBoxEl,
-                messageBarName: 'ca-predefined-messages-select-private-chat',
-                targetTextBoxSelector: '#private_input_box #message_content'
-            });
-        }
-
         _applyPredefinedFromSelect(selectEl) {
             if (!selectEl) {
                 console.error('[CA] _applyPredefinedFromSelect: selectEl is missing');
@@ -1100,84 +1178,6 @@
 
             this._appendPredefinedToBox(template, box);
             return true;
-        }
-
-        createPredefinedMessagesBar({container, messageBarName, targetTextBoxSelector, appendAtStart}) {
-            if (!container) {
-                console.error('[CA] createPredefinedMessagesBar: container is missing');
-                return;
-            }
-
-            if (!messageBarName || !targetTextBoxSelector || !appendAtStart === undefined) {
-                console.error('[CA] createPredefinedMessagesBar: invalid options', {
-                    container,
-                    messageBarName,
-                    targetTextBoxSelector,
-                    appendAtStart
-                });
-                return;
-            }
-
-            // Avoid duplicating if bar already exists here
-            if (container.querySelector(`#${messageBarName}`)) {
-                return;
-            }
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'ca-predefined-messages-bar';
-
-            wrapper.innerHTML = `
-            <div class="ca-predefined-messages-bar-inner">
-                <label class="ca-predefined-messages-label">
-                    <select id="${messageBarName}"
-                            class="ca-predefined-messages-select"
-                            data-predefined-messages-target="${targetTextBoxSelector}">
-                        <option value="">Select pre-defined message…</option>
-                    </select>
-                </label>
-            
-                <div class="ca-predefined-messages-bar-actions">
-            
-                    <!-- SEND AGAIN -->
-                    <a href="#"
-                       id="${messageBarName}-resend"
-                       class="ca-log-action ca-log-action-filled ca-predefined-messages-resend"
-                       title="Insert again">
-                       ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M8 4l12 8-12 8V4z"></path>`)}
-                    </a>
-            
-                    <!-- ADD NEW FROM CURRENT TEXT -->
-                    <a href="#"
-                       id="${messageBarName}-add"
-                       class="ca-log-action ca-predefined-messages-add"
-                       title="Save current text as template">
-                       ${this.buildSvgIconString("lucide lucide-lucide-plus",
-                `<line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>`)}
-                    </a>
-            
-                    <!-- MANAGE -->
-                    <a href="#"
-                       id="${messageBarName}-manage"
-                       class="ca-log-action ca-predefined-messages-manage"
-                       title="Manage templates">
-                       ${this.buildSvgIconString("lucide lucide-pencil",
-                `<path d="M17 3a2.828 2.828 0 0 1 4 4L9 19l-4 1 1-4L17 3z"></path>`)}
-                    </a>
-            
-                </div>
-            </div>
-            `;
-
-            if (appendAtStart) {
-                container.prepend(wrapper);
-            } else {
-                container.appendChild(wrapper);
-            }
-
-            // ⬇️ Separate wiring step
-            this.wirePredefinedMessagesBar(wrapper);
         }
 
         wirePredefinedMessagesBar(barEl) {
@@ -1408,26 +1408,45 @@
         appendCustomActionsToBar() {
             const bar = document.getElementById('right_panel_bar');
 
-            if (bar) {
-                const refreshBtn = document.createElement('div');
-                refreshBtn.classList.add('panel_option');
-                refreshBtn.classList.add('panel_option_refresh');
-                refreshBtn.title = 'Refresh users';
-                refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
-
-                // Attach the click handler
-                refreshBtn.addEventListener('click', async () => {
-                    await this.refreshUserList();
-                    refreshBtn.classList.remove('loading');
-                });
-
-                // Find the first existing button (e.g., users_option) to insert before
-                const firstButton = bar.querySelector('.panel_option');
-                bar.insertBefore(refreshBtn, firstButton);
-            } else {
+            if (!bar) {
                 console.error('Bar not found');
+                return;
+            }
+
+            // Existing refresh button...
+            const refreshBtn = document.createElement('div');
+            refreshBtn.classList.add('panel_option', 'panel_option_refresh');
+            refreshBtn.title = 'Refresh users';
+            refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
+
+            refreshBtn.addEventListener('click', async () => {
+                await this.refreshUserList();
+                refreshBtn.classList.remove('loading');
+            });
+
+            // NEW: templates button
+            const templatesBtn = document.createElement('div');
+            templatesBtn.classList.add('panel_option', 'panel_option_templates');
+            templatesBtn.title = 'Predefined messages';
+
+            // Use an icon you like; example using a font-awesome comments icon:
+            templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
+
+            templatesBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.openGlobalPredefinedTemplatesPopup();
+            });
+
+            const firstButton = bar.querySelector('.panel_option');
+            if (firstButton) {
+                bar.insertBefore(refreshBtn, firstButton);
+                bar.insertBefore(templatesBtn, firstButton.nextSibling);
+            } else {
+                bar.appendChild(refreshBtn);
+                bar.appendChild(templatesBtn);
             }
         }
+
 
         /* ---------- Cookie helpers ---------- */
         _getCookie(name) {
@@ -2627,7 +2646,7 @@ Private send interception
                 if (existingUserJsonFromStore[key] !== updatedExistingUserJson[key]) {
                     changedKeys.push(key);
                     addSegment(
-                        `${updatedExistingUserJson} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
+                        `${updatedExistingUserJson.name} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
                         color
                     );
                 }
@@ -4188,15 +4207,6 @@ Private send interception
         openBroadcastModal() {
             const broadcastPopupEl = this.createBroadcastPopup();
             const broadcastSendEl = broadcastPopupEl.querySelector('#ca-bc-send');
-
-            const broadcastPopupBodyEl = broadcastPopupEl.querySelector('.ca-popup-body');
-
-            this.createPredefinedMessagesBar({
-                container: broadcastPopupBodyEl,
-                messageBarName: 'ca-predefined-messages-select-broadcast',
-                targetTextBoxSelector: '#ca-bc-msg',
-                appendAtStart: true
-            });
 
             broadcastSendEl.addEventListener('click', () => {
                 const broadcastMsgEl = this.qs('#ca-bc-msg');
