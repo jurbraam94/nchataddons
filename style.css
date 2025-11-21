@@ -536,7 +536,6 @@
     border-radius: 4px;
 }
 
-/* Hover image preview for chat log thumbnails */
 #ca-log-image-preview {
     position: fixed;
     z-index: 9999;

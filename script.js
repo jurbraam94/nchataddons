@@ -1594,7 +1594,7 @@ Private send interception
                 return;
             }
 
-            console.log('Intercepted native message send to', dmSentToUser.name || targetUid, '(ID:', targetUid, ')');
+            console.log('\nIntercepted native message send to', dmSentToUser.name || targetUid, '(ID:', targetUid, ')');
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
             const affectedLogs = this.ActivityLogStore.MarkReadUntilChatLogId(targetUid, dmSentToUser.parsedDmInUpToLog);
@@ -1602,7 +1602,7 @@ Private send interception
             this.updateProfileChipByUid(dmSentToUser.uid);
 
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
-                console.warn(`There are no logs to process the read status for.`);
+                this.debug(`There are no logs to process the read status for.`);
                 return;
             }
             this.processReadStatusForLogs(affectedLogs);
@@ -1835,16 +1835,18 @@ Private send interception
         }
 
         installLogImageHoverPreview() {
-            const containers = [
+            const containersLogs = [
                 this.ui.repliedMessageBox,
                 this.ui.unrepliedMessageBox,
                 this.ui.sentMessagesBox,
-                // NEW: also enable hover preview in the user list
+                // enable hover preview in the user list
                 this.ui.userContainersWrapper
             ].filter(Boolean);
 
-            if (!containers.length) {
-                console.error('[CA] installLogImageHoverPreview: no log containers found');
+            const publicChatContainer = document.getElementById('chat_logs_container');
+
+            if (!containersLogs.length && !publicChatContainer) {
+                console.error('[CA] installLogImageHoverPreview: no containers found');
                 return;
             }
 
@@ -1861,7 +1863,7 @@ Private send interception
                 preview.classList.remove('ca-visible');
             };
 
-            const positionPreview = (evt) => {
+            const positionPreview = (evt, mode) => {
                 if (!evt) {
                     return;
                 }
@@ -1869,53 +1871,63 @@ Private send interception
                 const vw = window.innerWidth;
                 const vh = window.innerHeight;
 
-                // Use the actual rendered size of the preview (this includes the image width/height)
                 const rect = preview.getBoundingClientRect();
                 const w = rect.width || 260;
                 const h = rect.height || 260;
 
-                let x = evt.clientX;
-                let y = evt.clientY;
+                let x;
+                let y;
 
-                // If going off the right edge, show it to the left of the mouse
-                if (x + w > vw) {
+                if (mode === 'public') {
+                    // PUBLIC CHAT:
+                    // bottom-LEFT corner at cursor => preview appears top-right of mouse
+                    x = evt.clientX;
+                    y = evt.clientY - h;
+                } else {
+                    // LOGS / USER LIST:
+                    // bottom-RIGHT corner at cursor => preview appears top-left of mouse
                     x = evt.clientX - w;
-                }
-
-                // If going off the bottom edge, show it above the mouse
-                if (y + h > vh) {
                     y = evt.clientY - h;
                 }
 
-                // Clamp just in case
+                // Clamp within viewport
                 if (x < 0) x = 0;
                 if (y < 0) y = 0;
+                if (x + w > vw) x = vw - w;
+                if (y + h > vh) y = vh - h;
 
                 preview.style.left = `${x}px`;
                 preview.style.top = `${y}px`;
             };
 
-            const showPreview = (evt, src) => {
+            const showPreview = (evt, src, mode) => {
                 if (!src) {
                     console.warn('[CA] installLogImageHoverPreview: missing src');
                     return;
                 }
 
-                // When the image is loaded, we know the true size -> then position
+                // Size: smaller for logs, bigger for public chat
+                if (mode === 'public') {
+                    preview.style.maxWidth = '340px';
+                    preview.style.maxHeight = '340px';
+                } else {
+                    preview.style.maxWidth = '260px';
+                    preview.style.maxHeight = '260px';
+                }
+
                 img.onload = () => {
                     preview.classList.add('ca-visible');
-                    positionPreview(evt);
+                    positionPreview(evt, mode);
                 };
 
                 img.src = src;
             };
 
-            // We treat both chat images and user avatars as hoverable:
             const HOVER_SELECTOR = 'img.chat_image, img.avav';
 
-            containers.forEach((container) => {
+            const attachHoverHandlers = (container, mode) => {
                 if (!container) {
-                    console.warn('[CA] installLogImageHoverPreview: container missing');
+                    console.warn('[CA] installLogImageHoverPreview: container missing for mode', mode);
                     return;
                 }
 
@@ -1937,7 +1949,7 @@ Private send interception
                         return;
                     }
 
-                    showPreview(evt, src);
+                    showPreview(evt, src, mode);
                 });
 
                 // MOVE while hovering
@@ -1945,7 +1957,7 @@ Private send interception
                     if (!preview.classList.contains('ca-visible')) {
                         return;
                     }
-                    positionPreview(evt);
+                    positionPreview(evt, mode);
                 });
 
                 // HIDE when leaving the image
@@ -1955,7 +1967,6 @@ Private send interception
                         return;
                     }
 
-                    // Only care when leaving one of our hoverable images
                     if (!target.closest(HOVER_SELECTOR)) {
                         return;
                     }
@@ -1965,10 +1976,19 @@ Private send interception
                         hidePreview();
                     }
                 });
-            });
+            };
 
-            console.log('[CA] Log image hover preview installed (logs + user list)');
+            // Attach for logs + user list (small, top-left-ish)
+            containersLogs.forEach((container) => attachHoverHandlers(container, 'logs'));
+
+            // Attach for public main chat (bigger, top-right-ish)
+            if (publicChatContainer) {
+                attachHoverHandlers(publicChatContainer, 'public');
+            }
+
+            console.log('[CA] Log image hover preview installed (logs + user list + public chat)');
         }
+
 
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, privateChatLogs) {
