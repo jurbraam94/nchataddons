@@ -108,9 +108,11 @@
             return this._getAll().find(log => String(log.guid) === String(guid)) || null;
         }
 
-        getAllByUserUid(uid, onlyUnread = false) {
+        getAllByUserUid(uid, onlyUnread = false, alsoFromSelf = false) {
             const result = this._getAll().filter(
-                log => String(log.uid) === String(uid) && (!onlyUnread || log.unread)
+                log => String(log.uid) === String(uid)
+                    && (!onlyUnread || log.unread)
+                    && log.guid !== String(user_id)
             );
             this.app.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
             return result;
@@ -2443,8 +2445,6 @@ Private send interception
             const containerContent = this.qs(`.ca-user-list-content`, updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer);
             const newUserEl = parseUserEl.cloneNode(true);
 
-            const existingEl =
-
             const wrapper = document.createElement('div');
             wrapper.className = 'ca-username-row';
 
@@ -2567,29 +2567,42 @@ Private send interception
             }
         }
 
-        _updateExistingUserMetadata(existingUserJsonFromStore, newUserJson, existingUserEl) {
-            const uid = existingUserJsonFromStore.uid || newUserJson.uid;
+        _updateExistingUserMetadata(existingUserJsonFromStore, parsedUserJson, existingUserEl) {
+            const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
             let hasUpdatedUser = false;
 
             // Always update store first
-            const updatedExistingUserJson = this.UserStore.set(newUserJson);
+            const updatedExistingUserJson = this.UserStore.set(parsedUserJson);
+            let updatedExistingUserEl = existingUserEl;
 
-
-            // ---- STEP 1: Compute change list ----
             const changedKeys = [];
-            const parts = [];
-            const styles = [];
+            const segments = [];
 
-            const push = (text, style = "color:white") => {
-                parts.push(`%c${text}`);
-                styles.push(style);
-                this.logEventLine(text);
+            if (changedKeys.length > 0) {
+                // pretty console line
+                this._logStyled('[USER_UPDATE] ', segments);
+
+                this.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
+                hasUpdatedUser = true;
+
+                if (existingUserEl) {
+                    this._applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
+                } else {
+                    this.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
+                }
+            }
+
+            const addSegment = (text, style) => {
+                segments.push({text, style});
             };
 
             const checkChange = (key, label, color) => {
                 if (existingUserJsonFromStore[key] !== updatedExistingUserJson[key]) {
                     changedKeys.push(key);
-                    push(`${updatedExistingUserJson} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `, color);
+                    addSegment(
+                        `${updatedExistingUserJson} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
+                        color
+                    );
                 }
             };
 
@@ -2600,22 +2613,17 @@ Private send interception
             checkChange("rank", "Rank", "color:#ffcc55");
             checkChange("gender", "Gender", "color:#ff88aa"); // or "isFemale"
 
-            // ---- STEP 2: If no changes at all ----
             if (changedKeys.length > 0) {
-                // prefix label should also be styled
-                parts.unshift('%c[USER_UPDATE] ');
-                styles.unshift('color:#9cf; font-weight:bold');
+                // pretty console line
+                this._logStyled('[USER_UPDATE] ', segments);
 
-                console.log(parts.join(''), ...styles);
-                this.verbose("[USER_UPDATE] JSON changes for user", uid, changedKeys);
-
+                this.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
                 hasUpdatedUser = true;
 
-                // ---- STEP 4: ONLY apply DOM changes if element exists ----
                 if (existingUserEl) {
                     this._applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
                 } else {
-                    this.verbose("[USER_UPDATE] No DOM element found — only JSON updated for uid:", uid);
+                    this.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
                 }
             }
 
@@ -2668,6 +2676,7 @@ Private send interception
                     }
                 }
             }
+            return existingUserEl;
         }
 
         async syncUsersFromDom(currentOnlineUserEls) {
@@ -2705,7 +2714,7 @@ Private send interception
 
                 let updatedUserJson = null;
 
-                const existingUserJson = {
+                const newUserJson = {
                     ...parsedUserJson,
                     isLoggedIn: true
                 };
@@ -2715,14 +2724,14 @@ Private send interception
                         updatedExistingUserJson,
                         hasUpdatedUser,
                         updatedExistingUserEl
-                    } = this._updateExistingUserMetadata(existingUserFromStore, existingUserJson, updatedExistingUserEl);
+                    } = this._updateExistingUserMetadata(existingUserFromStore, newUserJson, existingUserEl);
                     if (hasUpdatedUser) {
                         updatedProfileCount++;
                     }
                     updatedUserJson = updatedExistingUserJson;
                     existingUserEl = updatedExistingUserEl;
                 } else {
-                    updatedUserJson = this.UserStore.set(existingUserJson);
+                    updatedUserJson = this.UserStore.set(newUserJson);
                     // In case there is no Store json available about this element (glitched element) its better to delete and rebuild it.
                     existingUserEl?.remove();
                 }
@@ -2757,17 +2766,48 @@ Private send interception
                 loggedOutPatch.isFemale ? femaleLoggedOutCount++ : maleLoggedOutCount++;
             }
 
-            // 4) Persist all changes in a single shot
             this.UserStore._saveAll(resultPatches);
 
-            this.verbose(
-                "[syncUsersFromDom] Updated users. Patches:",
-                resultPatches.length,
-                "Females logged out:",
-                femaleLoggedOutCount,
-                "Males logged out:",
-                maleLoggedOutCount
-            );
+            this._logOnlineSummaryLine('Females online', femaleLoggedInCount, femaleLoggedOutCount);
+            this._logOnlineSummaryLine('Males online', maleLoggedInCount, maleLoggedOutCount);
+
+            if (updatedProfileCount > 0) {
+                this._logStyled('', [
+                    {
+                        text: `Profiles updated: ${updatedProfileCount}`,
+                        style: 'color:#ffff55;font-weight:bold'
+                    }
+                ]);
+            }
+
+
+        }
+
+        _logOnlineSummaryLine(label, plus, minus) {
+            if (!plus && !minus) {
+                return;
+            }
+
+            const labelColor = label.toLowerCase().includes('female')
+                ? 'color:#f9a8d4;font-weight:bold'    // soft pink for female
+                : 'color:#93c5fd;font-weight:bold';   // soft blue for male
+
+            const softGreen = 'color:#8bdf8b';  // friendly soft green
+            const softRed = 'color:#d88989';  // warm gentle red
+            const neutral = 'color:#9ca3af';  // grey for punctuation
+            const greyNum = 'color:#6b7280';  // grey for zero numbers
+
+            const plusStyle = plus ? softGreen : greyNum;
+            const minusStyle = minus ? softRed : greyNum;
+
+            this._logStyled('', [
+                {text: `${label} `, style: labelColor},
+                {text: '(+', style: neutral},
+                {text: String(plus), style: plusStyle},
+                {text: ' : -', style: neutral},
+                {text: String(minus), style: minusStyle},
+                {text: ')', style: neutral}
+            ]);
         }
 
         async processUserListResponse(html) {
@@ -2809,6 +2849,30 @@ Private send interception
             this.userParsingInProgress = false;
         }
 
+        _logStyled(label, segments, labelStyle = 'color:#9cf; font-weight:bold') {
+            if (!Array.isArray(segments) || segments.length === 0) {
+                return;
+            }
+
+            const parts = [];
+            const styles = [];
+
+            if (label) {
+                parts.push('%c' + label);
+                styles.push(labelStyle);
+            }
+
+            for (const seg of segments) {
+                if (!seg || !seg.text) {
+                    continue;
+                }
+
+                parts.push('%c' + seg.text);
+                styles.push(seg.style || 'color:#ffffff');
+            }
+
+            console.log(parts.join(''), ...styles);
+        }
 
         handleLoggedInStatus(user) {
             if (!user) {
@@ -2824,9 +2888,8 @@ Private send interception
             if (user.isFemale) {
                 this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
                 this.logLine(user.isLoggedIn ? 'login' : 'logout', null, user);
-
-                console.log(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
             }
+            this.debug(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
         }
 
         setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
