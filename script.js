@@ -1031,6 +1031,28 @@
                         `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
                     )
                 );
+                editLink.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+
+                    this.predefinedEditIndex = index;
+                    indexInput.value = String(index);
+                    subjectInput.value = item.subject || '';
+                    textInput.value = item.text || '';
+
+                    // Make sure editor is visible when editing
+                    const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
+                    const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
+
+                    if (editorRoot && editorRoot.classList.contains('ca-predefined-editor-collapsed')) {
+                        editorRoot.classList.remove('ca-predefined-editor-collapsed');
+                        if (toggleBtn) {
+                            toggleBtn.textContent = 'Hide editor';
+                        }
+                    }
+
+                    subjectInput.focus();
+                });
+
 
 // DELETE (x)
                 const deleteLink = document.createElement('a');
@@ -1044,6 +1066,16 @@
          <line x1="6" y1="6" x2="18" y2="18"></line>`
                     )
                 );
+
+                deleteLink.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    const current = this._getPredefinedMessages().slice();
+                    current.splice(index, 1);
+                    this._savePredefinedMessages(current);
+                    this._renderPredefinedList(popup);
+                    this._refreshAllPredefinedSelects();
+                });
+
 
                 actions.appendChild(insertLink);
                 actions.appendChild(editLink);
@@ -1064,33 +1096,8 @@
         }
 
         openGlobalPredefinedTemplatesPopup() {
-            const popup = this.createPredefinedMessagesPopup();
-            if (!popup) {
-                console.error('[CA] Could not create predefined messages popup');
-                return;
-            }
-
-            const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
-            const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
-
-            // collapse by default
-            if (editorRoot) {
-                editorRoot.classList.add('ca-predefined-editor-collapsed');
-            }
-            if (toggleBtn) {
-                toggleBtn.textContent = 'Show editor';
-            }
-
-            // attach toggle handler
-            if (toggleBtn && editorRoot) {
-                toggleBtn.addEventListener('click', () => {
-                    const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
-                    toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
-                });
-            }
-
-            this._renderPredefinedList(popup);
-            this.togglePopup('ca-predefined-messages-popup');
+            // Reuse the same logic as the bar “Manage” button
+            this.openPredefinedPopup(null);
         }
 
         _fillPredefinedSelect(selectEl) {
@@ -1374,8 +1381,8 @@
             const indexInput = popup.querySelector('#ca-predefined-messages-index');
             const resetBtn = popup.querySelector('#ca-predefined-messages-reset');
             const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
-            const editorBody = popup.querySelector('.ca-predefined-messages-editor-body');
             const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
+            const editorBody = popup.querySelector('.ca-predefined-messages-editor-body');
 
             if (prefilledText) {
                 // Reset form and fill with prefilled text
@@ -1394,8 +1401,14 @@
                 return null;
             }
 
-            // attach toggle listener
-            if (toggleBtn && editorRoot) {
+            // Setup toggle only once per popup
+            if (toggleBtn && editorRoot && editorBody && !editorRoot.dataset.caToggleInitialized) {
+                editorRoot.dataset.caToggleInitialized = '1';
+
+                // collapsed by default
+                editorRoot.classList.add('ca-predefined-editor-collapsed');
+                toggleBtn.textContent = 'Show editor';
+
                 toggleBtn.addEventListener('click', () => {
                     const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
                     toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
