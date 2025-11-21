@@ -2958,7 +2958,10 @@ Private send interception
             // Delegate all heavy lifting (store + DOM + login/offline handling)
             await this.syncUsersFromDom(currentOnlineUserEls);
 
-            this.isInitialLoad = false;
+            if (this.isInitialLoad) {
+                await this.restoreLog();
+                this.isInitialLoad = false;
+            }
             this.userParsingInProgress = false;
         }
 
