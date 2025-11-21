@@ -615,6 +615,13 @@
                 }
             };
 
+            this.colors = {
+                SOFT_GREEN: 'color:#8bdf8b',  // friendly green
+                SOFT_RED: 'color:#d88989',  // warm red
+                GREY: 'color:#9ca3af',  // punctuation/parentheses
+                GREY_NUM: 'color:#6b7280'  // muted 0 numbe
+            }
+
             this.sel = {
                 rightPanel: '#right-panel',
                 // logs
@@ -2688,9 +2695,11 @@ Private send interception
             const resultPatches = [];
 
             let femaleLoggedOutCount = 0;
-            let maleLoggedOutCount = 0;
+            let othersLoggedOutCount = 0;
             let femaleLoggedInCount = 0;
-            let maleLoggedInCount = 0;
+            let othersLoggedInCount = 0;
+            let totalOthersLoggedInCount = 0;
+            let totalFemaleLoggedInCount = 0;
             let updatedProfileCount = 0;
 
             for (const parsedUserEl of currentOnlineUserEls) {
@@ -2749,8 +2758,9 @@ Private send interception
 
                 if (!wasLoggedInBefore && !this.isInitialLoad) {
                     this.handleLoggedInStatus(updatedUserJson);
-                    updatedUserJson.isFemale ? femaleLoggedInCount++ : maleLoggedInCount++;
+                    updatedUserJson.isFemale ? femaleLoggedInCount++ : othersLoggedInCount++;
                 }
+                updatedUserJson.isFemale ? totalFemaleLoggedInCount++ : totalOthersLoggedInCount++;
             }
 
             // 3) Whatever is still in maybeLoggedOutMap is now logged out
@@ -2763,13 +2773,21 @@ Private send interception
                 resultPatches.push(loggedOutPatch);
 
                 this.handleLoggedInStatus(loggedOutPatch, false);
-                loggedOutPatch.isFemale ? femaleLoggedOutCount++ : maleLoggedOutCount++;
+                loggedOutPatch.isFemale ? femaleLoggedOutCount++ : othersLoggedOutCount++;
             }
 
             this.UserStore._saveAll(resultPatches);
 
-            this._logOnlineSummaryLine('Females online', femaleLoggedInCount, femaleLoggedOutCount);
-            this._logOnlineSummaryLine('Males online', maleLoggedInCount, maleLoggedOutCount);
+            this.updateFemaleUserCount(totalFemaleLoggedInCount);
+            this.updateOtherUsersCount(totalOthersLoggedInCount);
+
+            console.log('\n');
+            this._logSummaryDouble('Female online status changed:', femaleLoggedInCount, femaleLoggedOutCount);
+            this._logSummaryDouble('Others online status changed:', othersLoggedInCount, othersLoggedOutCount);
+            this._logSummarySingle('Total female online:', totalFemaleLoggedInCount);
+            this._logSummarySingle('Others online:', totalOthersLoggedInCount);
+            this._logSummarySingle('Total users online: ', currentOnlineUserEls.length);
+            console.log('\n');
 
             if (updatedProfileCount > 0) {
                 this._logStyled('', [
@@ -2779,42 +2797,44 @@ Private send interception
                     }
                 ]);
             }
-
-
         }
 
-        _logOnlineSummaryLine(label, plus, minus) {
-            if (!plus && !minus) {
-                return;
-            }
+        _logSummarySingle(label, value) {
+            if (!value) return; // hide zero always
+
+            this._logStyled('', [
+                {text: `${label}: `, style: 'color:#d1d5db;font-weight:bold'},
+                {text: String(value), style: this.colors.SOFT_GREEN}
+            ]);
+        }
+
+        _logSummaryDouble(label, plus, minus) {
+            if (!plus && !minus) return; // hide if both zero
 
             const labelColor = label.toLowerCase().includes('female')
-                ? 'color:#f9a8d4;font-weight:bold'    // soft pink for female
-                : 'color:#93c5fd;font-weight:bold';   // soft blue for male
+                ? this.colors.FEMALE_LABEL
+                : this.colors.MALE_LABEL;
 
-            const softGreen = 'color:#8bdf8b';  // friendly soft green
-            const softRed = 'color:#d88989';  // warm gentle red
-            const neutral = 'color:#9ca3af';  // grey for punctuation
-            const greyNum = 'color:#6b7280';  // grey for zero numbers
-
-            const plusStyle = plus ? softGreen : greyNum;
-            const minusStyle = minus ? softRed : greyNum;
+            const plusStyle = plus ? this.colors.SOFT_GREEN : this.colors.ZERO_GREY;
+            const minusStyle = minus ? this.colors.SOFT_RED : this.colors.ZERO_GREY;
 
             this._logStyled('', [
                 {text: `${label} `, style: labelColor},
-                {text: '(+', style: neutral},
+                {text: '(+', style: this.colors.LIGHT_GREY},
                 {text: String(plus), style: plusStyle},
-                {text: ' : -', style: neutral},
+                {text: ' : -', style: this.colors.LIGHT_GREY},
                 {text: String(minus), style: minusStyle},
-                {text: ')', style: neutral}
+                {text: ')', style: this.colors.LIGHT_GREY}
             ]);
         }
+
 
         async processUserListResponse(html) {
             if (typeof html !== "string" || html.trim() === "") {
                 console.error("[processUserListResponse] HTML response is empty or not a string");
                 return;
             }
+
 
             if (this.userParsingInProgress) {
                 console.warn(`An earlier job is already parsing results. to prevent corrupt data this one is cancelled.`);
@@ -2830,6 +2850,9 @@ Private send interception
             const currentOnlineUserEls = Array.from(
                 tempContainer.querySelectorAll(".user_item")
             );
+
+
+            console.log(`\n==== Retrieved ${currentOnlineUserEls.length} users from the online list in this room. Starting to parse, process and render them.`);
 
             if (currentOnlineUserEls.length === 0) {
                 console.warn(
