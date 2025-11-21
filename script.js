@@ -2689,6 +2689,7 @@ Private send interception
             }
 
             const addSegment = (text, style) => {
+                this.logEventLine(text);
                 segments.push({text, style});
             };
 
