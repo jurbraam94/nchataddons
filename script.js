@@ -2443,6 +2443,8 @@ Private send interception
             const containerContent = this.qs(`.ca-user-list-content`, updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer);
             const newUserEl = parseUserEl.cloneNode(true);
 
+            const existingEl =
+
             const wrapper = document.createElement('div');
             wrapper.className = 'ca-username-row';
 
@@ -2565,12 +2567,12 @@ Private send interception
             }
         }
 
-        _updateExistingUserMetadata(existingUserJson, parsedUserJson, existingUserEl) {
-            const uid = existingUserJson.uid || parsedUserJson.uid;
+        _updateExistingUserMetadata(existingUserJsonFromStore, newUserJson, existingUserEl) {
+            const uid = existingUserJsonFromStore.uid || newUserJson.uid;
             let hasUpdatedUser = false;
 
             // Always update store first
-            const updatedExistingUserJson = this.UserStore.set(parsedUserJson);
+            const updatedExistingUserJson = this.UserStore.set(newUserJson);
 
 
             // ---- STEP 1: Compute change list ----
@@ -2585,9 +2587,9 @@ Private send interception
             };
 
             const checkChange = (key, label, color) => {
-                if (existingUserJson[key] !== updatedExistingUserJson[key]) {
+                if (existingUserJsonFromStore[key] !== updatedExistingUserJson[key]) {
                     changedKeys.push(key);
-                    push(`${updatedExistingUserJson} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJson[key]} → ${updatedExistingUserJson[key]}), `, color);
+                    push(`${updatedExistingUserJson} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `, color);
                 }
             };
 
@@ -2619,7 +2621,7 @@ Private send interception
 
             return {
                 updatedExistingUserJson,
-                existingUserEl,
+                updatedExistingUserEl,
                 hasUpdatedUser
             };
         }
@@ -2696,7 +2698,7 @@ Private send interception
 
                 const wasLoggedInBefore = !!(existingUserFromStore?.isLoggedIn);
 
-                const existingUserEl = this.qs(
+                let existingUserEl = this.qs(
                     `.user_item[data-id="${uid}"]`,
                     this.ui.userContainersWrapper
                 );
@@ -2712,14 +2714,17 @@ Private send interception
                     const {
                         updatedExistingUserJson,
                         hasUpdatedUser,
-                        existingUserEl
-                    } = this._updateExistingUserMetadata(existingUserFromStore, existingUserJson);
+                        updatedExistingUserEl
+                    } = this._updateExistingUserMetadata(existingUserFromStore, existingUserJson, updatedExistingUserEl);
                     if (hasUpdatedUser) {
                         updatedProfileCount++;
                     }
                     updatedUserJson = updatedExistingUserJson;
+                    existingUserEl = updatedExistingUserEl;
                 } else {
                     updatedUserJson = this.UserStore.set(existingUserJson);
+                    // In case there is no Store json available about this element (glitched element) its better to delete and rebuild it.
+                    existingUserEl?.remove();
                 }
 
                 // If the user has NO DOM element yet, we must create one
