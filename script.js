@@ -1000,19 +1000,27 @@
                 const actions = document.createElement('div');
                 actions.className = 'ca-predefined-messages-actions';
 
-                // INSERT into active field
-                const insertBtn = document.createElement('button');
-                insertBtn.type = 'button';
-                insertBtn.className = 'ca-btn ca-btn-slim';
-                insertBtn.textContent = 'Insert';
-                insertBtn.title = 'Insert into active text field';
+// INSERT into active text field
+                const insertLink = document.createElement('a');
+                insertLink.href = "#";
+                insertLink.className = 'ca-log-action ca-insert-link';
+                insertLink.title = "Insert into active text field";
 
-                insertBtn.addEventListener('click', (ev) => {
+// icon similar style, using your SVG helper
+                insertLink.appendChild(
+                    this.renderSvgIconWithClass(
+                        "lucide lucide-corner-down-left",
+                        `<polyline points="9 10 4 15 9 20"></polyline>
+         <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
+                    )
+                );
+
+                insertLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
-                    this._appendPredefinedToActiveBox(item);
+                    this._appendPredefinedToActiveBox(item); // uses your existing helper
                 });
 
-                // EDIT (pencil)
+// EDIT (pencil)
                 const editLink = document.createElement('a');
                 editLink.href = "#";
                 editLink.className = 'ca-log-action ca-edit-link';
@@ -1023,15 +1031,8 @@
                         `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
                     )
                 );
-                editLink.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    this.predefinedEditIndex = index;
-                    indexInput.value = String(index);
-                    subjectInput.value = item.subject || '';
-                    textInput.value = item.text || '';
-                });
 
-                // DELETE
+// DELETE (x)
                 const deleteLink = document.createElement('a');
                 deleteLink.href = "#";
                 deleteLink.className = 'ca-log-action ca-del-link';
@@ -1040,22 +1041,14 @@
                     this.renderSvgIconWithClass(
                         "lucide lucide-x",
                         `<line x1="18" y1="6" x2="6" y2="18"></line>
-                 <line x1="6" y1="6" x2="18" y2="18"></line>`
+         <line x1="6" y1="6" x2="18" y2="18"></line>`
                     )
                 );
-                deleteLink.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    const current = this._getPredefinedMessages().slice();
-                    current.splice(index, 1);
-                    this._savePredefinedMessages(current);
-                    this._renderPredefinedList(popup);
-                    this._refreshAllPredefinedSelects();
-                });
 
-                // Put actions together: Insert | Edit | Delete
-                actions.appendChild(insertBtn);
+                actions.appendChild(insertLink);
                 actions.appendChild(editLink);
                 actions.appendChild(deleteLink);
+
 
                 titleRow.appendChild(title);
                 titleRow.appendChild(actions);
@@ -1077,10 +1070,28 @@
                 return;
             }
 
+            const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
+            const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
+
+            // collapse by default
+            if (editorRoot) {
+                editorRoot.classList.add('ca-predefined-editor-collapsed');
+            }
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Show editor';
+            }
+
+            // attach toggle handler
+            if (toggleBtn && editorRoot) {
+                toggleBtn.addEventListener('click', () => {
+                    const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
+                    toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
+                });
+            }
+
             this._renderPredefinedList(popup);
             this.togglePopup('ca-predefined-messages-popup');
         }
-
 
         _fillPredefinedSelect(selectEl) {
             if (!selectEl) {
@@ -1280,53 +1291,68 @@
 
         createPredefinedMessagesPopup() {
             const bodyHtml = `
-              <form 
-                id="ca-predefined-messages-form" 
-                class="ca-predefined-messages-form"
-                style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;"
-              >
-                <label>
-                  Subject<br>
-                  <input 
-                    type="text" 
-                    id="ca-predefined-messages-subject" 
-                    class="ca-8" 
-                  >
-                </label>
-            
-                <label>
-                  Text<br>
-                  <textarea 
-                    id="ca-predefined-messages-text" 
-                    class="ca-8" 
-                    rows="4"
-                  ></textarea>
-                </label>
-            
-                <input 
-                  type="hidden" 
-                  id="ca-predefined-messages-index" 
-                  value="-1"
-                >
-            
-                <div style="display:flex; gap:4px; justify-content:flex-end; margin-top:4px;">
+              <div class="ca-predefined-messages-editor">
+                <div class="ca-predefined-messages-editor-header">
+                  <span>Template editor</span>
                   <button 
                     type="button" 
-                    id="ca-predefined-messages-reset" 
-                    class="ca-btn ca-btn-slim"
+                    id="ca-predefined-messages-toggle" 
+                    class="ca-predefined-messages-toggle"
                   >
-                    Clear
-                  </button>
-            
-                  <button 
-                    type="submit" 
-                    id="ca-predefined-messages-save" 
-                    class="ca-btn ca-btn-slim"
-                  >
-                    Save
+                    Hide editor
                   </button>
                 </div>
-              </form>
+        
+                <div class="ca-predefined-messages-editor-body">
+                  <form 
+                    id="ca-predefined-messages-form" 
+                    class="ca-predefined-messages-form"
+                  >
+                    <label>
+                      Subject<br>
+                      <input 
+                        type="text" 
+                        id="ca-predefined-messages-subject" 
+                        class="ca-8" 
+                      >
+                    </label>
+        
+                    <label>
+                      Text<br>
+                      <textarea 
+                        id="ca-predefined-messages-text" 
+                        class="ca-8" 
+                        rows="3"
+                      ></textarea>
+                    </label>
+        
+                    <input 
+                      type="hidden" 
+                      id="ca-predefined-messages-index" 
+                      value="-1"
+                    >
+        
+                    <div class="ca-predefined-messages-buttons">
+                      <button 
+                        type="button" 
+                        id="ca-predefined-messages-reset" 
+                        class="ca-btn ca-btn-slim"
+                      >
+                        Clear
+                      </button>
+        
+                      <button 
+                        type="submit" 
+                        id="ca-predefined-messages-save" 
+                        class="ca-btn ca-btn-slim"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+        
               <ul id="ca-predefined-messages-list"></ul>
             `;
 
@@ -1347,6 +1373,9 @@
             const textInput = popup.querySelector('#ca-predefined-messages-text');
             const indexInput = popup.querySelector('#ca-predefined-messages-index');
             const resetBtn = popup.querySelector('#ca-predefined-messages-reset');
+            const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
+            const editorBody = popup.querySelector('.ca-predefined-messages-editor-body');
+            const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
 
             if (prefilledText) {
                 // Reset form and fill with prefilled text
@@ -1363,6 +1392,14 @@
             if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
                 console.error('[CA] createPredefinedPopup: missing form controls');
                 return null;
+            }
+
+            // attach toggle listener
+            if (toggleBtn && editorRoot) {
+                toggleBtn.addEventListener('click', () => {
+                    const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
+                    toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
+                });
             }
 
             resetBtn.addEventListener('click', () => {

@@ -1052,6 +1052,66 @@ svg.svg-large {
     overflow: auto;
 }
 
+/* Make predefined messages popup smaller than default */
+#ca-predefined-messages-popup.ca-popup {
+    width: 360px;
+    max-width: 90vw;
+}
+
+.ca-predefined-messages-editor {
+    margin-bottom: 6px;
+}
+
+.ca-predefined-messages-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
+    margin-bottom: 2px;
+}
+
+.ca-predefined-messages-toggle {
+    border: 0;
+    background: transparent;
+    color: #93c5fd;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.ca-predefined-messages-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.ca-predefined-editor-collapsed .ca-predefined-messages-editor-body {
+    display: none;
+}
+
+.ca-predefined-messages-editor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Collapse editor body when playing with a tiny modal */
+.ca-predefined-editor-collapsed .ca-predefined-messages-editor-body {
+    display: none;
+}
+
+/* Slight tweak for button row */
+.ca-predefined-messages-buttons {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
 /* Wrapper for each predefined item */
 .ca-predefined-messages-item {
     display: flex;
@@ -1061,12 +1121,8 @@ svg.svg-large {
     border-bottom: 1px solid #eee;
 }
 
-/* Title row: subject + edit/delete buttons */
-.ca-predefined-messages-title-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 4px;
+.ca-predefined-messages-item {
+    border-bottom: 1px solid #334155;
 }
 
 /* Buttons row stays right-aligned */
@@ -1083,10 +1139,9 @@ svg.svg-large {
     gap: 4px;
 }
 
-/* Preview text */
 .ca-predefined-messages-preview {
-    font-size: 11px;
-    color: #666;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 .ca-predefined-messages-select {
