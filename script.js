@@ -2660,7 +2660,7 @@ Private send interception
             };
 
             // Header
-            push("\n[USER_LIST] ", "color:#9cf");
+            push("[USER_LIST] ", "color:#9cf");
             push("Refreshed users. Summary: ", "color:white");
 
             // Female (only show if something changed)
@@ -2687,7 +2687,7 @@ Private send interception
             // Always show total users
             push(`${users.length} total online`, "color:#9f9");
 
-            console.log(parts.join(""), ...styles);
+            console.log(`${parts.join("")}\n`, ...styles);
         }
 
         handleLoggedInStatus(existingUser, loggedInStatus) {
