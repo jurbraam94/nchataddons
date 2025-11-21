@@ -422,6 +422,10 @@
     pointer-events: none; /* never intercept clicks */
 }
 
+#private_content {
+    padding: 10px 10px;
+}
+
 #my_menu, #ca-menu-panel, #warp_show_chat, #container_chat, #wrap_chat, #chat_center, #chat_left, #private_content, #chat_right {
     height: 100% !important;
 }
