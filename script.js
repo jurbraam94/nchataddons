@@ -547,15 +547,11 @@
             this.LAST_DM_UID_KEY = `${this.STORAGE_KEY_PREFIX}.lastDmUid`;
             this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
-
-            this.MAX_LOGIDS_PER_CONVERSATION = 100;
             this.activeTextInput = null;
 
             /* ========= App State ========= */
             this.options = {};
             this.state = {
-                READY: false,
-                isPruning: false,
                 CHAT_CTX: {
                     caction: '', room: '', notify: '', curset: ''
                 }
@@ -598,10 +594,6 @@
                 installed: false
             };
 
-            /* ========= Misc ========= */
-            this.debug = this.debug || (() => {
-            });
-
             // Dynamic debug method
             this.debug = (...args) => {
                 if (this.debugMode) {
@@ -636,9 +628,7 @@
                         ca_log_dot_red: '.ca-log-dot-red',
                         ca_log_dot_gray: '.ca-log-dot-gray',
                         ca_log_user: '.ca-log-user',
-                        ca_log_box: '.ca-log-box',
                         ca_expand_indicator: '.ca-expand-indicator',
-                        ca_expanded_indicator: '.ca-expanded',
                         ca_user_link: '.ca-user-link',
                         ca_dm_link: '.ca-dm-link',
                         ca_dm_right: '.ca-dm-right',
@@ -651,9 +641,7 @@
                         ca_replied_messages: '.ca-replied-messages',
                         ca_sent_chip_all_read: '.ca-sent-chip-all-read',
                         ca_sent_chip_unread: '.ca-sent-chip-unread',
-                        user_item: '.user_item',
-                        ca_ck_wrap: '.ca-ck-wrap',
-                        ca_ck: '.ca-ck',
+                        user_item: '.user_item'
                     },
                     sent: '#ca-log-box-sent',
                     received: '#ca-log-box-received',
@@ -663,33 +651,15 @@
                     clear: '#ca-log-clear',
                     general: '#ca-logs-box'
                 },
-                // nav
-                nav: {
-                    spec: '#ca-nav-specific',
-                    bc: '#ca-nav-bc',
-                },
                 privateChat: {
-                    privateCenter: '#private_center',
-                    privateInputBox: '#private_input_box',
-                    privateTop: '#private_top',
-                    privInput: '#message_content'
+                    privateInputBox: '#private_input_box'
                 },
                 users: {
-                    femaleUsers: '#ca-female-users',
                     femaleUserCount: '#ca-female-users-count',
                     otherUsersContainer: '#ca-other-users-container',
                     femaleUsersContainer: '#ca-female-users-container',
                     otherUserCount: '#ca-other-users-count',
-                    containerUser: '#container_user',
-                    online: '.online_user',
-                    chatRightData: '#chat_right_data',
-                    chatRight: '#chat_right',
-                    combined: '#container_user, .online_user, #chat_right_data',
-                    globalChat: '#global_chat',
-                    chatHead: '#chat_head',
-                    wrapFooter: '#wrap_footer',
-                    topChatContainer: '#top_chat_container',
-                    caUserListHeader: '.ca-user-list-header'
+                    online: '.online_user'
                 }
             };
             this.sel.raw = {};
@@ -876,7 +846,7 @@
 
             // Start loops; first user refresh happens here
             await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
-            this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000});
+            ///this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000});
 
             // scroll after logs have been restored
             this.scrollToBottom(this.ui.repliedMessageBox);
@@ -1456,47 +1426,79 @@
         }
 
         appendCustomActionsToBar() {
+            // Use the existing toolbar by ID, not class
             const bar = document.getElementById('right_panel_bar');
 
             if (!bar) {
-                console.error('Bar not found');
+                console.warn('[CA] appendCustomActionsToBar: #right_panel_bar not found');
                 return;
             }
 
-            // Existing refresh button...
+            this.sel.raw.rightPanelBar = 'right_panel_bar';
+            this.sel.raw.rightPanelBarPanelOption = 'panel_option';
+
+            const existingOption = bar.getElementsByClassName('panel_option')[0];
+            if (!existingOption) {
+                console.warn('[CA] appendCustomActionsToBar: no existing .panel_option found');
+            }
+
+            // --- Refresh button ---
             const refreshBtn = document.createElement('div');
             refreshBtn.classList.add('panel_option', 'panel_option_refresh');
-            refreshBtn.title = 'Refresh users';
-            refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
+            refreshBtn.innerHTML = '<i class="fa fa-sync" aria-hidden="true"></i>';
+            refreshBtn.title = 'Reload users and logs';
 
-            refreshBtn.addEventListener('click', async () => {
-                await this.refreshUserList();
-                refreshBtn.classList.remove('loading');
+            refreshBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.reloadUsersAndLogs();
             });
 
-            // NEW: templates button
+            // --- Templates button ---
             const templatesBtn = document.createElement('div');
             templatesBtn.classList.add('panel_option', 'panel_option_templates');
+            templatesBtn.innerHTML = '<i class="fa fa-comment-dots" aria-hidden="true"></i>';
             templatesBtn.title = 'Predefined messages';
 
-            // Use an icon you like; example using a font-awesome comments icon:
-            templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
-
-            templatesBtn.addEventListener('click', (event) => {
-                event.preventDefault();
-                this.openGlobalPredefinedTemplatesPopup();
+            templatesBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openPredefinedBar(bar);
             });
 
-            const firstButton = bar.querySelector('.panel_option');
-            if (firstButton) {
-                bar.insertBefore(refreshBtn, firstButton);
-                bar.insertBefore(templatesBtn, firstButton.nextSibling);
+            // --- Settings button (cog, SVG, same style/color) ---
+            const settingsBtn = document.createElement('div');
+            settingsBtn.classList.add('panel_option', 'panel_option_settings');
+            settingsBtn.title = 'Settings (debug & verbose)';
+
+            const settingsIconHtml = `
+        <span class="ca-log-action">
+            ${this.buildSvgIconString(
+                'lucide lucide-settings',
+                `
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65 1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6 0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65 1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65 1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65 1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65 1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65 1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>
+                `,
+                true
+            )}
+        </span>
+    `;
+            settingsBtn.innerHTML = settingsIconHtml;
+
+            settingsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openSettingsPopup();
+            });
+
+            // Insert in front so they appear together with the existing buttons
+            if (existingOption) {
+                bar.insertBefore(refreshBtn, existingOption);
+                bar.insertBefore(templatesBtn, existingOption);
+                bar.insertBefore(settingsBtn, existingOption);
             } else {
                 bar.appendChild(refreshBtn);
                 bar.appendChild(templatesBtn);
+                bar.appendChild(settingsBtn);
             }
         }
-
 
         /* ---------- Cookie helpers ---------- */
         _getCookie(name) {
@@ -1565,7 +1567,7 @@
 
         // ===== Clear Event Logs loop =====
         startClearEventLogLoop({
-                                   intervalMs = 5 * 60 * 1000,
+                                   intervalMs = 30 * 60 * 1000,
                                    runImmediately = true
                                } = {}) {
             this.stopClearEventLogLoop?.();
@@ -1606,8 +1608,13 @@
             });
 
             const html = await res.text();
-            await this.processUserListResponse(html);
-            this.logEventLine(`Refreshed user list at ${this.timeHHMMSS()}`);
+
+            try {
+                await this.processUserListResponse(html);
+            } catch (e) {
+                console.error(e);
+                this.logEventLine(`Refreshed user list failed at ${this.timeHHMMSS()}. Check the console for a more detailed error message.`);
+            }
         }
 
         /* ---------- Helpers ---------- */
@@ -1656,24 +1663,51 @@ Private send interception
             const content = logData.log_content || '';
 
             // Look up user - ensure we always have a valid user object
-            let dmSentToUser = await this.UserStore.get(targetUid);
+            const dmSentToUser = await this.UserStore.get(targetUid);
 
             if (!dmSentToUser) {
-                console.error(`[PrivateSend] Could not find user with ID ${targetUid}. Could not process outgoing private message`);
+                console.error(
+                    `[PrivateSend] Could not find user with ID ${targetUid}. ` +
+                    `Could not process outgoing private message`
+                );
                 return;
             }
 
-            console.log('\nIntercepted native message send to', dmSentToUser.name || targetUid, '(ID:', targetUid, ')');
+            console.log(
+                '\nIntercepted native message send to',
+                dmSentToUser.name || targetUid,
+                '(ID:',
+                targetUid,
+                ')'
+            );
 
+            // Always log the outgoing message
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
-            const affectedLogs = this.ActivityLogStore.MarkReadUntilChatLogId(targetUid, dmSentToUser.parsedDmInUpToLog);
 
-            this.updateProfileChipByUid(dmSentToUser.uid);
+            // Mark old incoming messages as read, if any
+            const affectedLogs =
+                this.ActivityLogStore.MarkReadUntilChatLogId(
+                    targetUid,
+                    dmSentToUser.parsedDmInUpToLog
+                );
 
+            // Only touch the UI if there are logs to update
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
-                this.debug(`There are no logs to process the read status for.`);
+                this.debug('[PrivateSend] No logs to update read status for user:', targetUid);
                 return;
             }
+
+            // Only update chips if user is actually visible in the DOM
+            const userEl = this.findUserById(dmSentToUser.uid);
+            if (userEl) {
+                this.updateProfileChip(dmSentToUser.uid, userEl);
+            } else {
+                this.debug(
+                    '[PrivateSend] Skipping profile chip update; user element not found for uid:',
+                    dmSentToUser.uid
+                );
+            }
+
             this.processReadStatusForLogs(affectedLogs);
         }
 
@@ -1908,9 +1942,11 @@ Private send interception
                 this.ui.repliedMessageBox,
                 this.ui.unrepliedMessageBox,
                 this.ui.sentMessagesBox,
-                // enable hover preview in the user list
+                this.ui.presenceBox,
+                this.ui.loggingBox,
                 this.ui.userContainersWrapper
-            ].filter(Boolean);
+            ];
+
 
             const publicChatContainer = document.getElementById('chat_logs_container');
 
@@ -2116,7 +2152,7 @@ Private send interception
                 this.verbose(privateChatLog);
                 const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
                 if (res.accepted) {
-                    console.log(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                    this.debung(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
                     this.UserStore.setParsedDmInUpToLog(user.uid, res.logId);
                 } else {
                     this.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
@@ -2245,27 +2281,49 @@ Private send interception
             }
         }
 
-        buildLogHTML(kind, content) {
-            const text = content;
-            const status = typeof content === 'object' ? content?.status : null;
-            this.verbose(`Building log HTML with kind=${kind},content=${text}`);
+        buildLogHTML(kind, content, user) {
+            const text = String(content || '');
 
-            switch (kind) {
-                case 'dm-in':
-                    return `${text}`;
-                case 'dm-out':
-                    return `${text}`;
-                case 'send-fail': // keep if you still log failures
-                    return `failed (${String(status || 0)}) — ${text}`;
-                case 'login':
-                    return `logged on`;
-                case 'logout':
-                    return `logged off`;
-                case 'event':
-                    return `<span class="${this.sel.log.classes.ca_log_text}">${text || 'Event'}</span>`;
-                default:
-                    return `${text}`;
+            const escapeHTML = (s) => String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const escapeAttr = (s) => String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Special handling for avatar-change events coming from [USER_UPDATE]
+            if (kind === 'event') {
+                const m = text.match(/^\[USER_UPDATE\]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
+
+                if (m) {
+                    const userName = m[1] || '';
+                    const newAvatar = (m[3] || '').trim();
+                    const safeName = escapeHTML(userName);
+                    const safeSrc = escapeAttr(newAvatar || '');
+
+                    // Show a clean message + bigger image, no visible raw URL
+                    return `
+                <span class="ca-log-text-main">
+                    ${safeName} has changed ${user.isFemale ? `her` : `his`} avatar:
+                </span>
+                <a href="${safeSrc}" target="_blank" rel="noopener noreferrer">
+                    <img class="chat_image ca-log-avatar-image" src="${safeSrc}" alt="New avatar of ${safeName}">
+                </a>
+            `;
+                }
+
+                // Fallback for other event logs
+                return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
             }
+
+            // Other kinds (dm-in, dm-out, etc.) – keep as text, but avoid nesting .ca-log-text
+            return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
         }
 
         buildProfileUrlForId(uid) {
@@ -2298,21 +2356,43 @@ Private send interception
         }
 
         async _onLogClickGeneric(e) {
-            // Find the clicked log entry
-            const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
-            if (!entry) return;
+            if (!e || !e.target) {
+                console.error('[CA] _onLogClickGeneric: invalid event/target', e);
+                return;
+            }
 
-            this.verbose('Log entry clicked:', entry);
+            const target = e.target;
+            const entry = target.closest?.(this.sel.log.classes.ca_log_entry);
+            if (!entry) {
+                // Click outside of a log entry
+                return;
+            }
 
-            // Route by data-action, if present
-            const actionEl = e.target.closest?.('[data-action]');
+            const uid = entry.getAttribute('data-uid') || '';
+            const isSystem = (uid === 'system');
+
+            this.verbose('Log entry clicked:', {entry, uid, isSystem});
+
+            // --- 1) Username: always profile ---
+            const userLinkEl = target.closest?.(this.sel.raw.log.classes.ca_user_link);
+            if (userLinkEl && uid && !isSystem) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation?.();
+
+                this.openProfileOnHost(uid);
+                return;
+            }
+
+            // --- 2) data-action based buttons (expand/delete/profile/explicit DM) ---
+            const actionEl = target.closest?.('[data-action]');
             if (actionEl) {
                 const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
 
                 if (action === 'toggle-expand') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation();
+                    e.stopImmediatePropagation?.();
 
                     const expanded = entry.classList.toggle('ca-expanded');
 
@@ -2325,39 +2405,104 @@ Private send interception
                     return;
                 }
 
+                if (action === 'delete-log') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation?.();
+
+                    const guid = entry.getAttribute('data-guid');
+                    if (guid && this.ActivityLogStore?.remove) {
+                        this.ActivityLogStore.remove(guid);
+                    } else {
+                        console.warn('[CA] delete-log: no guid or ActivityLogStore.remove missing', {guid});
+                    }
+                    entry.remove();
+                    return;
+                }
+
                 if (action === 'open-profile') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    this.openProfileOnHost(entry.getAttribute('data-uid') || '');
+                    e.stopImmediatePropagation?.();
+
+                    if (!uid || isSystem) {
+                        this.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+                        return;
+                    }
+
+                    this.openProfileOnHost(uid);
                     return;
                 }
 
                 if (action === 'open-dm') {
                     e.preventDefault();
-                    const uid = entry.getAttribute('data-uid') || '';
+                    e.stopPropagation();
+                    e.stopImmediatePropagation?.();
+
+                    if (!uid || isSystem) {
+                        this.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
+                        return;
+                    }
+
+                    if (!this.UserStore?.getOrFetch) {
+                        console.error('[CA] open-dm: UserStore.getOrFetch is not available');
+                        return;
+                    }
+
                     const user = await this.UserStore.getOrFetch(uid);
-                    console.log('Opening private with: ', uid, user.name, user.avatar);
+                    if (!user || !user.uid) {
+                        console.error('[CA] open-dm: could not fetch user for uid', uid, user);
+                        return;
+                    }
+
+                    console.log('[CA] Opening private (open-dm) with:', uid, user.name, user.avatar);
                     this.applyLegacyAndOpenDm(user);
                     return;
                 }
 
-                if (action === 'delete-log') {
-                    e.preventDefault();
-                    const guid = entry.getAttribute('data-guid');
-                    if (guid) this.ActivityLogStore?.remove?.(guid);
-                    entry.remove();
+                // Unknown data-action: fall through to generic handling below
+            }
+
+            // --- 3) Generic DM click areas: text + envelope + images ---
+            const logTextSel = this.sel.raw.log.classes.ca_log_text;
+            const dmLinkSel = this.sel.raw.log.classes.ca_dm_link;
+
+            const dmArea =
+                target.closest?.(logTextSel) ||
+                target.closest?.(dmLinkSel) ||
+                target.closest?.('img.chat_image');
+
+            if (dmArea && uid && !isSystem) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation?.();
+
+                if (!this.UserStore?.getOrFetch) {
+                    console.error('[CA] Generic DM click: UserStore.getOrFetch not available');
                     return;
                 }
 
-                // Unknown action → do nothing
+                const user = await this.UserStore.getOrFetch(uid);
+                if (!user || !user.uid) {
+                    console.error('[CA] Generic DM click: could not fetch user for uid', uid, user);
+                    return;
+                }
+
+                console.log('[CA] Opening private (generic) with:', uid, user.name, user.avatar);
+                this.applyLegacyAndOpenDm(user);
                 return;
             }
 
-            // No data-action: background click falls back to open profile
-            e.preventDefault();
-            this.openProfileOnHost(entry.getAttribute('data-uid') || '');
+            // --- 4) Fallback: click on row background → profile (non-system only) ---
+            if (uid && !isSystem) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation?.();
+
+                this.openProfileOnHost(uid);
+            }
         }
+
 
         resolveHostFn(name) {
             const fromSelf = (typeof window[name] === 'function') ? window[name] : null;
@@ -2559,7 +2704,7 @@ Private send interception
             });
 
             // Age (only if exists)
-            if (updatedUserJson.age) {
+            if (updatedUserJson?.age > 0) {
                 const ageSpan = document.createElement('span');
                 ageSpan.className = 'ca-age';
                 ageSpan.textContent = ` (${updatedUserJson.age})`;
@@ -2689,7 +2834,6 @@ Private send interception
             }
 
             const addSegment = (text, style) => {
-                this.logEventLine(text);
                 segments.push({text, style});
             };
 
@@ -2721,6 +2865,24 @@ Private send interception
                     this._applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
                 } else {
                     this.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
+                }
+
+                // --- NEW: log avatar changes into the event log with this user ---
+                if (changedKeys.includes('avatar')) {
+                    const oldAvatar = existingUserJsonFromStore.avatar || '';
+                    const newAvatar = updatedExistingUserJson.avatar || '';
+                    const pronoun = updatedExistingUserJson.isFemale ? 'her' : 'his';
+
+                    const avatarImgHtml = newAvatar
+                        ? `<br><a href="${newAvatar}" target="_blank" rel="noopener noreferrer">
+                    <img src="${newAvatar}" class="avav ca-log-avatar-preview" alt="Avatar of ${updatedExistingUserJson.name}">
+               </a>`
+                        : '';
+
+                    const text = `[USER_UPDATE] ${updatedExistingUserJson.name} has changed ${pronoun} Avatar (${oldAvatar} → ${newAvatar})${avatarImgHtml}`;
+
+                    // pass the user so the log entry is attributed to them (not System)
+                    this.logEventLine(text, updatedExistingUserJson);
                 }
             }
 
@@ -3243,6 +3405,7 @@ Private send interception
                 content: String(content),
                 quote: '0'
             }).toString();
+
             return this._withTimeout(signal => {
                 return fetch('/system/action/private_process.php', {
                     method: 'POST', credentials: 'include', signal,
@@ -3266,6 +3429,7 @@ Private send interception
                 }));
             }, 10000);
         }
+
 
         async searchUserRemoteByUsername(username) {
             const token = this.getToken();
@@ -3383,18 +3547,18 @@ Private send interception
             }
         }
 
-        /* ---------- Sent chip & badges ---------- */
         updateProfileChipByUid(uid) {
             const userEl = this.findUserById(uid);
 
             if (!userEl) {
-                console.warn('updateProfileChip: user element not found for uid:', uid);
-                console.warn('This is probably because the user is not online anymore.');
+                // User is probably offline or not in the current list; nothing to update.
+                this.debug?.('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
                 return;
             }
 
             this.updateProfileChip(uid, userEl);
         }
+
 
         _createChipForUserItem(userEl) {
             let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
@@ -4293,6 +4457,130 @@ Private send interception
             this.togglePopup('ca-broadcast-popup');
         }
 
+        openSettingsPopup() {
+            const popup = this.createSettingsPopup();
+            if (!popup) {
+                console.error('[CA] openSettingsPopup: popup not created');
+                return;
+            }
+
+            const debugSettingsCheckbox = popup.querySelector('#ca-debug-checkbox-settings');
+            const verboseSettingsCheckbox = popup.querySelector('#ca-verbose-checkbox-settings');
+
+            if (!debugSettingsCheckbox || !verboseSettingsCheckbox) {
+                console.error('[CA] openSettingsPopup: settings checkboxes not found');
+                return;
+            }
+
+            debugSettingsCheckbox.checked = !!this.debugMode;
+            verboseSettingsCheckbox.checked = !!this.verboseMode;
+
+            // Also keep the nav checkboxes in sync if they exist
+            if (this.ui && this.ui.debugCheckbox) {
+                this.ui.debugCheckbox.checked = !!this.debugMode;
+            }
+            if (this.ui && this.ui.verboseCheckbox) {
+                this.ui.verboseCheckbox.checked = !!this.verboseMode;
+            }
+
+            const applyDebugChange = (enabled) => {
+                const safeEnabled = !!enabled;
+                this.debugMode = safeEnabled;
+
+                this._setCookie(this.DEBUG_COOKIE, String(safeEnabled));
+                localStorage.setItem(this.DEBUG_MODE_KEY, String(safeEnabled));
+                if (this.Store) {
+                    this.Store.set(this.DEBUG_MODE_KEY, safeEnabled);
+                }
+
+                console.log(
+                    safeEnabled
+                        ? '[DEBUG] Debug mode enabled'
+                        : 'Debug mode disabled'
+                );
+
+                if (this.ui && this.ui.debugCheckbox) {
+                    this.ui.debugCheckbox.checked = safeEnabled;
+                }
+                if (debugSettingsCheckbox.checked !== safeEnabled) {
+                    debugSettingsCheckbox.checked = safeEnabled;
+                }
+            };
+
+            const applyVerboseChange = (enabled) => {
+                const safeEnabled = !!enabled;
+                this.verboseMode = safeEnabled;
+
+                this._setCookie(this.VERBOSE_COOKIE, String(safeEnabled));
+                localStorage.setItem(this.VERBOSE_MODE_KEY, String(safeEnabled));
+                if (this.Store) {
+                    this.Store.set(this.VERBOSE_MODE_KEY, safeEnabled);
+                }
+
+                console.log(
+                    safeEnabled
+                        ? '[VERBOSE] Verbose mode enabled'
+                        : 'Verbose mode disabled'
+                );
+
+                if (this.ui && this.ui.verboseCheckbox) {
+                    this.ui.verboseCheckbox.checked = safeEnabled;
+                }
+                if (verboseSettingsCheckbox.checked !== safeEnabled) {
+                    verboseSettingsCheckbox.checked = safeEnabled;
+                }
+            };
+
+            // Only wire once per popup instance
+            if (!debugSettingsCheckbox.dataset.caWired) {
+                debugSettingsCheckbox.dataset.caWired = '1';
+                debugSettingsCheckbox.addEventListener('change', (e) => {
+                    applyDebugChange(!!e.target.checked);
+                });
+            }
+
+            if (!verboseSettingsCheckbox.dataset.caWired) {
+                verboseSettingsCheckbox.dataset.caWired = '1';
+                verboseSettingsCheckbox.addEventListener('change', (e) => {
+                    applyVerboseChange(!!e.target.checked);
+                });
+            }
+
+            this.togglePopup('ca-settings-popup');
+        }
+
+
+        createSettingsPopup() {
+            const bodyHtml = `
+              <div class="ca-section">
+                <div class="ca-section-title">
+                  <span>Logging</span>
+                </div>
+
+                <div class="ca-row">
+                  <label class="ca-debug-toggle" title="Enable debug logging">
+                    <input type="checkbox" id="ca-debug-checkbox-settings">
+                    <span>Debug</span>
+                  </label>
+                </div>
+
+                <div class="ca-row">
+                  <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
+                    <input type="checkbox" id="ca-verbose-checkbox-settings">
+                    <span>Verbose</span>
+                  </label>
+                </div>
+              </div>
+            `;
+
+            return this.ensurePopup({
+                id: 'ca-settings-popup',
+                title: 'Settings',
+                bodyHtml
+            });
+        }
+
+
         _bindStaticRefs() {
             this.ui.sentMessagesBox = this.qs(this.sel.log.sent);
             this.ui.receivedMessagesBox = this.qs(this.sel.log.received);
@@ -4301,6 +4589,18 @@ Private send interception
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
             this.ui.loggingBox = this.qs(this.sel.log.general);
+
+            // Debug / verbose checkboxes in the panel nav
+            this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
+            this.ui.verboseCheckbox = this.qs('#ca-verbose-checkbox');
+
+            if (!this.ui.debugCheckbox) {
+                console.warn('[CA] _bindStaticRefs: #ca-debug-checkbox not found');
+            }
+
+            if (!this.ui.verboseCheckbox) {
+                console.warn('[CA] _bindStaticRefs: #ca-verbose-checkbox not found');
+            }
         }
 
         _wireDebugCheckbox() {
@@ -4599,35 +4899,38 @@ Private send interception
             // shorthand for classes
             const C = this.sel.raw.log.classes;
 
-            const html = this.buildLogHTML(kind, activityLog.content);
+            const html = this.buildLogHTML(kind, activityLog.content, user);
             const detailsHTML = this.decodeHTMLEntities(html);
 
-            const userHTML = kind !== 'event'
-                ? `
-            <div class="${C.ca_log_cell}">
-                <span class="${C.ca_log_user}">
-                    ${this.userLinkHTML(user)}
-                </span>
-            </div>
-          `
-                : '';
+            const isSystemUser = String(user.uid) === 'system';
 
-            const dmIconHTML = kind !== 'event'
+            const userHTML = `
+                <div class="${C.ca_log_cell}">
+                    <span class="${C.ca_log_user}">
+                        ${
+                isSystemUser
+                    // System: show label, but not clickable
+                    ? `<strong>${user.name || 'System'}</strong>`
+                    // Real user: normal clickable profile link
+                    : this.userLinkHTML(user)
+            }
+                    </span>
+                </div>
+              `;
+
+            // Only show DM icon for real users and non-event logs
+            const dmIconHTML = (kind !== 'event' && !isSystemUser)
                 ? `
-                    <a href="#"
-                       class="${C.ca_dm_link} ${C.ca_dm_right} ${C.ca_log_action}"
-                       data-action="open-dm"
-                       title="Direct message">
-                       ${this.buildSvgIconString(
+            <a href="#"
+               class="${C.ca_dm_link} ${C.ca_dm_right} ${C.ca_log_action}"
+               data-action="open-dm"
+               title="Direct message">
+               ${this.buildSvgIconString(
                     'lucide lucide-mail',
                     `
                                 <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
                                 <polyline points="3 7,12 13,21 7"></polyline>
-                            `
-                )}
-                    </a>
-                  `
-                : '';
+                            `)} </a> ` : '';
 
             const deleteIconHTML = `
                 <a href="#"
@@ -4639,31 +4942,35 @@ Private send interception
                 `
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
-                        `
-            )}
-                </a>
-            `;
+                        `)}</a> `;
 
             const guidAttr = guid != null ? ` data-guid="${String(guid)}"` : '';
+
+            const textAction = (kind === 'dm-out')
+                ? 'toggle-expand'
+                : (kind === 'event' ? '' : 'open-dm');
+
+            const dataActionAttr = textAction
+                ? ` data-action="${textAction}"`
+                : '';
 
             const entryHTML = `
                 <div class="ca-log-entry ca-log-${mappedKind}"
                      data-uid="${String(user.uid)}"${guidAttr}>
                     <span class="ca-log-ts">${displayTs}</span>
-        
+            
                     <div class="${C.ca_log_cell}">
                         <span class="${C.ca_log_dot} ${C.ca_log_dot_gray}">
                             ●
                         </span>
                     </div>
-        
+            
                     ${userHTML}
-        
-                    <span class="${C.ca_log_text}"
-                          data-action="${kind === 'dm-out' ? 'toggle-expand' : 'open-dm'}">
+            
+                    <span class="${C.ca_log_text}"${dataActionAttr}>
                         ${detailsHTML}
                     </span>
-        
+            
                     <div class="${C.ca_log_actions}">
                         ${dmIconHTML}
                         ${deleteIconHTML}
@@ -4731,9 +5038,28 @@ Private send interception
             }
         }
 
-        logEventLine(content) {
-            const user = {uid: 'system', name: 'System'};
-            this.logLine('event', content, user);
+        logEventLine(content, user) {
+            let finalUser = null;
+
+            // If a full user object is passed (like updatedExistingUserJson)
+            if (user && typeof user === 'object') {
+                finalUser = user;
+            } else if (typeof user === 'string' && user) {
+                // If only a uid string is passed, try to look it up
+                finalUser = this.UserStore?.get(user) || null;
+            }
+
+            // Fallback: System user if nothing valid was passed
+            if (!finalUser) {
+                const systemUserFromStore = this.UserStore?.get('system');
+                finalUser = systemUserFromStore || {
+                    uid: 'system',
+                    name: 'System',
+                    avatar: ''
+                };
+            }
+
+            this.logLine('event', content, finalUser);
         }
 
         logLine(kind, content, user, guid) {

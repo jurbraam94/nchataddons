@@ -529,11 +529,14 @@
     font-size: 14px;
 }
 
-/* Bigger inline image previews inside log entries */
 .ca-log-text img.chat_image {
     max-width: 48px;
     max-height: 48px;
     border-radius: 4px;
+
+    display: block;
+    margin-top: 4px;
+    vertical-align: top;
 }
 
 #ca-log-image-preview {
@@ -792,6 +795,7 @@
     cursor: pointer;
 }
 
+
 .ca-log-entry strong {
     font-weight: 700;
 }
@@ -944,7 +948,7 @@ svg.svg-large {
     display: flex;
     gap: 12px;
     align-items: start;
-    height: 200px;
+    height: 300px;
 }
 
 .ca-log-dual .ca-section {
