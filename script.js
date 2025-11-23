@@ -345,18 +345,28 @@
             return !!this.get(uid);
         }
 
-        // Merge a single patch with existing (NO SAVE)
         _mergeUser(newUser) {
             if (!newUser || newUser.uid == null) {
-                console.error('_mergeUser requires patch.uid');
+                throw new Error('_mergeUser requires patch.uid');
             }
             const existing = this.get(newUser.uid);
-            return existing ? {...existing, ...newUser} : {
+            if (existing) {
+                return {
+                    ...existing,
+                    ...newUser
+                };
+            }
+
+            // defaults for new users
+            return {
                 ...newUser,
                 parsedDmInUpToLog: 0,
-                isIncludedForBroadcast: true
+                isIncludedForBroadcast: true,
+                noNewPrivateDmTries: 0,
+                stalePrivateDmBeforeDate: ''  // empty string means "no stale cutoff"
             };
         }
+
 
         set(user) {
             if (!user || user.uid == null) {
@@ -380,7 +390,7 @@
         }
 
         getParsedDmInUpToLog(uid) {
-            const u = this.get(uid);
+            const u = this.getOrFetch(uid);
             if (!u) {
                 console.error(`User ${uid} not found, cannot get parsedDmInUpToLog`);
                 return null;
@@ -1426,42 +1436,40 @@
         }
 
         appendCustomActionsToBar() {
-            // Use the existing toolbar by ID, not class
             const bar = document.getElementById('right_panel_bar');
 
             if (!bar) {
-                console.warn('[CA] appendCustomActionsToBar: #right_panel_bar not found');
+                console.error('Bar not found');
                 return;
             }
-
-            this.sel.raw.rightPanelBar = 'right_panel_bar';
-            this.sel.raw.rightPanelBarPanelOption = 'panel_option';
 
             const existingOption = bar.getElementsByClassName('panel_option')[0];
             if (!existingOption) {
                 console.warn('[CA] appendCustomActionsToBar: no existing .panel_option found');
             }
 
-            // --- Refresh button ---
+            // Existing refresh button...
             const refreshBtn = document.createElement('div');
             refreshBtn.classList.add('panel_option', 'panel_option_refresh');
-            refreshBtn.innerHTML = '<i class="fa fa-sync" aria-hidden="true"></i>';
-            refreshBtn.title = 'Reload users and logs';
+            refreshBtn.title = 'Refresh users';
+            refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
 
-            refreshBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.reloadUsersAndLogs();
+            refreshBtn.addEventListener('click', async () => {
+                await this.refreshUserList();
+                refreshBtn.classList.remove('loading');
             });
 
-            // --- Templates button ---
+            // NEW: templates button
             const templatesBtn = document.createElement('div');
             templatesBtn.classList.add('panel_option', 'panel_option_templates');
-            templatesBtn.innerHTML = '<i class="fa fa-comment-dots" aria-hidden="true"></i>';
             templatesBtn.title = 'Predefined messages';
 
-            templatesBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.openPredefinedBar(bar);
+            // Use an icon you like; example using a font-awesome comments icon:
+            templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
+
+            templatesBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.openGlobalPredefinedTemplatesPopup();
             });
 
             // --- Settings button (cog, SVG, same style/color) ---
@@ -1469,25 +1477,25 @@
             settingsBtn.classList.add('panel_option', 'panel_option_settings');
             settingsBtn.title = 'Settings (debug & verbose)';
 
-            const settingsIconHtml = `
-        <span class="ca-log-action">
-            ${this.buildSvgIconString(
+            settingsBtn.innerHTML = `
+                <span class="ca-log-action">
+                    ${this.buildSvgIconString(
                 'lucide lucide-settings',
                 `
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65 1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6 0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65 1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65 1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65 1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65 1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65 1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>
-                `,
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65 1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6 0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65 1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65 1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65 1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65 1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65 1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>
+                        `,
                 true
             )}
-        </span>
-    `;
-            settingsBtn.innerHTML = settingsIconHtml;
+                </span>
+            `;
 
             settingsBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.openSettingsPopup();
             });
 
+            const firstButton = bar.querySelector('.panel_option');
             // Insert in front so they appear together with the existing buttons
             if (existingOption) {
                 bar.insertBefore(refreshBtn, existingOption);
@@ -1923,8 +1931,30 @@ Private send interception
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'from myself'};
             }
 
+            // --- NEW: per-user stale datetime cutoff ---
+            if (user.stalePrivateDmBeforeDate && privateChatLog.log_date) {
+                const msgNum = this.parseLogDateToNumber(
+                    this.ToHourMinuteSecondFormat(privateChatLog.log_date)
+                );
+                const cutoffNum = this.parseLogDateToNumber(
+                    this.ToHourMinuteSecondFormat(user.stalePrivateDmBeforeDate)
+                );
+
+                if (msgNum <= cutoffNum) {
+                    this.debug(
+                        `Stale DM cutoff: skipping message ${privateChatLog.log_id} for uid ${user.uid}; ` +
+                        `cutoff=${user.stalePrivateDmBeforeDate}`
+                    );
+                    return {accepted: false, logId: privateChatLog.log_id, reason: 'stale-cutoff'};
+                }
+            }
+
+            // Existing initial fetch + watermark logic
             if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
-                this.debug(`Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; watermark=${this.getGlobalWatermark()}`);
+                this.debug(
+                    `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
+                    `watermark=${this.getGlobalWatermark()}`
+                );
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'too old'};
             }
 
@@ -1932,7 +1962,12 @@ Private send interception
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'already shown'};
             }
 
-            this.logLine('dm-in', this.decodeHTMLEntities(privateChatLog?.log_content), user, privateChatLog.log_id);
+            this.logLine(
+                'dm-in',
+                this.decodeHTMLEntities(privateChatLog?.log_content),
+                user,
+                privateChatLog.log_id
+            );
             this.updateProfileChipByUid(user.uid);
             return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
         }
@@ -2094,44 +2129,94 @@ Private send interception
             console.log('[CA] Log image hover preview installed (logs + user list + public chat)');
         }
 
-
         /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, privateChatLogs) {
-            if (!privateChatLogs.length) {
-                console.log(`No new private chat logs for user ${uid}`);
-                return;
-            }
+            const uidStr = String(uid);
 
-            const user = await this.UserStore.getOrFetch(String(uid));
+            const user = await this.UserStore.getOrFetch(uidStr);
             if (!user) {
-                console.error('[caProcessPrivateLogResponse] Could not resolve user for uid:', uid);
+                console.error('[caProcessPrivateLogResponse] Could not resolve user for uid:', uidStr);
                 return;
             }
 
-            let parsedDmInUpToLog = user.parsedDmInUpToLog;
+            let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
             const initialFetch = parsedDmInUpToLog === 0;
             let newMessages = 0;
             let skipped = '';
 
-            for (const privateChatLog of privateChatLogs) {
-                const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, parsedDmInUpToLog);
-                if (!res.accepted) {
-                    skipped += `Skipped ${res.logId}: ${res.reason}\n`;
-                    continue;
-                } else {
-                    console.log(`New message ${res.logId} for user ${uid}`, privateChatLog);
-                }
+            const hasLogs = Array.isArray(privateChatLogs) && privateChatLogs.length > 0;
 
-                if (res.logId > parsedDmInUpToLog) {
-                    parsedDmInUpToLog = res.logId;
-                }
+            if (hasLogs) {
+                for (const privateChatLog of privateChatLogs) {
+                    const res = this.processSinglePrivateChatLog(
+                        privateChatLog,
+                        user,
+                        initialFetch,
+                        parsedDmInUpToLog
+                    );
 
-                newMessages++;
+                    if (!res.accepted) {
+                        skipped += `Skipped ${res.logId}: ${res.reason}\n`;
+                        continue;
+                    }
+
+                    console.log(`New message ${res.logId} for user ${uidStr}`, privateChatLog);
+
+                    if (res.logId > parsedDmInUpToLog) {
+                        parsedDmInUpToLog = res.logId;
+                    }
+
+                    newMessages++;
+                }
+            } else {
+                console.log(`No new private chat logs for user ${uidStr}`);
             }
 
-            if (parsedDmInUpToLog > user.parsedDmInUpToLog) {
-                this.UserStore.setParsedDmInUpToLog(uid, parsedDmInUpToLog);
-                this.debug(`Set last read for user ${uid} to ${parsedDmInUpToLog}`);
+            // ---- update user fields (per-user state) ----
+            const updatedUser = {...user};
+            let shouldSave = false;
+
+            // 1) If we accepted messages → update last read + reset stale flags
+            if (newMessages > 0) {
+                if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
+                    updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
+                    this.debug(`Set last read for user ${uidStr} to ${parsedDmInUpToLog}`);
+                    shouldSave = true;
+                }
+
+                if (updatedUser.noNewPrivateDmTries) {
+                    updatedUser.noNewPrivateDmTries = 0;
+                    shouldSave = true;
+                }
+                if (updatedUser.stalePrivateDmBeforeDate) {
+                    updatedUser.stalePrivateDmBeforeDate = '';
+                    this.debug(`[PrivateChat] Clearing stalePrivateDmBeforeDate for uid ${uidStr} after new messages`);
+                    shouldSave = true;
+                }
+            } else {
+                // 2) Nothing was accepted → increase per-user "no new parse" counter
+                const prevTries = Number(user.noNewPrivateDmTries) || 0;
+                const tries = prevTries + 1;
+                updatedUser.noNewPrivateDmTries = tries;
+                shouldSave = true;
+
+                console.warn(`[PrivateChat] No messages accepted for uid ${uidStr} (attempt ${tries})`);
+
+                // After 3 tries, apply your solution:
+                // - if we know "last" → move parsedDmInUpToLog to that
+                // - else → store stale datetime
+                if (tries >= 3) {
+                    const wm = this.getGlobalWatermark();
+                    updatedUser.stalePrivateDmBeforeDate = this.getTimeStampInWebsiteFormat();
+                    console.warn(
+                        `[PrivateChat] 3x nothing parsed for uid ${uidStr}; ` +
+                        `setting stalePrivateDmBeforeDate to watermark ${wm}`
+                    );
+                }
+            }
+
+            if (shouldSave) {
+                this.UserStore.set(updatedUser);
             }
 
             if (skipped.length > 0) {
@@ -2152,7 +2237,7 @@ Private send interception
                 this.verbose(privateChatLog);
                 const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
                 if (res.accepted) {
-                    this.debung(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                    this.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
                     this.UserStore.setParsedDmInUpToLog(user.uid, res.logId);
                 } else {
                     this.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
@@ -2214,7 +2299,10 @@ Private send interception
                             (Array.isArray(privateChatLogResponse?.pload) && privateChatLogResponse.pload.length ? privateChatLogResponse.pload :
                                 (Array.isArray(privateChatLogResponse?.plogs) ? privateChatLogResponse.plogs : []));
 
-                        await this.caProcessPrivateLogResponse(privateChat.uid, privateChatLogs);
+                        await this.caProcessPrivateLogResponse(
+                            privateChat.uid,
+                            privateChatLogs
+                        );
                     }
                 })();
             });
@@ -5298,5 +5386,6 @@ Private send interception
         return;
     }
     const app = new App();
+    window.app = app;
     await app.init();
 })();
