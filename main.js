@@ -1680,7 +1680,7 @@ Private send interception
             }
 
             if (skipped.length > 0) {
-                console.log(skipped);
+                this.debug(skipped);
             }
         }
 
@@ -1726,7 +1726,7 @@ Private send interception
             // No private messages or they are already in this payload
             if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
 
-            console.log('Private messages count (pico):', pico, '— checking for new messages');
+            this.debug('Private messages count (pico):', pico, '— checking for new messages');
 
             this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
                 privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
@@ -1940,7 +1940,7 @@ Private send interception
                 if (action === 'toggle-expand') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
+                    e.stopImmediatePropagation();
 
                     const expanded = entry.classList.toggle('ca-expanded');
 
@@ -2011,9 +2011,8 @@ Private send interception
                 // Unknown data-action: fall through to generic handling below
             }
 
-            // --- 3) Generic DM click areas: text + envelope + images ---
             const logTextSel = this.sel.raw.log.classes.ca_log_text;
-            const dmLinkSel = this.sel.raw.log.classes.ca_dm_link;
+            const dmLinkSel = this.sel.log.classes.ca_dm_link;     // e.g. ".ca-dm-link"
 
             const dmArea =
                 target.closest?.(logTextSel) ||
@@ -2040,6 +2039,7 @@ Private send interception
                 this.applyLegacyAndOpenDm(user);
                 return;
             }
+
 
             // --- 4) Fallback: click on row background → profile (non-system only) ---
             if (uid && !isSystem) {
