@@ -366,10 +366,6 @@
     position: relative;
 }
 
-.ca-show-ck .ca-ck-wrap {
-    display: inline-flex;
-}
-
 .user_item_icon.icrank {
     display: none;
 }
@@ -386,25 +382,6 @@
 .user_item.ca-unread-messages {
     box-shadow: inset 0 0 0 2px rgba(255, 0, 7, 0.2);
     border-radius: 8px;
-}
-
-.ca-ck-wrap {
-    z-index: 2;
-    align-items: center;
-    display: none;
-    gap: 4px;
-    padding: 0;
-    background: transparent;
-    backdrop-filter: none;
-    pointer-events: none; /* don't block profile/item clicks; checkbox re-enables its own */
-}
-
-.ca-ck-wrap .ca-ck {
-    width: 10px;
-    height: 10px;
-    cursor: pointer;
-    pointer-events: auto;
-    accent-color: #93c5fd;
 }
 
 /* Already messaged checkmark (non-interactive) */
@@ -986,12 +963,6 @@ svg.svg-large {
     transform: scale(0.85);
 }
 
-/* Small, neat checkbox */
-.ca-user-list-container .ca-ck-wrap .ca-ck {
-    width: 12px;
-    height: 12px;
-}
-
 .ca-username-row {
     display: flex;
     align-items: center;
@@ -1269,6 +1240,12 @@ svg.svg-large {
 .ca-resizer:hover,
 .ca-resizer:active {
     background: rgba(191, 219, 254, 1);
+}
+
+ca-user-icon-row {
+    display: inline-flex;
+    align-items: center;
+    align-items: center;
 }
 
 /* The log sections column (already flex, just making intent clear) */

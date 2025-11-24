@@ -26,20 +26,16 @@
             this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
             this.activeTextInput = null;
-
-            // Decide storage backend (you already have _chooseStorage etc.)
             const mode = this._readStorageMode?.() || "local";
             const storageBackend = this._chooseStorage
                 ? this._chooseStorage(mode)
                 : window.localStorage;
 
-// Main KV store – must come first
             this.Store = new KeyValueStore({
                 namespace: this.STORAGE_KEY_PREFIX || "CA",
                 storage: storageBackend
             });
 
-// Activity log store
             this.ActivityLogStore = new ActivityLogStore({
                 kv: this.Store,
                 cacheKey: this.ACTIVITY_LOG_KEY || "CA_ACTIVITY_LOG",
@@ -47,14 +43,12 @@
                 app: this
             });
 
-// Users store
             this.UserStore = new UsersStore({
                 kv: this.Store,
                 cacheKey: this.USERS_KEY || "CA_USERS",
                 app: this
             });
 
-            // Tester helper
             if (typeof ChatAddonTester === "function") {
                 this.tester = new ChatAddonTester(this);
             } else {
@@ -107,14 +101,12 @@
                 installed: false
             };
 
-            // Dynamic debug method
             this.debug = (...args) => {
                 if (this.debugMode) {
                     console.log('[DEBUG]', ...args);
                 }
             };
 
-            // Dynamic verbose method (more detailed than debug)
             this.verbose = (...args) => {
                 if (this.verboseMode) {
                     console.log('[VERBOSE]', ...args);
@@ -122,15 +114,14 @@
             };
 
             this.colors = {
-                SOFT_GREEN: 'color:#8bdf8b',  // friendly green
-                SOFT_RED: 'color:#d88989',  // warm red
-                GREY: 'color:#9ca3af',  // punctuation/parentheses
-                GREY_NUM: 'color:#6b7280'  // muted 0 numbe
+                SOFT_GREEN: 'color:#8bdf8b',
+                SOFT_RED: 'color:#d88989',
+                GREY: 'color:#9ca3af',
+                GREY_NUM: 'color:#6b7280'
             }
 
             this.sel = {
                 rightPanel: '#right-panel',
-                // logs
                 log: {
                     classes: {
                         ca_box_scrollable: '.ca-log-box-scrollable',
@@ -193,13 +184,12 @@
 
             const walk = (src) => {
                 if (!src || typeof src !== "object") return undefined;
-                if (seen.has(src)) return undefined; // prevent cycles
+                if (seen.has(src)) return undefined; /
                 seen.add(src);
 
                 const out = Array.isArray(src) ? [] : {};
 
                 for (const [key, val] of Object.entries(src)) {
-                    // Avoid recursing into the target mirror itself
                     if (key === "raw") continue;
 
                     if (typeof val === "string") {
@@ -209,7 +199,7 @@
                         if (child && (Array.isArray(child) ? child.length : Object.keys(child).length)) {
                             out[key] = child;
                         } else {
-                            out[key] = {}; // keep structure even if empty
+                            out[key] = {};
                         }
                     }
                 }
@@ -236,11 +226,9 @@
             const showBroadcastCheckboxes = localStorage.getItem(this.SHOW_BROADCAST_SELECTION_BOXES_KEY) || false;
             this.shouldShowBroadcastCheckboxes = showBroadcastCheckboxes === true || showBroadcastCheckboxes === 'true';
 
-            this.NO_LS_MODE = this._readStorageMode(); // 'allow' | 'wipe' | 'block'
+            this.NO_LS_MODE = this._readStorageMode();
             if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
-            // Let layout settle, then remove ads
             this.removeAds(document);
-            // --- CORE UI SETUP (keep synchronous) ---
             this.buildPanel();
 
             const main_wrapper = document.createElement('div');
@@ -300,8 +288,6 @@
             this._installAudioAutoplayGate();
             this.initializeGlobalWatermark();
             this._updateStorageToggleUi();
-
-            // Panel + user containers are visible early
             this.buildMenuLogPanel();
             const userContainersWrapper = document.createElement(`div`);
             userContainersWrapper.id = `ca-user-container`;
@@ -320,7 +306,6 @@
                 document.querySelector('#ca-female-users-container').classList.add("ca-show-ck");
             }
 
-            // Restore last DM (cheap) before wiring DM stuff
             await this.restoreLastDmFromStore();
 
             const privateCloseButton = document.querySelector('#private_close');
@@ -335,16 +320,10 @@
             this._wireLogClear();
             this._wireTextboxTrackers();
 
-            // Network taps should be ready, but heavy work will happen later
             this.installNetworkTaps();
             this.installPrivateSendInterceptor();
             this.appendCustomActionsToBar();
-
-            // Start loops; first user refresh happens here
             await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
-            ///this.startClearEventLogLoop({intervalMs: 5 * 60 * 1000});
-
-            // scroll after logs have been restored
             this.scrollToBottom(this.ui.repliedMessageBox);
             this.scrollToBottom(this.ui.unrepliedMessageBox);
             this.scrollToBottom(this.ui.sentMessagesBox);
@@ -353,7 +332,6 @@
         }
 
         _wireTextboxTrackers() {
-            // Track last-focused input/textarea globally
             document.addEventListener('focusin', (event) => {
                 const target = event.target;
 
@@ -369,20 +347,6 @@
                     this.activeTextInput = target;
                 }
             });
-
-// ❌ Remove this whole block:
-// document.addEventListener('focusout', (event) => {
-//     const target = event.target;
-//
-//     if (!target) {
-//         console.warn('[CA] focusout event without target');
-//         return;
-//     }
-//
-//     if (this.activeTextInput === target) {
-//         this.activeTextInput = null;
-//     }
-// });
 
         }
 
@@ -466,13 +430,11 @@
                 const actions = document.createElement('div');
                 actions.className = 'ca-predefined-messages-actions';
 
-// INSERT into active text field
                 const insertLink = document.createElement('a');
                 insertLink.href = "#";
                 insertLink.className = 'ca-log-action ca-insert-link';
                 insertLink.title = "Insert into active text field";
 
-// icon similar style, using your SVG helper
                 insertLink.appendChild(
                     this.renderSvgIconWithClass(
                         "lucide lucide-corner-down-left",
@@ -483,10 +445,9 @@
 
                 insertLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
-                    this._appendPredefinedToActiveBox(item); // uses your existing helper
+                    this._appendPredefinedToActiveBox(item);
                 });
 
-// EDIT (pencil)
                 const editLink = document.createElement('a');
                 editLink.href = "#";
                 editLink.className = 'ca-log-action ca-edit-link';
@@ -505,7 +466,6 @@
                     subjectInput.value = item.subject || '';
                     textInput.value = item.text || '';
 
-                    // Make sure editor is visible when editing
                     const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
                     const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
 
@@ -519,8 +479,6 @@
                     subjectInput.focus();
                 });
 
-
-// DELETE (x)
                 const deleteLink = document.createElement('a');
                 deleteLink.href = "#";
                 deleteLink.className = 'ca-log-action ca-del-link';
@@ -542,19 +500,15 @@
                     this._refreshAllPredefinedSelects();
                 });
 
-
                 actions.appendChild(insertLink);
                 actions.appendChild(editLink);
                 actions.appendChild(deleteLink);
-
-
                 titleRow.appendChild(title);
                 titleRow.appendChild(actions);
 
                 const preview = document.createElement('div');
                 preview.className = 'ca-predefined-messages-preview';
                 preview.textContent = (item.text || '').slice(0, 80);
-
                 li.appendChild(titleRow);
                 li.appendChild(preview);
                 listEl.appendChild(li);
@@ -562,7 +516,6 @@
         }
 
         openGlobalPredefinedTemplatesPopup() {
-            // Reuse the same logic as the bar “Manage” button
             this.openPredefinedPopup(null);
         }
 
@@ -573,14 +526,11 @@
             }
 
             const list = this._getPredefinedMessages();
-
             selectEl.innerHTML = '';
-
             const def = document.createElement('option');
             def.value = '';
             def.textContent = 'Select predefined message…';
             selectEl.appendChild(def);
-
             list.forEach((tpl, index) => {
                 const opt = document.createElement('option');
                 opt.value = String(index);
@@ -589,13 +539,11 @@
             });
         }
 
-        // Call this whenever templates change, so ALL dropdowns stay in sync
         _refreshAllPredefinedSelects() {
             const selects = document.querySelectorAll('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
         }
 
-        // Append to any textarea-like input
         _appendPredefinedToBox(template, box) {
             if (!template || !template.text) {
                 console.warn('[CA] _appendPredefinedToBox: empty template');
@@ -680,15 +628,11 @@
                 return;
             }
 
-            // Fill options for this select only
             this._fillPredefinedSelect(predefinedMessagesDropdown);
-
-            // --- change on THIS select ---
             predefinedMessagesDropdown.addEventListener('change', (e) => {
                 this._applyPredefinedFromSelect(e.target);
             });
 
-            // --- resend on THIS bar ---
             if (resendEl) {
                 resendEl.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -699,7 +643,6 @@
                 });
             }
 
-            // --- add-from-chat on THIS bar ---
             if (addPredefinedMessageEl) {
                 addPredefinedMessageEl.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -727,7 +670,6 @@
                 });
             }
 
-            // --- manage on THIS bar ---
             if (manageEl) {
                 manageEl.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -738,7 +680,6 @@
             }
         }
 
-        // ---- Predefined messages storage helpers ----
         _getPredefinedMessages() {
             if (!this.Store) {
                 console.error('[CA] _getPredefinedMessages: Store is not initialized');
@@ -851,9 +792,8 @@
             const editorBody = popup.querySelector('.ca-predefined-messages-editor-body');
 
             if (prefilledText) {
-                // Reset form and fill with prefilled text
                 if (indexInput) {
-                    indexInput.value = '-1'; // new template
+                    indexInput.value = '-1';
                 }
                 if (subjectInput) {
                     subjectInput.value = subjectInput.value || '';
@@ -867,11 +807,8 @@
                 return null;
             }
 
-            // Setup toggle only once per popup
             if (toggleBtn && editorRoot && editorBody && !editorRoot.dataset.caToggleInitialized) {
                 editorRoot.dataset.caToggleInitialized = '1';
-
-                // collapsed by default
                 editorRoot.classList.add('ca-predefined-editor-collapsed');
                 toggleBtn.textContent = 'Show editor';
 
@@ -934,23 +871,18 @@
                 console.warn('[CA] appendCustomActionsToBar: no existing .panel_option found');
             }
 
-            // Existing refresh button...
             const refreshBtn = document.createElement('div');
             refreshBtn.classList.add('panel_option', 'panel_option_refresh');
             refreshBtn.title = 'Refresh users';
             refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
-
             refreshBtn.addEventListener('click', async () => {
                 await this.refreshUserList();
                 refreshBtn.classList.remove('loading');
             });
 
-            // NEW: templates button
             const templatesBtn = document.createElement('div');
             templatesBtn.classList.add('panel_option', 'panel_option_templates');
             templatesBtn.title = 'Predefined messages';
-
-            // Use an icon you like; example using a font-awesome comments icon:
             templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
 
             templatesBtn.addEventListener('click', (event) => {
@@ -958,7 +890,6 @@
                 this.openGlobalPredefinedTemplatesPopup();
             });
 
-            // Insert in front so they appear together with the existing buttons
             if (existingOption) {
                 bar.insertBefore(refreshBtn, existingOption);
                 bar.insertBefore(templatesBtn, existingOption);
@@ -968,7 +899,6 @@
             }
         }
 
-        /* ---------- Cookie helpers ---------- */
         _getCookie(name) {
             const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
             return m ? decodeURIComponent(m[1]) : null;
@@ -990,7 +920,6 @@
             this._setCookie(this.STORAGE_COOKIE, mode);
         }
 
-        /* ---------- Pick storage backend ---------- */
         _chooseStorage(mode) {
             if (mode === 'block') return new NullStorage();
             return localStorage;
@@ -1008,12 +937,11 @@
             });
         }
 
-        // ===== Refresh Users loop =====
         async startRefreshUsersLoop({
-                                        intervalMs = this.userRefreshInterval,    // default 60s
+                                        intervalMs = this.userRefreshInterval,
                                         runImmediately = true
                                     } = {}) {
-            this.stopRefreshUsersLoop(); // clear any previous loop
+            this.stopRefreshUsersLoop();
 
             this._refreshUsersIntervalMs = intervalMs;
 
@@ -1033,7 +961,6 @@
             }
         }
 
-        // ===== Clear Event Logs loop =====
         startClearEventLogLoop({
                                    intervalMs = 30 * 60 * 1000,
                                    runImmediately = true
@@ -1072,7 +999,7 @@
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: formData.toString(),
-                credentials: 'same-origin', // include cookies
+                credentials: 'same-origin',
             });
 
             const html = await res.text();
@@ -1085,7 +1012,6 @@
             }
         }
 
-        /* ---------- Helpers ---------- */
         qs(s, r) {
             return (r || document).querySelector(s);
         }
@@ -1116,9 +1042,6 @@
             return txt.value;
         }
 
-        /* =========================
-Private send interception
-========================= */
         isPrivateProcessUrl(u) {
             if (!u) return false;
             let s = String(u);
@@ -1129,8 +1052,6 @@ Private send interception
         async processPrivateSendResponse(data, targetUid) {
             const logData = data.log || {};
             const content = logData.log_content || '';
-
-            // Look up user - ensure we always have a valid user object
             const dmSentToUser = await this.UserStore.get(targetUid);
 
             if (!dmSentToUser) {
@@ -1149,23 +1070,19 @@ Private send interception
                 ')'
             );
 
-            // Always log the outgoing message
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
 
-            // Mark old incoming messages as read, if any
             const affectedLogs =
                 this.ActivityLogStore.MarkReadUntilChatLogId(
                     targetUid,
                     dmSentToUser.parsedDmInUpToLog
                 );
 
-            // Only touch the UI if there are logs to update
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
                 this.debug('[PrivateSend] No logs to update read status for user:', targetUid);
                 return;
             }
 
-            // Only update chips if user is actually visible in the DOM
             const userEl = this.findUserById(dmSentToUser.uid);
             if (userEl) {
                 this.updateProfileChip(dmSentToUser.uid, userEl);
@@ -1226,9 +1143,6 @@ Private send interception
             }
         }
 
-        /* ======================================
-       Private notifications & conversations
-       ====================================== */
         caParsePrivateNotify(html) {
             const tmp = document.createElement('div');
             tmp.innerHTML = html;
@@ -1249,7 +1163,6 @@ Private send interception
                 }
                 out.push({uid: id, name, avatar: av, unread});
             }
-            // Clean up temporary DOM element
             tmp.innerHTML = '';
             this.verbose('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
             return out;
@@ -1282,7 +1195,6 @@ Private send interception
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             const name = doc?.querySelector('.pro_name')?.textContent?.trim();
-            // now fetch using the search function because it has more convenient fields for the userprofile.
             const foundUsers = await this.UserStore.getOrFetchByName(name);
 
             if (foundUsers.length !== 1) {
@@ -1294,8 +1206,6 @@ Private send interception
 
         caFetchPrivateNotify() {
             const token = this.getToken();
-            if (!token) return Promise.resolve([]);
-
             const body = new URLSearchParams({token, cp: 'chat'}).toString();
             return fetch('/system/float/private_notify.php', {
                 method: 'POST', credentials: 'include',
@@ -1321,7 +1231,6 @@ Private send interception
             return this.caFetchPrivateNotify().then((privateConversations) => {
                 privateConversations = privateConversations || [];
                 this.verbose('Private conversations:', privateConversations.length);
-                // sort: unread desc, then name asc
                 privateConversations.sort((a, b) => {
                     const au = a.unread || 0, bu = b.unread || 0;
                     if (bu !== au) return bu - au;
@@ -1332,7 +1241,6 @@ Private send interception
             });
         }
 
-        /* Carry over site chat context and fetch private chat_log for uid */
         fetchPrivateMessagesForUid(uid, params) {
             const token = this.getToken();
             if (!token || !uid) {
@@ -1356,8 +1264,6 @@ Private send interception
             };
 
             this.verbose(`Fetch chatlog body: `, bodyObj);
-
-            // Debug log (sanitized)
             const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
             this.verbose('caFetchChatLogFor uid=', uid, ' body:', bodyLog);
 
@@ -1391,7 +1297,6 @@ Private send interception
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'from myself'};
             }
 
-            // --- NEW: per-user stale datetime cutoff ---
             if (user.stalePrivateDmBeforeDate && privateChatLog.log_date) {
                 const msgNum = this.parseLogDateToNumber(
                     this.ToHourMinuteSecondFormat(privateChatLog.log_date)
@@ -1409,7 +1314,6 @@ Private send interception
                 }
             }
 
-            // Existing initial fetch + watermark logic
             if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
                 this.debug(
                     `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
@@ -1442,7 +1346,6 @@ Private send interception
                 this.ui.userContainersWrapper
             ];
 
-
             const publicChatContainer = document.getElementById('chat_logs_container');
 
             if (!containersLogs.length && !publicChatContainer) {
@@ -1450,19 +1353,14 @@ Private send interception
                 return;
             }
 
-            // Create a single shared preview bubble
             const preview = document.createElement('div');
             preview.id = 'ca-log-image-preview';
-
             const img = document.createElement('img');
             preview.appendChild(img);
-
             document.body.appendChild(preview);
-
             const hidePreview = () => {
                 preview.classList.remove('ca-visible');
             };
-
             const positionPreview = (evt, mode) => {
                 if (!evt) {
                     return;
@@ -1470,27 +1368,20 @@ Private send interception
 
                 const vw = window.innerWidth;
                 const vh = window.innerHeight;
-
                 const rect = preview.getBoundingClientRect();
                 const w = rect.width || 260;
                 const h = rect.height || 260;
-
                 let x;
                 let y;
 
                 if (mode === 'public') {
-                    // PUBLIC CHAT:
-                    // bottom-LEFT corner at cursor => preview appears top-right of mouse
                     x = evt.clientX;
                     y = evt.clientY - h;
                 } else {
-                    // LOGS / USER LIST:
-                    // bottom-RIGHT corner at cursor => preview appears top-left of mouse
                     x = evt.clientX - w;
                     y = evt.clientY - h;
                 }
 
-                // Clamp within viewport
                 if (x < 0) x = 0;
                 if (y < 0) y = 0;
                 if (x + w > vw) x = vw - w;
@@ -1506,7 +1397,6 @@ Private send interception
                     return;
                 }
 
-                // Size: smaller for logs, bigger for public chat
                 if (mode === 'public') {
                     preview.style.maxWidth = '340px';
                     preview.style.maxHeight = '340px';
@@ -1531,7 +1421,6 @@ Private send interception
                     return;
                 }
 
-                // SHOW on hovering the thumbnail image
                 container.addEventListener('mouseover', (evt) => {
                     const target = evt.target;
                     if (!target || !(target instanceof Element)) {
@@ -1552,7 +1441,6 @@ Private send interception
                     showPreview(evt, src, mode);
                 });
 
-                // MOVE while hovering
                 container.addEventListener('mousemove', (evt) => {
                     if (!preview.classList.contains('ca-visible')) {
                         return;
@@ -1560,7 +1448,6 @@ Private send interception
                     positionPreview(evt, mode);
                 });
 
-                // HIDE when leaving the image
                 container.addEventListener('mouseout', (evt) => {
                     const target = evt.target;
                     if (!target || !(target instanceof Element)) {
@@ -1578,10 +1465,8 @@ Private send interception
                 });
             };
 
-            // Attach for logs + user list (small, top-left-ish)
             containersLogs.forEach((container) => attachHoverHandlers(container, 'logs'));
 
-            // Attach for public main chat (bigger, top-right-ish)
             if (publicChatContainer) {
                 attachHoverHandlers(publicChatContainer, 'public');
             }
@@ -1589,10 +1474,8 @@ Private send interception
             console.log('[CA] Log image hover preview installed (logs + user list + public chat)');
         }
 
-        /* Parse & render the private chat log for a given user */
         async caProcessPrivateLogResponse(uid, privateChatLogs) {
             const uidStr = String(uid);
-
             const user = await this.UserStore.getOrFetch(uidStr);
             if (!user) {
                 console.error('[caProcessPrivateLogResponse] Could not resolve user for uid:', uidStr);
@@ -1603,7 +1486,6 @@ Private send interception
             const initialFetch = parsedDmInUpToLog === 0;
             let newMessages = 0;
             let skipped = '';
-
             const hasLogs = Array.isArray(privateChatLogs) && privateChatLogs.length > 0;
 
             if (hasLogs) {
@@ -1632,11 +1514,9 @@ Private send interception
                 console.log(`No new private chat logs for user ${uidStr}`);
             }
 
-            // ---- update user fields (per-user state) ----
             const updatedUser = {...user};
             let shouldSave = false;
 
-            // 1) If we accepted messages → update last read + reset stale flags
             if (newMessages > 0) {
                 if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                     updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
@@ -1654,7 +1534,6 @@ Private send interception
                     shouldSave = true;
                 }
             } else {
-                // 2) Nothing was accepted → increase per-user "no new parse" counter
                 const prevTries = Number(user.noNewPrivateDmTries) || 0;
                 const tries = prevTries + 1;
                 updatedUser.noNewPrivateDmTries = tries;
@@ -1662,9 +1541,6 @@ Private send interception
 
                 console.warn(`[PrivateChat] No messages accepted for uid ${uidStr} (attempt ${tries})`);
 
-                // After 3 tries, apply your solution:
-                // - if we know "last" → move parsedDmInUpToLog to that
-                // - else → store stale datetime
                 if (tries >= 3) {
                     const wm = this.getGlobalWatermark();
                     updatedUser.stalePrivateDmBeforeDate = this.getTimeStampInWebsiteFormat();
@@ -1705,14 +1581,12 @@ Private send interception
             }
         }
 
-        /* ============ Chat payload processing ============ */
         caProcessChatPayload(txt, params) {
             if (!txt || typeof txt !== 'string' || txt.trim() === '') {
                 console.warn('Empty or invalid chat payload response');
                 return;
             }
 
-            // tolerant parse & shape
             const data = this.toChatLogResponse(JSON.parse(String(txt)));
 
             if (Array.isArray(data.plogs) && data.plogs.length > 0) {
@@ -1721,17 +1595,11 @@ Private send interception
             }
 
             const pico = Number(data && data.pico);
-            if (pico === 0) return;
-
-            // No private messages or they are already in this payload
             if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
-
             this.debug('Private messages count (pico):', pico, '— checking for new messages');
-
             this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
                 privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
                 this.verbose('Private conversations returned:', privateConversations.length, privateConversations);
-
                 const privateChatsToFetch = privateConversations
                     .filter(pc => pc.unread > 0)
                     .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
@@ -1768,11 +1636,8 @@ Private send interception
             });
         }
 
-        /* ============ Fetch/XHR interceptors ============ */
         installNetworkTaps() {
             this.debug('Installing network taps (fetch/XHR interceptors)');
-
-            // XHR
             if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
             if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
 
@@ -1797,7 +1662,6 @@ Private send interception
                     const responseUrl = this.responseURL || this._ca_url || '';
                     if (this.readyState === 4 && this.status === 200 && this.responseText) {
                         if (self.isChatLogUrl(responseUrl)) {
-                            // ✅ Now you can access the right params for this XHR instance
                             self.caProcessChatPayload(this.responseText, qs);
                         }
                         if (self.isUserListUrl(responseUrl)) {
@@ -1845,7 +1709,6 @@ Private send interception
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
 
-            // Special handling for avatar-change events coming from [USER_UPDATE]
             if (kind === 'event') {
                 const m = text.match(/^\[USER_UPDATE\]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
 
@@ -1854,8 +1717,6 @@ Private send interception
                     const newAvatar = (m[3] || '').trim();
                     const safeName = escapeHTML(userName);
                     const safeSrc = escapeAttr(newAvatar || '');
-
-                    // Show a clean message + bigger image, no visible raw URL
                     return `
                 <span class="ca-log-text-main">
                     ${safeName} has changed ${user.isFemale ? `her` : `his`} avatar:
@@ -1866,11 +1727,9 @@ Private send interception
             `;
                 }
 
-                // Fallback for other event logs
                 return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
             }
 
-            // Other kinds (dm-in, dm-out, etc.) – keep as text, but avoid nesting .ca-log-text
             return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
         }
 
@@ -1912,7 +1771,6 @@ Private send interception
             const target = e.target;
             const entry = target.closest?.(this.sel.log.classes.ca_log_entry);
             if (!entry) {
-                // Click outside of a log entry
                 return;
             }
 
@@ -1920,8 +1778,6 @@ Private send interception
             const isSystem = (uid === 'system');
 
             this.verbose('Log entry clicked:', {entry, uid, isSystem});
-
-            // --- 1) Username: always profile ---
             const userLinkEl = target.closest?.(this.sel.raw.log.classes.ca_user_link);
             if (userLinkEl && uid && !isSystem) {
                 e.preventDefault();
@@ -1932,7 +1788,6 @@ Private send interception
                 return;
             }
 
-            // --- 2) data-action based buttons (expand/delete/profile/explicit DM) ---
             const actionEl = target.closest?.('[data-action]');
             if (actionEl) {
                 const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
@@ -1943,8 +1798,6 @@ Private send interception
                     e.stopImmediatePropagation();
 
                     const expanded = entry.classList.toggle('ca-expanded');
-
-                    // keep the chevron + ARIA in sync
                     const ind = entry.querySelector(this.sel.log.classes.ca_expand_indicator);
                     if (ind) {
                         ind.textContent = expanded ? '▴' : '▾';
@@ -2040,8 +1893,6 @@ Private send interception
                 return;
             }
 
-
-            // --- 4) Fallback: click on row background → profile (non-system only) ---
             if (uid && !isSystem) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2070,13 +1921,10 @@ Private send interception
                 this.setLastDmUid(uid);
             }
 
-            // Legacy toggles
             this.debug('applyLegacyAndOpenDm: Setting legacy toggles');
             if (!this.safeSet(window, 'morePriv', 0)) return false;
             if (!this.safeSet(window, 'privReload', 1)) return false;
             if (!this.safeSet(window, 'lastPriv', 0)) return false;
-
-            // Legacy UI calls
             this.debug('applyLegacyAndOpenDm: Calling legacy UI functions');
             if (!this.safeCall(window, 'closeList')) return false;
             if (!this.safeCall(window, 'hideModal')) return false;
@@ -2089,11 +1937,9 @@ Private send interception
                 return false;
             }
 
-            // Call openPrivate via safeCall by wrapping it in an object
             this.debug('applyLegacyAndOpenDm: Calling openPrivate with:', uid, name, avatar);
             const result = this.safeCall({openPrivate: openDm}, 'openPrivate', uid, name, avatar);
             this.debug('applyLegacyAndOpenDm: openPrivate call result:', result);
-
             return result;
         }
 
@@ -2111,7 +1957,6 @@ Private send interception
 
         openProfileOnHost(uid) {
             this.debug('openProfileOnHost called with uid:', uid);
-
             const getProfile = (typeof window.getProfile === 'function')
                 ? window.getProfile
                 : (window.parent && typeof window.parent.getProfile === 'function')
@@ -2141,13 +1986,11 @@ Private send interception
             loggedInFemaleUsers.forEach((femaleUser) => {
                 const uid = femaleUser.uid;
 
-                // Rank filter
                 if (!this._isAllowedRank(femaleUser.rank)) {
                     this.verbose('Skipping user:', uid, 'due to rank:', femaleUser.rank);
                     return;
                 }
 
-                // Skip if already replied
                 if (this.ActivityLogStore.hasSentMessageToUser(uid)) {
                     console.log(`Skipping message to ${femaleUser.name} (already replied)`);
                     return;
@@ -2163,7 +2006,6 @@ Private send interception
             return out;
         }
 
-        /* ===================== SEND WITH THROTTLE ===================== */
         sendWithThrottle(id, text, minGapMs = 3500) {
             const now = Date.now();
             const wait = Math.max(0, minGapMs - (now - this._lastSendAt));
@@ -2175,17 +2017,11 @@ Private send interception
                 });
         }
 
-        /**
-         * Send a broadcast in batches with throttling.
-         * Uses this.sendWithThrottle(uid, text).
-         */
         async _runBroadcast(to, text) {
             const batchSize = 10;
 
-            // ranges for random waits (ms)
             const secondsBetweenSends = [2000, 5000];
             const secondsBetweenBatches = [10000, 20000];
-
             const sleep = this.sleep
                 ? (ms) => this.sleep(ms)
                 : (ms) => new Promise(r => setTimeout(r, ms));
@@ -2201,7 +2037,6 @@ Private send interception
                     const item = batch[idx];
                     const uid = item.uid;
 
-                    // sendWithThrottle already handles per-send spacing (min gap)
                     const res = await this.sendWithThrottle(uid, text).catch((err) => {
                         console.error('[BROADCAST] sendWithThrottle error for uid', uid, err);
                         return {ok: false, status: 0};
@@ -2214,8 +2049,6 @@ Private send interception
                     }
 
                     this.logEventLine(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} — ${idx + 1}/${batch.length} sent (OK:${ok} Fail:${fail})`);
-
-                    // extra jitter between sends (on top of sendWithThrottle)
                     const perSendDelay = this.randBetween(secondsBetweenSends[0], secondsBetweenSends[1]);
                     await sleep(perSendDelay);
                 }
@@ -2230,24 +2063,19 @@ Private send interception
             return {ok, fail};
         }
 
-        cloneAndRenderNewUserElement(parseUserEl, updatedUserJson) {
+        cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson) {
             const containerContent = this.qs(
                 `.ca-user-list-content`,
                 updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer
             );
-            const newUserEl = parseUserEl.cloneNode(true);
-
+            const newUserItemEl = parsedUserItemEl.cloneNode(true);
             const wrapper = document.createElement('div');
-            wrapper.className = 'ca-username-row';
-
-            // Username
+            wrapper.className = 'ca-us';
             const nameSpan = document.createElement('span');
             nameSpan.className = 'ca-username';
             nameSpan.textContent = updatedUserJson.name || '<unknown>';
 
             wrapper.appendChild(nameSpan);
-
-            // Click on username row → open profile (our behavior)
             wrapper.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2255,8 +2083,7 @@ Private send interception
                 this.openProfileOnHost(updatedUserJson.uid);
             });
 
-            // 🔥 Avatar click override (block original site handler)
-            const avatarImg = newUserEl.querySelector('.user_item_avatar img.avav');
+            const avatarImg = newUserItemEl.querySelector('.user_item_avatar img.avav');
             if (avatarImg) {
                 avatarImg.addEventListener(
                     'click',
@@ -2266,11 +2093,10 @@ Private send interception
                         e.stopImmediatePropagation();
                         this.openProfileOnHost(updatedUserJson.uid);
                     },
-                    true // use capture so we run before any bubbling/delegated handlers
+                    true
                 );
             }
 
-            // Age (only if exists)
             if (updatedUserJson?.age > 0) {
                 const ageSpan = document.createElement('span');
                 ageSpan.className = 'ca-age';
@@ -2284,30 +2110,26 @@ Private send interception
                 updatedUserJson.name
             );
 
-            // Our other handlers
-            this.ensureDmLink(newUserEl, updatedUserJson);
+            const iconRow = document.createElement('div');
+            iconRow.className = 'ca-user-icon-row';
+            this.qs('.user_item_data', newUserItemEl).appendChild(iconRow);
+            this.ensureDmLink(iconRow, updatedUserJson);
 
             if (updatedUserJson.isFemale && this._isAllowedRank(updatedUserJson.rank)) {
-                this.ensureBroadcastCheckbox(newUserEl, updatedUserJson.uid);
+                this.ensureBroadcastCheckbox(iconRow, updatedUserJson.uid);
             }
 
-            this.updateProfileChip(updatedUserJson.uid, newUserEl);
-
-            // Replace old <p class="username">...</p>
-            this.qs('.username', newUserEl).replaceWith(wrapper);
-            containerContent.appendChild(newUserEl);
+            this.updateProfileChip(updatedUserJson.uid, newUserItemEl);
+            this.qs('.username', newUserItemEl).replaceWith(wrapper);
+            containerContent.appendChild(newUserItemEl);
         }
 
-
         updateUser(fetchedUserJson, existingUserEl) {
-            // Update in store first
-
             if (!existingUserEl) {
                 console.error('[updateUser] No .user_item found for uid:', fetchedUserJson.uid);
                 return null;
             }
 
-            // 1. data-* attributes on root
             const attrMap = {
                 'data-id': fetchedUserJson.uid,
                 'data-name': fetchedUserJson.name,
@@ -2329,15 +2151,10 @@ Private send interception
 
             const usernameEl = existingUserEl.querySelector('.ca-username-row .ca-username');
             usernameEl.textContent = fetchedUserJson.name;
-
             const ageEl = existingUserEl.querySelector('.ca-username-row .ca-age');
             ageEl.textContent = fetchedUserJson.age;
-
-            // 4. Mood
             const moodEl = existingUserEl.querySelector('.user_item_data .list_mood');
             moodEl.textContent = fetchedUserJson.mood;
-
-            // 6. Country flag
             const flagImg = existingUserEl.querySelector('.user_item_icon.icflag img.list_flag');
             if (flagImg && fetchedUserJson.country) {
                 flagImg.src = `system/location/flag/${fetchedUserJson.country}.png`;
@@ -2354,8 +2171,6 @@ Private send interception
             return existingUserEl;
         }
 
-
-        /* Check if URL is user_list.php */
         isUserListUrl(u) {
             if (!u) return false;
             let s = String(u);
@@ -2384,16 +2199,12 @@ Private send interception
         _updateExistingUserMetadata(existingUserJsonFromStore, parsedUserJson, existingUserEl) {
             const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
             let hasUpdatedUser = false;
-
-            // Always update store first
             const updatedExistingUserJson = this.UserStore.set(parsedUserJson);
             let updatedExistingUserEl = existingUserEl;
-
             const changedKeys = [];
             const segments = [];
 
             if (changedKeys.length > 0) {
-                // pretty console line
                 this._logStyled('[USER_UPDATE] ', segments);
 
                 this.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
@@ -2440,7 +2251,6 @@ Private send interception
                     this.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
                 }
 
-                // --- NEW: log avatar changes into the event log with this user ---
                 if (changedKeys.includes('avatar')) {
                     const oldAvatar = existingUserJsonFromStore.avatar || '';
                     const newAvatar = updatedExistingUserJson.avatar || '';
@@ -2453,8 +2263,6 @@ Private send interception
                         : '';
 
                     const text = `[USER_UPDATE] ${updatedExistingUserJson.name} has changed ${pronoun} Avatar (${oldAvatar} → ${newAvatar})${avatarImgHtml}`;
-
-                    // pass the user so the log entry is attributed to them (not System)
                     this.logEventLine(text, updatedExistingUserJson);
                 }
             }
@@ -2512,13 +2320,11 @@ Private send interception
         }
 
         async syncUsersFromDom(currentOnlineUserEls) {
-            // Use a map to track who *might* be logged out after this cycle
             const maybeLoggedOutMap = new Map(
                 this.UserStore.getAllLoggedIn().map(user => [String(user.uid), user])
             );
 
             const resultPatches = [];
-
             let femaleLoggedOutCount = 0;
             let othersLoggedOutCount = 0;
             let femaleLoggedInCount = 0;
@@ -2527,27 +2333,21 @@ Private send interception
             let totalFemaleLoggedInCount = 0;
             let updatedProfileCount = 0;
 
-            for (const parsedUserEl of currentOnlineUserEls) {
-                const parsedUserJson = this.extractUserInfoFromEl(parsedUserEl);
+            for (const parsedUserItemEl of currentOnlineUserEls) {
+                const parsedUserJson = this.extractUserInfoFromEl(parsedUserItemEl);
                 const uid = String(parsedUserJson.uid);
-
-                // Try the map first (fast)
                 let existingUserFromStore = maybeLoggedOutMap.get(uid);
 
                 if (!existingUserFromStore) {
-                    // Only fall back to store lookup if needed
                     existingUserFromStore = this.UserStore.get(uid);
                 }
 
                 const wasLoggedInBefore = !!(existingUserFromStore?.isLoggedIn);
-
                 let existingUserEl = this.qs(
                     `.user_item[data-id="${uid}"]`,
                     this.ui.userContainersWrapper
                 );
-
                 let updatedUserJson = null;
-
                 const newUserJson = {
                     ...parsedUserJson,
                     isLoggedIn: true
@@ -2566,13 +2366,11 @@ Private send interception
                     existingUserEl = updatedExistingUserEl;
                 } else {
                     updatedUserJson = this.UserStore.set(newUserJson);
-                    // In case there is no Store json available about this element (glitched element) its better to delete and rebuild it.
                     existingUserEl?.remove();
                 }
 
-                // If the user has NO DOM element yet, we must create one
                 if (!existingUserEl) {
-                    await this.cloneAndRenderNewUserElement(parsedUserEl, updatedUserJson);
+                    await this.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson);
                 }
 
                 resultPatches.push(updatedUserJson);
@@ -2588,7 +2386,6 @@ Private send interception
                 updatedUserJson.isFemale ? totalFemaleLoggedInCount++ : totalOthersLoggedInCount++;
             }
 
-            // 3) Whatever is still in maybeLoggedOutMap is now logged out
             for (const [_, user] of maybeLoggedOutMap.entries()) {
                 const loggedOutPatch = {
                     ...user,
@@ -2596,16 +2393,13 @@ Private send interception
                 };
 
                 resultPatches.push(loggedOutPatch);
-
                 this.handleLoggedInStatus(loggedOutPatch, false);
                 loggedOutPatch.isFemale ? femaleLoggedOutCount++ : othersLoggedOutCount++;
             }
 
             this.UserStore._saveAll(resultPatches);
-
             this.updateFemaleUserCount(totalFemaleLoggedInCount);
             this.updateOtherUsersCount(totalOthersLoggedInCount);
-
             console.log('\n');
             this._logSummaryDouble('Female online status changed:', femaleLoggedInCount, femaleLoggedOutCount);
             this._logSummaryDouble('Others online status changed:', othersLoggedInCount, othersLoggedOutCount);
@@ -2625,8 +2419,7 @@ Private send interception
         }
 
         _logSummarySingle(label, value) {
-            if (!value) return; // hide zero always
-
+            if (!value) return;
             this._logStyled('', [
                 {text: `${label}: `, style: 'color:#d1d5db;font-weight:bold'},
                 {text: String(value), style: this.colors.SOFT_GREEN}
@@ -2634,7 +2427,7 @@ Private send interception
         }
 
         _logSummaryDouble(label, plus, minus) {
-            if (!plus && !minus) return; // hide if both zero
+            if (!plus && !minus) return;
 
             const labelColor = label.toLowerCase().includes('female')
                 ? this.colors.FEMALE_LABEL
@@ -2660,22 +2453,16 @@ Private send interception
                 return;
             }
 
-
             if (this.userParsingInProgress) {
                 console.warn(`An earlier job is already parsing results. to prevent corrupt data this one is cancelled.`);
                 return;
             }
             this.userParsingInProgress = true;
-
-            // Create a detached container to parse the HTML
             const tempContainer = document.createElement("div");
             tempContainer.innerHTML = html;
-
-            // All users that are *currently online* according to the server response
             const currentOnlineUserEls = Array.from(
                 tempContainer.querySelectorAll(".user_item")
             );
-
 
             console.log(`\n==== Retrieved ${currentOnlineUserEls.length} users from the online list in this room. Starting to parse, process and render them.`);
 
@@ -2690,7 +2477,6 @@ Private send interception
                 currentOnlineUserEls.length
             );
 
-            // Delegate all heavy lifting (store + DOM + login/offline handling)
             await this.syncUsersFromDom(currentOnlineUserEls);
 
             if (this.isInitialLoad) {
@@ -2744,11 +2530,9 @@ Private send interception
         }
 
         setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
-            // Select all log dots for this UID
             const selector = `.ca-log-entry[data-uid="${uid}"] ${this.sel.log.classes.ca_log_dot}`;
             const logDots = this.qsa(selector);
 
-            // Apply correct class based on login state
             logDots.forEach(dotEL => {
                 this.setLogDotLoggedInStatusForElement(dotEL, isLoggedIn);
             });
@@ -2770,7 +2554,6 @@ Private send interception
             }
         }
 
-        /* ===================== CHAT TAP (partial) ===================== */
         isChatLogUrl(u) {
             if (!u) return false;
             let s = String(u);
@@ -2798,7 +2581,6 @@ Private send interception
             this.caUpdateChatCtxFromBody._initialized = true;
         }
 
-        /** @param {any} x @returns {{log_id:string,log_date:string,user_id:string,user_name:string,user_tumb:string,log_content:string}} */
         toPrivLogItem(x) {
             const o = x && typeof x === 'object' ? x : {};
             return {
@@ -2811,7 +2593,6 @@ Private send interception
             };
         }
 
-        /** @param {any} x @returns {{last:string,pico:number,pload:Array,plogs:Array}} */
         toChatLogResponse(x) {
             const o = x && typeof x === 'object' ? x : {};
             const picoNum = Number.isFinite(o.pico) ? o.pico :
@@ -2830,7 +2611,6 @@ Private send interception
             };
         }
 
-        /** @param {any} x @returns {{code:number,log:{log_content:string}}} */
         toPrivateSendResponse(x) {
             const o = x && typeof x === 'object' ? x : {};
             const codeNum = Number.isFinite(o.code) ? o.code :
@@ -2841,7 +2621,6 @@ Private send interception
             };
         }
 
-        /** @param {any} x @returns {{last:string,pload:Array,plogs:Array}} */
         toPrivateChatLogResponse(x) {
             const o = x && typeof x === 'object' ? x : {};
             const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
@@ -2858,13 +2637,10 @@ Private send interception
             if (!s) return '';
             // already has seconds?
             if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
-            // has only HH:MM → append :00
             if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
-            // unknown format → return as-is (parser will return 0)
             return s;
         };
 
-        /* ---------- Time & watermark comparison ---------- */
         isMessageNewer(logDateStr) {
             const watermark = this.getGlobalWatermark();
             if (!watermark) {
@@ -2882,7 +2658,7 @@ Private send interception
                 throw new Error(`Invalid MsgNum: ${msgNum}`);
             }
 
-            const isNewer = msgNum >= wmNum; // include equal → not missed at same second
+            const isNewer = msgNum >= wmNum;
             this.verbose('Date comparison:', {
                 logDate: logDateStr, logDateNum: msgNum,
                 watermark, watermarkNum: wmNum, isNewer
@@ -2890,7 +2666,6 @@ Private send interception
             return isNewer;
         }
 
-        /* ---------- Body normalization ---------- */
         normalizeBodyToQuery(body) {
             if (!body) return '';
             if (typeof body === 'string') return body;
@@ -3003,7 +2778,6 @@ Private send interception
             }, 10000);
         }
 
-
         async searchUserRemoteByUsername(username) {
             const token = this.getToken();
 
@@ -3062,14 +2836,8 @@ Private send interception
         updateProfileChip(uid, userEl) {
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
-            // const container = userEl.parentElement;
-            // if (!container) {
-            //     console.error('updateProfileChip: container not found for uid:', uid);
-            //     return;
-            // }
             this.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
-            // Unread messages → move to the top
             if (unreadReceivedMessagesCount > 0) {
                 this.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 const chip = this._createChipForUserItem(userEl);
@@ -3080,15 +2848,7 @@ Private send interception
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.textContent = `${unreadReceivedMessagesCount}`;
-
-                // Unread must always be visible
                 userEl.style.display = '';
-
-                // if (container.firstElementChild !== userEl) {
-                //     container.insertBefore(userEl, container.firstElementChild);
-                // }
-
-                // All read (✓) → move to bottom
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
                 this.verbose(
                     'Adding all read chip to user:',
@@ -3108,11 +2868,6 @@ Private send interception
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.textContent = '✓';// 🔑
                 userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
-
-                // // --- Move user to bottom of container ---
-                // this.debug('Moving user to bottom of container:', uid);
-                // container.insertBefore(userEl, this.qs('.user_item[data-rank="0"]', container) || container.lastElementChild);
-
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
                 this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl)?.remove();
@@ -3124,7 +2879,6 @@ Private send interception
             const userEl = this.findUserById(uid);
 
             if (!userEl) {
-                // User is probably offline or not in the current list; nothing to update.
                 this.debug?.('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
                 return;
             }
@@ -3159,7 +2913,6 @@ Private send interception
             let popup = document.createElement('div');
             popup.id = id;
             popup.classList.add('ca-popup');
-
             popup.innerHTML =
                 '<div class="ca-popup-header">' +
                 '  <span class="ca-popup-title"></span>' +
@@ -3218,7 +2971,6 @@ Private send interception
                 return;
             }
 
-            // OPEN
             pop.classList.add('ca-popup-open');
         }
 
@@ -3236,8 +2988,6 @@ Private send interception
                 title: 'Connection issue',
                 bodyHtml
             });
-
-            // Wire refresh button once
             const refreshBtn = pop.querySelector('#ca-cloudflare-refresh');
             refreshBtn.addEventListener('click', () => {
                 window.location.reload();
@@ -3246,17 +2996,14 @@ Private send interception
             this.togglePopup('ca-cloudflare-popup');
         }
 
-        /* ---------- Rank filter & selection checkbox ---------- */
         extractRank(el) {
             return el.getAttribute('data-rank') || '';
         }
 
-        /* ---------- Rank filter & selection checkbox ---------- */
         extractAge(el) {
             return el.getAttribute('data-age') || '';
         }
 
-        /* ---------- Rank filter & selection checkbox ---------- */
         extractCountry(el) {
             return el.getAttribute('data-country') || '';
         }
@@ -3265,36 +3012,22 @@ Private send interception
             return this.qs(`.list_mood`, el).innerHTML;
         }
 
-        /* ---------- Rank filter & selection checkbox ---------- */
         _isAllowedRank(rank) {
             return (rank === '1' || rank === '50') && (roomRank !== '4');
         }
 
-        // more descriptive and self-contained
-        async ensureBroadcastCheckbox(el, uid) {
-            this.verbose('ensureBroadcastCheckbox:', el, uid);
-
-            const wrap = document.createElement('label');
-            wrap.className = 'ca-ck-wrap';
-            wrap.title = 'Include in broadcast';
+        async ensureBroadcastCheckbox(userItemDataEl, uid) {
+            this.verbose('ensureBroadcastCheckbox:', userItemDataEl, uid);
 
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.className = 'ca-ck';
-
             cb.checked = await this.UserStore.isIncludedForBroadcast(uid);
-
-            wrap.appendChild(cb);
-
-            this.qs('.user_item_data', el).prepend(wrap);
-
-            // (optional) event hookup here if you don’t already wire at container level
-            cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, el));
+            userItemDataEl.append(cb);
+            cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, newUserItemEl));
         }
 
-        ensureDmLink(el, user) {
-            const target = this.qs('.user_item_data', el) || el;
-
+        ensureDmLink(userItemDataEl, user) {
             const dmLink = document.createElement('a');
             dmLink.href = '#';
             dmLink.className = 'ca-dm-from-userlist ca-log-action';
@@ -3314,7 +3047,7 @@ Private send interception
                 this.applyLegacyAndOpenDm(user);
             });
 
-            target.appendChild(dmLink);
+            userItemDataEl.appendChild(dmLink);
         }
 
         handleCheckboxChange(e, uid /*, el */) {
@@ -3331,14 +3064,12 @@ Private send interception
                 return;
             }
 
-            // avoid duplicating if we already built it
             const menuPanelEl = document.getElementById('ca-menu-panel');
 
             if (menuPanelEl) {
                 return;
             }
 
-            // build a compact panel shell that reuses .ca-panel styling
             const panel = document.createElement('section');
             panel.id = 'ca-menu-panel';
             panel.className = 'ca-panel ca-mini';
@@ -3374,12 +3105,10 @@ Private send interception
   `;
 
             mount.appendChild(panel);
-
             const rListEl = this.qs('#rlist_open');
             const logDualEl = this.qs('.ca-log-dual');
             logDualEl.appendChild(rListEl);
 
-            // Re-attach any element-level handlers in case the site rewired after a DOM move
             if (typeof this._attachLogClickHandlers === 'function') {
                 this._attachLogClickHandlers();
             }
@@ -3393,10 +3122,8 @@ Private send interception
 
         renderSvgIconWithClass(className, svgInnerHTML, small = true) {
             const wrapper = document.createElement('div');
-
             wrapper.innerHTML = this.buildSvgIconString(className, svgInnerHTML, small);
 
-            // return the <svg> element itself instead of the wrapper
             return wrapper.firstElementChild;
         }
 
@@ -3404,11 +3131,9 @@ Private send interception
             const panelEl = document.createElement('section');
             panelEl.id = this.sel.raw.rightPanel;
             panelEl.classList.add('ca-panel');
-
             panelEl.innerHTML = `
       <div class="ca-sections-wrapper">
         <div class="ca-nav">
-          <!-- BROADCAST: megafoon -->
           <a id="ca-nav-bc"
              data-action="broadcast"
              href="#"
@@ -3421,7 +3146,6 @@ Private send interception
             )}
           </a>
 
-          <!-- SEND SPECIFIC: pijltje -->
           <a id="ca-nav-specific"
              href="#"
              data-action="send-message"
@@ -3434,7 +3158,6 @@ Private send interception
             )}
           </a>
 
-          <!-- CLEAR LOGS: prullenbak -->
           <a id="${this.sel.raw.log.clear}"
              href="#"
              data-action="clear-all-logs"
@@ -3452,7 +3175,6 @@ Private send interception
             )}
           </a>
 
-          <!-- STORAGE TOGGLE: LS aan/uit -->
           <a id="ca-nav-storage-toggle"
              href="#"
              class="ca-dm-link ca-dm-right ca-log-action"
@@ -3460,7 +3182,6 @@ Private send interception
              title="">
           </a>
 
-          <!-- SETTINGS: cog icon in panel nav -->
           <a id="ca-nav-settings"
              href="#"
              class="ca-dm-link ca-dm-right ca-log-action"
@@ -3473,7 +3194,7 @@ Private send interception
                 false
             )}
           </a>
-        </div> <!-- /.ca-nav -->
+        </div> 
         <div class="ca-sections-wrapper">
             <div class="ca-section ca-section-expand"
                  data-section="sent"
@@ -3485,18 +3206,11 @@ Private send interception
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-            
-              <!-- keep this one as the real log container -->
               <div id="${this.sel.raw.log.sentMessagesBox}"
                    class="ca-log-box ca-section-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
-            
-                
-            <!-- Resizer between Sent and Received -->
             <div class="ca-resizer" data-resizer="sent-received"></div>
-
-            <!-- Unreplied messages section -->
             <div class="ca-section ca-section-expand" data-section="unreplied">
               <div class="ca-section-title">
                 <span>Unreplied Messages</span>
@@ -3505,16 +3219,11 @@ Private send interception
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <!-- 👇 This is what renderLogEntry will append into for dm-in (unreplied) -->
               <div id="${this.sel.raw.log.unrepliedMessagesBox}"
                    class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
-           
-    
-            <!-- Resizer between Received and Replied -->
             <div class="ca-resizer" data-resizer="received-replied"></div>
-    
             <div class="ca-section ca-section-expand" data-section="replied" id="${this.sel.raw.log.repliedMessageBox}">
               <div class="ca-section-title">
                 <span>Replied Messages</span>
@@ -3531,7 +3240,6 @@ Private send interception
          </div>
       </div>
     `;
-
             this.qs('#global_chat').appendChild(panelEl);
             this.ui.panel = panelEl;
             this.ui.panelNav = panelEl.querySelector('.ca-nav');
@@ -3547,8 +3255,6 @@ Private send interception
                 return;
             }
 
-            // You have two .ca-sections-wrapper elements (outer with nav + inner with sections),
-            // we want the innermost one that actually contains the 3 sections.
             const wrappers = panel.querySelectorAll('.ca-sections-wrapper');
             if (!wrappers.length) {
                 console.error('[CA] _setupResizableLogSections: no .ca-sections-wrapper found in panel');
@@ -3556,9 +3262,8 @@ Private send interception
             }
 
             const container = wrappers[wrappers.length - 1];
-
-            // Initialize flex-grow for all resizable sections
             const sections = container.querySelectorAll('.ca-section-expand');
+
             if (!sections.length) {
                 console.warn('[CA] _setupResizableLogSections: no .ca-section-expand sections found');
             }
@@ -3567,12 +3272,10 @@ Private send interception
                 const style = window.getComputedStyle(sec);
                 const grow = parseFloat(style.flexGrow || '0');
 
-                // If no explicit flex-grow yet, default to 1
                 if (!sec.style.flexGrow || sec.style.flexGrow.trim() === '') {
                     sec.style.flexGrow = grow > 0 ? String(grow) : '1';
                 }
 
-                // Safety: don't let any section fully collapse
                 if (!sec.style.minHeight || sec.style.minHeight.trim() === '') {
                     sec.style.minHeight = '60px';
                 }
@@ -3602,7 +3305,6 @@ Private send interception
                     !prev.classList.contains('ca-section') &&
                     !prev.classList.contains('ca-section-expand')
                 ) {
-                    // Safety: ignore if something is wrong with the DOM
                     console.warn('[CA] Resizer prev sibling is not a section', prev);
                     return;
                 }
@@ -3616,10 +3318,8 @@ Private send interception
                 }
 
                 md.preventDefault();
-
                 const prevRect = prev.getBoundingClientRect();
                 const nextRect = next.getBoundingClientRect();
-
                 let prevSize = prevRect.height;
                 let nextSize = nextRect.height;
                 const sumSize = prevSize + nextSize;
@@ -3636,37 +3336,30 @@ Private send interception
                 const prevGrow = getGrow(prev);
                 const nextGrow = getGrow(next);
                 const sumGrow = prevGrow + nextGrow;
-
                 let lastPosY = md.clientY;
-
                 container.classList.add('ca-resizing');
 
                 const onMouseMove = (mm) => {
                     const posY = mm.clientY;
                     let delta = posY - lastPosY;
-
-                    // adjust sizes
                     prevSize += delta;
                     nextSize -= delta;
 
-                    // Prevent negative heights
                     if (prevSize < 0) {
                         nextSize += prevSize;
                         delta -= prevSize;
                         prevSize = 0;
                     }
+
                     if (nextSize < 0) {
                         prevSize += nextSize;
-                        delta += nextSize;
                         nextSize = 0;
                     }
 
                     const prevGrowNew = sumGrow * (prevSize / sumSize);
                     const nextGrowNew = sumGrow * (nextSize / sumSize);
-
                     prev.style.flexGrow = String(prevGrowNew);
                     next.style.flexGrow = String(nextGrowNew);
-
                     lastPosY = posY;
                 };
 
@@ -3680,7 +3373,6 @@ Private send interception
                 window.addEventListener('mouseup', onMouseUp);
             };
 
-            // Delegate mousedown for all resizers in this container
             container.addEventListener('mousedown', (md) => {
                 const target = md.target;
                 if (!(target instanceof HTMLElement)) {
@@ -3706,12 +3398,10 @@ Private send interception
 
             const mode = this.NO_LS_MODE || 'allow';
             el.dataset.storageMode = mode;
-
             let title;
             let svgEl;
 
             if (mode === 'block') {
-                // disabled: database with cross
                 title = 'Storage disabled (click to cycle: allow / wipe)';
                 svgEl = this.renderSvgIconWithClass("lucide lucide-database",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
@@ -3721,13 +3411,11 @@ Private send interception
             <path d="M18 7L6 19"></path>`, false);
 
             } else if (mode === 'wipe') {
-                // wipe-on-load: database with trash
                 title = 'Storage wipe on load (click to cycle: block / allow)';
                 svgEl = this.renderSvgIconWithClass("lucide lucide-database-trash",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
             <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
-            <!-- trash can inside -->
             <rect x="8" y="10" width="8" height="9" rx="1"></rect>
             <line x1="10" y1="10" x2="10" y2="8"></line>
             <line x1="14" y1="10" x2="14" y2="8"></line>
@@ -3735,7 +3423,6 @@ Private send interception
             <line x1="12" y1="13" x2="12" y2="17"></line>
             <line x1="15" y1="13" x2="15" y2="17"></line>`, false);
             } else {
-                // allow = normal storage icon
                 title = 'Storage enabled (click to cycle: wipe / block)';
                 svgEl = this.renderSvgIconWithClass("lucide lucide-database",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
@@ -3761,16 +3448,12 @@ Private send interception
 
             this.NO_LS_MODE = nextMode;
             this._writeStorageMode(this.NO_LS_MODE);
-
-            // Rebind Store to new backend for 'block'/'allow' immediately
             this.Store = new window.KeyValueStore({
                 storage: this._chooseStorage(this.NO_LS_MODE)
             });
-
             this._updateStorageToggleUi();
             this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
         }
-
 
         _wirePanelNav() {
             this.ui.panelNav.addEventListener('click', (e) => {
@@ -3780,8 +3463,6 @@ Private send interception
                 }
 
                 const action = String(link.dataset.action || '').toLowerCase();
-
-                // Only prevent default for our own actions
                 e.preventDefault();
 
                 switch (action) {
@@ -3830,7 +3511,6 @@ Private send interception
             const removedEvents = this.ActivityLogStore.clearByKind('event') || 0;
             const removedLogin = this.ActivityLogStore.clearByKind('login') || 0;
             const removedLogout = this.ActivityLogStore.clearByKind('logout') || 0;
-
             console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
             this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
@@ -3839,38 +3519,27 @@ Private send interception
             const otherUsersContainer = document.createElement('div');
             otherUsersContainer.id = this.sel.raw.users.otherUsersContainer;
             otherUsersContainer.className = 'ca-user-list-container ca-collapsed';
-
-            // ----- HEADER -----
             const header = document.createElement('div');
             header.className = 'ca-user-list-header ca-male-users-header';
-
             const title = document.createElement('div');
             title.className = 'ca-user-list-title';
-
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
             countSpan.id = this.sel.raw.users.otherUserCount;
             countSpan.textContent = '0';
-
             const labelSpan = document.createElement('span');
             labelSpan.textContent = 'Other Users';
-
             const toggle = document.createElement('div');
             toggle.className = 'ca-user-list-toggle';
             toggle.textContent = '▼';
-
             title.appendChild(countSpan);
             title.appendChild(labelSpan);
             title.appendChild(toggle);
-
             header.appendChild(title);
-
             const otherUsersListContent = document.createElement('div');
             otherUsersListContent.className = 'ca-user-list-content';
-
             otherUsersContainer.appendChild(header);
             otherUsersContainer.appendChild(otherUsersListContent);
-
             this.ui.userContainersWrapper.appendChild(otherUsersContainer);
             this.ui.otherUsersContainer = otherUsersContainer;
         }
@@ -3879,30 +3548,22 @@ Private send interception
             const femaleUsersContainer = document.createElement('div');
             femaleUsersContainer.id = this.sel.raw.users.femaleUsersContainer;
             femaleUsersContainer.className = 'ca-user-list-container ca-expanded';
-
-            // ----- HEADER -----
             const header = document.createElement('div');
             header.className = 'ca-user-list-header ca-female-users-header';
-
             const title = document.createElement('div');
             title.className = 'ca-user-list-title';
-
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
             countSpan.id = this.sel.raw.users.femaleUserCount;
             countSpan.textContent = '0';
-
             const labelSpan = document.createElement('span');
             labelSpan.textContent = 'Female Users';
-
             const toggle = document.createElement('div');
             toggle.className = 'ca-user-list-toggle';
             toggle.textContent = '▼';
-
             title.appendChild(countSpan);
             title.appendChild(labelSpan);
             title.appendChild(toggle);
-
             const sub = document.createElement('div');
             sub.className = 'ca-subrow';
             sub.innerHTML = `
@@ -3918,15 +3579,11 @@ Private send interception
 
             header.appendChild(title);
             header.appendChild(sub);
-
             const femaleUsersListContent = document.createElement('div');
             femaleUsersListContent.className = 'ca-user-list-content';
-
             femaleUsersContainer.appendChild(header);
             femaleUsersContainer.appendChild(femaleUsersListContent);
-
             this.ui.userContainersWrapper.appendChild(femaleUsersContainer);
-
             const showBroadcastCheckboxesToggle = sub.querySelector('#ca-female-ck-toggle');
             showBroadcastCheckboxesToggle.checked = this.shouldShowBroadcastCheckboxes;
 
@@ -3960,7 +3617,6 @@ Private send interception
 
         applyHideRepliedUsers(hide) {
             const repliedEls = this.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
-
             repliedEls.forEach((el) => {
                 el.style.display = hide ? 'none' : '';
             });
@@ -3976,7 +3632,6 @@ Private send interception
         }
 
         _isStaffListView() {
-            // Try a few likely title holders; fallback to document.title
             const titleEl =
                 document.querySelector('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
                 null;
@@ -4042,14 +3697,12 @@ Private send interception
 
         createBroadcastPopup() {
             const bodyHtml = `
-
                   <textarea 
                     id="ca-bc-msg" 
                     class="ca-8" 
                     rows="5" 
                     placeholder="Type the broadcast message..."
                   ></textarea>
-                
                   <div class="ca-controls" style="margin-top:4px;">
                     <span id="ca-bc-status" class="ca-status"></span>
                     <a 
@@ -4061,7 +3714,6 @@ Private send interception
                       Reset tracking
                     </a>
                   </div>
-                
                   <div class="ca-popup-actions">
                     <button 
                       id="ca-bc-send" 
@@ -4107,7 +3759,6 @@ Private send interception
                 rows="5" 
                 placeholder="Type the message..."
               ></textarea>
-            
               <div class="ca-popup-actions">
                 <a 
                   id="ca-specific-reset" 
@@ -4148,9 +3799,7 @@ Private send interception
 
         openSendMessageModal() {
             const pop = this.createSpecificPopup();
-
             this.qs('#ca-specific-status', pop).textContent = '';
-
             this.qs('#ca-specific-send', pop).addEventListener('click', async () => {
                 const sendPrivateMessageUser = this.qs('#ca-specific-username').value;
                 const sendPrivateMessageText = this.qs('#ca-specific-message').value;
@@ -4210,7 +3859,6 @@ Private send interception
                 }
 
                 broadcastSendEl.disabled = true;
-
                 this._runBroadcast(broadcastReceiveList, text)
                     .then(({ok, fail}) => {
                         this.logEventLine(`[BROADCAST] Done. Success: ${ok}, Failed: ${fail}.`);
@@ -4241,7 +3889,6 @@ Private send interception
             debugSettingsCheckbox.checked = !!this.debugMode;
             verboseSettingsCheckbox.checked = !!this.verboseMode;
 
-            // Also keep the nav checkboxes in sync if they exist
             if (this.ui && this.ui.debugCheckbox) {
                 this.ui.debugCheckbox.checked = !!this.debugMode;
             }
@@ -4297,7 +3944,6 @@ Private send interception
                 }
             };
 
-            // Only wire once per popup instance
             if (!debugSettingsCheckbox.dataset.caWired) {
                 debugSettingsCheckbox.dataset.caWired = '1';
                 debugSettingsCheckbox.addEventListener('change', (e) => {
@@ -4322,14 +3968,12 @@ Private send interception
                 <div class="ca-section-title">
                   <span>Logging</span>
                 </div>
-
                 <div class="ca-row">
                   <label class="ca-debug-toggle" title="Enable debug logging">
                     <input type="checkbox" id="ca-debug-checkbox-settings">
                     <span>Debug</span>
                   </label>
                 </div>
-
                 <div class="ca-row">
                   <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
                     <input type="checkbox" id="ca-verbose-checkbox-settings">
@@ -4354,8 +3998,6 @@ Private send interception
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
             this.ui.loggingBox = this.qs(this.sel.log.general);
-
-            // Panel-level debug/verbose checkboxes are optional now (we removed them from the nav)
             this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
             this.ui.verboseCheckbox = this.qs('#ca-verbose-checkbox');
         }
@@ -4366,12 +4008,9 @@ Private send interception
 
             this.ui.debugCheckbox.addEventListener('change', (e) => {
                 this.debugMode = e.target.checked;
-
-                // Persist everywhere
                 this._setCookie(this.DEBUG_COOKIE, String(this.debugMode));
                 localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
                 if (this.Store) this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
-
                 console.log(this.debugMode ? '[DEBUG] Debug mode enabled' : 'Debug mode disabled');
             });
         }
@@ -4379,23 +4018,17 @@ Private send interception
         _wireVerboseCheckbox() {
             if (!this.ui.verboseCheckbox) return;
             this.ui.verboseCheckbox.checked = this.verboseMode;
-
             this.ui.verboseCheckbox.addEventListener('change', (e) => {
                 this.verboseMode = e.target.checked;
-
-                // Persist everywhere
                 this._setCookie(this.VERBOSE_COOKIE, String(this.verboseMode));
                 localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
                 if (this.Store) this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
-
                 console.log(this.verboseMode ? '[VERBOSE] Verbose mode enabled' : 'Verbose mode disabled');
             });
         }
 
-// Maps log kinds to the UI boxes that should be emptied.
         _boxesForKinds(kinds) {
             const boxes = new Set();
-
             const hasOut = kinds.includes('dm-out');
             const hasIn = kinds.includes('dm-in');
             const hasEvt = kinds.includes('event');
@@ -4406,7 +4039,6 @@ Private send interception
             }
 
             if (hasIn) {
-                // Received: just clear the inner sub-boxes; do NOT rebuild the outer structure.
                 boxes.add(this.ui.unrepliedMessageBox);
                 boxes.add(this.ui.repliedMessageBox);
             }
@@ -4423,7 +4055,6 @@ Private send interception
         }
 
         _wireLogClear() {
-            // --- Per-section Clear (kind-driven; no rebuilds, no selectors) ---
             const buttons = this.qsa('.ca-section-title .clear-logs', document);
 
             if (!buttons || buttons.length === 0) {
@@ -4481,7 +4112,6 @@ Private send interception
             });
         }
 
-        // Detects visual truncation from CSS (works for single-line and multi-line clamps)
         isVisuallyTruncated_(el) {
             if (!el) {
                 console.error("isVisuallyTruncated_: missing element");
@@ -4490,7 +4120,6 @@ Private send interception
 
             const style = window.getComputedStyle(el);
 
-            // Heuristic: if line clamping is used, treat as multiline
             const clampVal =
                 style.getPropertyValue("-webkit-line-clamp") ||
                 style.getPropertyValue("line-clamp");
@@ -4498,18 +4127,15 @@ Private send interception
             const isClamped =
                 clampVal && clampVal !== "none" && Number.parseInt(clampVal, 10) > 0;
 
-            // If multiline (line-clamp / display:-webkit-box / normal wrapping), compare heights
             const multiline =
                 isClamped ||
                 style.display === "-webkit-box" ||
                 (style.whiteSpace !== "nowrap" && style.whiteSpace !== "pre");
 
             if (multiline) {
-                // Some browsers are off-by-1px; allow a tiny epsilon
                 return el.scrollHeight > el.clientHeight + 1;
             }
 
-            // Single-line (text-overflow: ellipsis; white-space: nowrap)
             return el.scrollWidth > el.clientWidth + 1;
         }
 
@@ -4546,9 +4172,7 @@ Private send interception
                 return;
             }
 
-            // Only manage the chevron + collapse for sent messages
             if (kind !== "dm-out") {
-                // Clean up any leftover indicator + inline styles
                 if (expandEl) expandEl.remove();
                 containerEl.classList.remove("ca-expanded");
 
@@ -4561,19 +4185,15 @@ Private send interception
                 return;
             }
 
-            // Expanded state is driven by the container class
             const expanded = containerEl.classList.contains("ca-expanded");
 
-            // Apply a *forced* collapsed style when not expanded
             if (!expanded) {
-                // 3-line clamp, collapsed by default
                 textEl.style.display = "-webkit-box";
                 textEl.style.overflow = "hidden";
                 textEl.style.setProperty("-webkit-box-orient", "vertical");
                 textEl.style.setProperty("-webkit-line-clamp", "3");
                 textEl.style.setProperty("line-clamp", "3");
             } else {
-                // Show full text when expanded
                 textEl.style.removeProperty("display");
                 textEl.style.removeProperty("overflow");
                 textEl.style.removeProperty("-webkit-box-orient");
@@ -4581,7 +4201,6 @@ Private send interception
                 textEl.style.removeProperty("line-clamp");
             }
 
-            // Ensure a chevron exists and is placed BEFORE the DM button
             let ind = expandEl;
             if (!ind) {
                 ind = this.createExpandIndicator_();
@@ -4600,8 +4219,6 @@ Private send interception
             }
 
             const {ts, kind, content, guid} = activityLog;
-
-            // pick target
             let targetContainer;
             switch (kind) {
                 case 'dm-out':
@@ -4644,34 +4261,24 @@ Private send interception
             );
 
             const mappedKind = kind === 'dm-out' ? 'send-ok' : kind; // keep collapse mapping
-
-            // timestamp string (keep existing behavior)
             const tsStr = String(ts);
             const displayTs = tsStr.split(' ')[1] || tsStr;
-
-            // shorthand for classes
             const C = this.sel.raw.log.classes;
-
             const html = this.buildLogHTML(kind, activityLog.content, user);
             const detailsHTML = this.decodeHTMLEntities(html);
-
             const isSystemUser = String(user.uid) === 'system';
-
             const userHTML = `
                 <div class="${C.ca_log_cell}">
                     <span class="${C.ca_log_user}">
                         ${
                 isSystemUser
-                    // System: show label, but not clickable
                     ? `<strong>${user.name || 'System'}</strong>`
-                    // Real user: normal clickable profile link
                     : this.userLinkHTML(user)
             }
                     </span>
                 </div>
               `;
 
-            // Only show DM icon for real users and non-event logs
             const dmIconHTML = (kind !== 'event' && !isSystemUser)
                 ? `
             <a href="#"
@@ -4711,19 +4318,15 @@ Private send interception
                 <div class="ca-log-entry ca-log-${mappedKind}"
                      data-uid="${String(user.uid)}"${guidAttr}>
                     <span class="ca-log-ts">${displayTs}</span>
-            
                     <div class="${C.ca_log_cell}">
                         <span class="${C.ca_log_dot} ${C.ca_log_dot_gray}">
                             ●
                         </span>
                     </div>
-            
                     ${userHTML}
-            
                     <span class="${C.ca_log_text}"${dataActionAttr}>
                         ${detailsHTML}
                     </span>
-            
                     <div class="${C.ca_log_actions}">
                         ${dmIconHTML}
                         ${deleteIconHTML}
@@ -4745,12 +4348,10 @@ Private send interception
 
             targetContainer.appendChild(el);
 
-            // Keep expand button logic
             if (kind !== 'event') {
                 const textEl = el.querySelector(`.${C.ca_log_text}`);
                 if (textEl) {
                     this.ensureExpandButtonFor_(el, textEl, kind);
-
                     const ro = new ResizeObserver(() => {
                         this.ensureExpandButtonFor_(el, textEl, kind);
                     });
@@ -4794,15 +4395,12 @@ Private send interception
         logEventLine(content, user) {
             let finalUser = null;
 
-            // If a full user object is passed (like updatedExistingUserJson)
             if (user && typeof user === 'object') {
                 finalUser = user;
             } else if (typeof user === 'string' && user) {
-                // If only a uid string is passed, try to look it up
                 finalUser = this.UserStore?.get(user) || null;
             }
 
-            // Fallback: System user if nothing valid was passed
             if (!finalUser) {
                 const systemUserFromStore = this.UserStore?.get('system');
                 finalUser = systemUserFromStore || {
@@ -4851,39 +4449,29 @@ Private send interception
 
             const gate = this._audioGate;
             gate.pending = new Set();
-            gate.origPlay = proto.play.bind(proto); // keep original bound correctly
+            gate.origPlay = proto.play.bind(proto);
             gate.userInteracted = false;
-
-            // One shared handler that flips the gate and flushes
             gate.onInteract = (_) => {
                 if (gate.userInteracted) return;
                 gate.userInteracted = true;
-
-                // Try to play any queued audio elements
                 gate.pending.forEach((audioEl) => {
                     const res = gate.origPlay.call(audioEl);
                     if (res && typeof res.catch === 'function') {
-                        res.catch(() => { /* swallow */
+                        res.catch(() => {
                         });
                     }
                 });
                 gate.pending.clear();
-
-                // Remove the capture listeners once opened
                 window.removeEventListener('click', gate.onInteract, true);
                 window.removeEventListener('keydown', gate.onInteract, true);
                 window.removeEventListener('touchstart', gate.onInteract, true);
             };
 
-            // Install capture listeners to detect first user gesture
             window.addEventListener('click', gate.onInteract, true);
             window.addEventListener('keydown', gate.onInteract, true);
             window.addEventListener('touchstart', gate.onInteract, true);
-
-            // Patch play()
             proto.play = function patchedPlay() {
                 if (!gate.userInteracted) {
-                    // Queue and resolve immediately to avoid NotAllowedError surfacing
                     gate.pending.add(this);
                     return Promise.resolve();
                 }
@@ -4891,7 +4479,6 @@ Private send interception
                 const p = gate.origPlay.call(this);
                 if (p && typeof p.catch === 'function') {
                     p.catch(function (err) {
-                        // If policy still blocks (rare), re-queue and swallow
                         const name = (err && (err.name || err)) ? String(err.name || err).toLowerCase() : '';
                         if (name.includes('notallowed')) gate.pending.add(this);
                     }.bind(this));
@@ -4902,14 +4489,13 @@ Private send interception
             gate.installed = true;
         }
 
-        /** Restore original behavior and remove listeners */
         _uninstallAudioAutoplayGate() {
             const gate = this._audioGate;
             if (!gate.installed) return;
 
             const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
             if (proto && gate.origPlay) {
-                proto.play = gate.origPlay; // restore original
+                proto.play = gate.origPlay;
             }
 
             if (gate.onInteract) {
@@ -4923,11 +4509,7 @@ Private send interception
 
         removeAds(root) {
             const scope = root && root.querySelectorAll ? root : document;
-
-            // Remove known widget containers
             document.querySelectorAll('.coo-widget').forEach(e => e.remove());
-
-            // Remove bit.ly anchors (but not those inside our panel)
             const links = scope.querySelectorAll('a[href*="bit.ly"]');
             if (!links || !links.length) return;
             links.forEach(a => {
@@ -4957,7 +4539,6 @@ Private send interception
             const timestamp = this.getTimeStampInWebsiteFormat();
             this.verbose('Setting initial watermark to:', timestamp);
             this.setGlobalWatermark(timestamp);
-
             const verify = this.getGlobalWatermark();
             if (verify === timestamp) {
                 this.verbose('Watermark successfully initialized:', timestamp);
@@ -4987,9 +4568,6 @@ Private send interception
             this.Store.set(this.LAST_DM_UID_KEY, '');
         }
 
-        /**
-         * Restore the last DM using the stored uid (if any)
-         */
         async restoreLastDmFromStore() {
             const uid = this.getLastDmUid();
             if (!uid) {

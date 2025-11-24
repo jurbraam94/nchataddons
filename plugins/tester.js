@@ -1,5 +1,3 @@
-// tester.js  (module version)
-
 class ChatAddonTester {
     constructor(appInstance) {
         if (!appInstance) {
