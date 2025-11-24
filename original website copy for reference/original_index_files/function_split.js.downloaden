@@ -757,8 +757,9 @@ $(document).ready(function(){
 			}
 		}
 	});
-	
-	
+
+
+
 	$(document).on('click', '.bswitch', function(){
 		var cval = $(this).attr('data');
 		var callback = $(this).attr('data-c');

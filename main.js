@@ -6,11 +6,9 @@
         return;
     }
 
-    /** Main App that composes stores */
     class App {
         constructor() {
             this.FEMALE_CODE = '2';
-
             this.STORAGE_KEY_PREFIX = '321chataddons';
             this.PERSIST_STORAGE_KEY_PREFIX = `persist_${this.STORAGE_KEY_PREFIX}`;
             this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
@@ -56,7 +54,6 @@
                 this.tester = null;
             }
 
-            /* ========= App State ========= */
             this.options = {};
             this.state = {
                 CHAT_CTX: {
@@ -64,7 +61,6 @@
                 }
             };
 
-            /* ========= UI Refs ========= */
             this.ui = {
                 panel: null,
                 panelNav: null,
@@ -92,7 +88,6 @@
 
             this.userParsingInProgress = false;
 
-            /* ========= Audio Autoplay Gate (policy-safe) ========= */
             this._audioGate = {
                 userInteracted: false,
                 pending: null,
@@ -439,7 +434,7 @@
                     this.renderSvgIconWithClass(
                         "lucide lucide-corner-down-left",
                         `<polyline points="9 10 4 15 9 20"></polyline>
-         <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
+     <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
                     )
                 );
 
@@ -487,7 +482,7 @@
                     this.renderSvgIconWithClass(
                         "lucide lucide-x",
                         `<line x1="18" y1="6" x2="6" y2="18"></line>
-         <line x1="6" y1="6" x2="18" y2="18"></line>`
+     <line x1="6" y1="6" x2="18" y2="18"></line>`
                     )
                 );
 
@@ -596,7 +591,7 @@
             }
 
             const template = list[idx];
-            const targetSelector = selectEl.dataset.predefinedMessagesTarget; // <-- changed
+            const targetSelector = selectEl.dataset.predefinedMessagesTarget;
             if (!targetSelector) {
                 console.error('[CA] _applyPredefinedFromSelect: missing data-predefined-messages-target');
                 return false;
@@ -705,70 +700,70 @@
 
         createPredefinedMessagesPopup() {
             const bodyHtml = `
-              <div class="ca-predefined-messages-editor">
-                <div class="ca-predefined-messages-editor-header">
-                  <span>Template editor</span>
-                  <button 
-                    type="button" 
-                    id="ca-predefined-messages-toggle" 
-                    class="ca-predefined-messages-toggle"
-                  >
-                    Hide editor
-                  </button>
-                </div>
-        
-                <div class="ca-predefined-messages-editor-body">
-                  <form 
-                    id="ca-predefined-messages-form" 
-                    class="ca-predefined-messages-form"
-                  >
-                    <label>
-                      Subject<br>
-                      <input 
-                        type="text" 
-                        id="ca-predefined-messages-subject" 
-                        class="ca-8" 
-                      >
-                    </label>
-        
-                    <label>
-                      Text<br>
-                      <textarea 
-                        id="ca-predefined-messages-text" 
-                        class="ca-8" 
-                        rows="3"
-                      ></textarea>
-                    </label>
-        
-                    <input 
-                      type="hidden" 
-                      id="ca-predefined-messages-index" 
-                      value="-1"
-                    >
-        
-                    <div class="ca-predefined-messages-buttons">
-                      <button 
-                        type="button" 
-                        id="ca-predefined-messages-reset" 
-                        class="ca-btn ca-btn-slim"
-                      >
-                        Clear
-                      </button>
-        
-                      <button 
-                        type="submit" 
-                        id="ca-predefined-messages-save" 
-                        class="ca-btn ca-btn-slim"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-        
-              <ul id="ca-predefined-messages-list"></ul>
-            `;
+     <div class="ca-predefined-messages-editor">
+     <div class="ca-predefined-messages-editor-header">
+     <span>Template editor</span>
+     <button
+     type="button"
+     id="ca-predefined-messages-toggle"
+     class="ca-predefined-messages-toggle"
+     >
+     Hide editor
+     </button>
+     </div>
+
+     <div class="ca-predefined-messages-editor-body">
+     <form
+     id="ca-predefined-messages-form"
+     class="ca-predefined-messages-form"
+     >
+     <label>
+     Subject<br>
+     <input
+     type="text"
+     id="ca-predefined-messages-subject"
+     class="ca-8"
+     >
+     </label>
+
+     <label>
+     Text<br>
+     <textarea
+     id="ca-predefined-messages-text"
+     class="ca-8"
+     rows="3"
+     ></textarea>
+     </label>
+
+     <input
+     type="hidden"
+     id="ca-predefined-messages-index"
+     value="-1"
+     >
+
+     <div class="ca-predefined-messages-buttons">
+     <button
+     type="button"
+     id="ca-predefined-messages-reset"
+     class="ca-btn ca-btn-slim"
+     >
+     Clear
+     </button>
+
+     <button
+     type="submit"
+     id="ca-predefined-messages-save"
+     class="ca-btn ca-btn-slim"
+     >
+     Save
+     </button>
+     </div>
+     </form>
+     </div>
+     </div>
+
+     <ul id="ca-predefined-messages-list"></ul>
+     `;
 
             return this.ensurePopup({
                 id: 'ca-predefined-messages-popup',
@@ -777,7 +772,6 @@
             });
         }
 
-        /* ---------- Predefined messages popup (ca-popup) ---------- */
         openPredefinedPopup(wrapper, prefilledText = null) {
             const popup = this.createPredefinedMessagesPopup();
             this._renderPredefinedList(popup);
@@ -910,7 +904,6 @@
             document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
         }
 
-        /* ---------- Mode: 'allow' | 'wipe' | 'block' ---------- */
         _readStorageMode() {
             const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
             return (v === 'wipe' || v === 'block') ? v : 'allow';
@@ -1860,12 +1853,10 @@
                     this.applyLegacyAndOpenDm(user);
                     return;
                 }
-
-                // Unknown data-action: fall through to generic handling below
             }
 
             const logTextSel = this.sel.raw.log.classes.ca_log_text;
-            const dmLinkSel = this.sel.log.classes.ca_dm_link;     // e.g. ".ca-dm-link"
+            const dmLinkSel = this.sel.log.classes.ca_dm_link;
 
             const dmArea =
                 target.closest?.(logTextSel) ||
@@ -1901,7 +1892,6 @@
                 this.openProfileOnHost(uid);
             }
         }
-
 
         resolveHostFn(name) {
             const fromSelf = (typeof window[name] === 'function') ? window[name] : null;
@@ -1944,13 +1934,13 @@
         }
 
         safeSet(obj, key, value) {
-            if (typeof obj?.[key] === 'undefined') return true; // nothing to do
+            if (typeof obj?.[key] === 'undefined') return true;
             obj[key] = value;
             return true;
         }
 
         safeCall(obj, key, ...args) {
-            if (typeof obj?.[key] !== 'function') return true; // nothing to do
+            if (typeof obj?.[key] !== 'function') return true;
             obj[key](...args);
             return true;
         }
@@ -2236,10 +2226,9 @@
             checkChange("age", "Age", "color:#ffff55");
             checkChange("country", "Country", "color:#55ff55");
             checkChange("rank", "Rank", "color:#ffcc55");
-            checkChange("gender", "Gender", "color:#ff88aa"); // or "isFemale"
+            checkChange("gender", "Gender", "color:#ff88aa");
 
             if (changedKeys.length > 0) {
-                // pretty console line
                 this._logStyled('[USER_UPDATE] ', segments);
 
                 this.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
@@ -2635,11 +2624,11 @@
         ToHourMinuteSecondFormat(ts) {
             const s = String(ts || '').trim();
             if (!s) return '';
-            // already has seconds?
             if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
             if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
             return s;
-        };
+        }
+        ;
 
         isMessageNewer(logDateStr) {
             const watermark = this.getGlobalWatermark();
@@ -2718,7 +2707,6 @@
             return el.getAttribute('data-gender') === this.FEMALE_CODE
         }
 
-        /* ---------- Token + POST helpers ---------- */
         getToken() {
             if (typeof utk !== 'undefined' && utk) return utk;
             const inp = this.qs('input[name="token"]');
@@ -2866,7 +2854,7 @@
 
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
-                chip.textContent = '✓';// 🔑
+                chip.textContent = '✓';
                 userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
@@ -4226,7 +4214,6 @@
                     break;
 
                 case 'dm-in': {
-                    // unread → Not Replied, else → Replied
                     if (activityLog.unread !== false) {
                         targetContainer = this.ui.unrepliedMessageBox;
                     } else {
@@ -4260,7 +4247,7 @@
                 targetContainer
             );
 
-            const mappedKind = kind === 'dm-out' ? 'send-ok' : kind; // keep collapse mapping
+            const mappedKind = kind === 'dm-out' ? 'send-ok' : kind;
             const tsStr = String(ts);
             const displayTs = tsStr.split(' ')[1] || tsStr;
             const C = this.sel.raw.log.classes;
@@ -4385,7 +4372,7 @@
         async restoreLog() {
             const logs = this.ActivityLogStore.list({order: 'asc'}) || [];
 
-            for (const log of logs) {  // ✅ 'of' iterates the actual log objects
+            for (const log of logs) {
                 this.verbose('Restoring log', log);
                 const user = await this.UserStore.getOrFetch(log.uid);
                 this.renderLogEntry(log, user);
@@ -4440,7 +4427,6 @@
           </a>`;
         }
 
-        /** Patch HTMLAudioElement.prototype.play so calls are queued until a user gesture occurs */
         _installAudioAutoplayGate() {
             if (this._audioGate.installed) return;
 
