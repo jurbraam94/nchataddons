@@ -375,30 +375,6 @@
     line-height: 1;
 }
 
-/* User list container */
-.ca-user-list-container {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    flex: 1 1 0;
-    min-height: 0;
-}
-
-.ca-user-list-container.ca-expanded {
-    flex: 1 1 50%;
-}
-
-.ca-user-list-container.ca-collapsed {
-    flex: 0 0 auto;
-    max-height: 45px;
-}
-
-.ca-collapsed .ca-user-list-toggle {
-    transform: rotate(-90deg);
-}
-
 .ca-user-list-header {
     padding: 10px 12px 8px 8px;
     background: #1c3b35;
@@ -461,9 +437,42 @@
     transform: rotate(-90deg);
 }
 
+/* User list container */
+.ca-user-list-container {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+.ca-user-list-container.ca-expanded {
+    flex: 1 1 50%;
+}
+
+.ca-user-list-container.ca-collapsed {
+    flex: 0 0 auto;
+    max-height: 45px;
+}
+
+.ca-collapsed .ca-user-list-toggle {
+    transform: rotate(-90deg);
+}
+
 .ca-user-list-content {
     overflow-y: auto;
     transition: all 0.3s ease;
+}
+
+.ca-collapsed .ca-user-list-content {
+    display: none;
+}
+
+.ca-user-list-container.ca-collapsed {
+    flex: 0 0 auto;
+    max-height: 45px;
 }
 
 #ca-user-container {
@@ -471,10 +480,6 @@
     flex-direction: column;
     flex: 1 1 0;
     min-height: 0;
-}
-
-.ca-collapsed .ca-user-list-content {
-    display: none;
 }
 
 .ca-user-list-header .ca-subrow {
@@ -511,11 +516,6 @@
     opacity: 0.7;
     font-size: 0.9em;
     margin-left: 5px;
-}
-
-.ca-user-list-container.ca-collapsed {
-    flex: 0 0 auto;
-    max-height: 45px;
 }
 
 .ca-user-list-container .user_item_data .username {

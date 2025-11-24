@@ -74,6 +74,8 @@
                 verboseCheckbox: null,
                 loggingBox: null,
                 userContainersWrapper: null,
+                femaleUserContainerGroup: null,
+                otherUserContainerGroup: null,
                 femaleUsersContainer: null,
                 otherUsersContainer: null,
             };
@@ -3504,54 +3506,84 @@
         }
 
         createOtherUsersContainer() {
-            const otherUsersContainer = document.createElement('div');
-            otherUsersContainer.id = this.sel.raw.users.otherUsersContainer;
-            otherUsersContainer.className = 'ca-user-list-container ca-collapsed';
+            const otherUsersContainerGroup = document.createElement('div');
+            otherUsersContainerGroup.classList.add('ca-user-list-container-group');
+            otherUsersContainerGroup.classList.add('ca-collapsed');
+
+            this.ui.userContainersWrapper.appendChild(otherUsersContainerGroup);
+            this.ui.otherUserContainerGroup = otherUsersContainerGroup;
+
             const header = document.createElement('div');
             header.className = 'ca-user-list-header ca-male-users-header';
+            this.ui.otherUserContainerGroup.appendChild(header);
+
+            const otherUsersContainer = document.createElement('div');
+            otherUsersContainer.id = this.sel.raw.users.otherUsersContainer;
+            otherUsersContainer.classList.add('ca-user-list-container');
+            this.ui.otherUserContainerGroup.appendChild(otherUsersContainer);
+            this.ui.otherUsersContainer = otherUsersContainer;
+
             const title = document.createElement('div');
             title.className = 'ca-user-list-title';
+            header.appendChild(title);
+
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
             countSpan.id = this.sel.raw.users.otherUserCount;
             countSpan.textContent = '0';
+            title.appendChild(countSpan);
+
             const labelSpan = document.createElement('span');
             labelSpan.textContent = 'Other Users';
+            title.appendChild(labelSpan);
+
             const toggle = document.createElement('div');
             toggle.className = 'ca-user-list-toggle';
             toggle.textContent = '▼';
-            title.appendChild(countSpan);
-            title.appendChild(labelSpan);
             title.appendChild(toggle);
-            header.appendChild(title);
+
             const otherUsersListContent = document.createElement('div');
             otherUsersListContent.className = 'ca-user-list-content';
-            otherUsersContainer.appendChild(header);
             otherUsersContainer.appendChild(otherUsersListContent);
-            this.ui.userContainersWrapper.appendChild(otherUsersContainer);
-            this.ui.otherUsersContainer = otherUsersContainer;
         }
 
         createFemaleUsersContainer() {
-            const femaleUsersContainer = document.createElement('div');
-            femaleUsersContainer.id = this.sel.raw.users.femaleUsersContainer;
-            femaleUsersContainer.className = 'ca-user-list-container ca-expanded';
+            const femaleUserContainerGroup = document.createElement('div');
+            this.ui.userContainersWrapper.appendChild(femaleUserContainerGroup);
+            this.ui.femaleUserContainerGroup = femaleUserContainerGroup;
+
+            femaleUserContainerGroup.classList.add('ca-user-list-container-group');
+            femaleUserContainerGroup.classList.add('ca-expanded');
+
             const header = document.createElement('div');
             header.className = 'ca-user-list-header ca-female-users-header';
+            this.ui.femaleUserContainerGroup.appendChild(header);
+
+            const femaleUsersContainer = document.createElement('div');
+            femaleUsersContainer.id = this.sel.raw.users.femaleUsersContainer;
+            femaleUsersContainer.className = 'ca-user-list-container';
+            this.ui.femaleUserContainerGroup.appendChild(femaleUsersContainer);
+            this.ui.femaleUsersContainer = femaleUsersContainer;
+
             const title = document.createElement('div');
             title.className = 'ca-user-list-title';
+            header.appendChild(title);
+
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
             countSpan.id = this.sel.raw.users.femaleUserCount;
             countSpan.textContent = '0';
+            title.appendChild(countSpan);
+
             const labelSpan = document.createElement('span');
             labelSpan.textContent = 'Female Users';
+            title.appendChild(labelSpan);
+
             const toggle = document.createElement('div');
             toggle.className = 'ca-user-list-toggle';
             toggle.textContent = '▼';
-            title.appendChild(countSpan);
-            title.appendChild(labelSpan);
             title.appendChild(toggle);
+
             const sub = document.createElement('div');
             sub.className = 'ca-subrow';
             sub.innerHTML = `
@@ -3564,14 +3596,12 @@
             <span>Hide replied users</span>
         </label>
     `;
-
-            header.appendChild(title);
             header.appendChild(sub);
+
             const femaleUsersListContent = document.createElement('div');
             femaleUsersListContent.className = 'ca-user-list-content';
-            femaleUsersContainer.appendChild(header);
             femaleUsersContainer.appendChild(femaleUsersListContent);
-            this.ui.userContainersWrapper.appendChild(femaleUsersContainer);
+
             const showBroadcastCheckboxesToggle = sub.querySelector('#ca-female-ck-toggle');
             showBroadcastCheckboxesToggle.checked = this.shouldShowBroadcastCheckboxes;
 
@@ -3600,7 +3630,7 @@
             }
 
             this.verbose('Created female users container without cloning male users container');
-            this.ui.femaleUsersContainer = femaleUsersContainer;
+
         }
 
         applyHideRepliedUsers(hide) {
@@ -3657,27 +3687,38 @@
         }
 
         wireUserContainerHeaders() {
-            const setExpanded = (el, expanded) => {
-                el.classList.toggle('ca-expanded', !!expanded);
-                el.classList.toggle('ca-collapsed', !expanded);
-            };
+            if (!this.ui || !this.ui.userContainersWrapper) {
+                console.error('[CA] wireUserContainerHeaders: userContainersWrapper missing');
+                return;
+            }
 
-            const onHeaderClick = (container) => () => {
-                const isExpanded = container.classList.contains('ca-expanded');
-                setExpanded(container, !isExpanded);
-            };
+            const containerGroups = this.ui.userContainersWrapper.children;
 
-            for (const container of this.ui.userContainersWrapper.children) {
-                const header = container.querySelector('.ca-user-list-header');
+            if (!containerGroups || containerGroups.length === 0) {
+                console.warn('[CA] wireUserContainerHeaders: no container groups found in userContainersWrapper');
+                return;
+            }
 
-                if (!header) {
-                    console.warn('[CA] Missing .ca-user-list-header for user container', container);
-                    continue;
-                }
+            for (const userListContainerGroup of containerGroups) {
+                this.qs('.ca-user-list-header', userListContainerGroup).addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
 
-                header.addEventListener('click', onHeaderClick(container));
+                    const isExpanded = userListContainerGroup.classList.contains('ca-expanded');
+                    const nextExpanded = !isExpanded;
+
+                    console.debug('[CA] Header clicked, toggling group', {
+                        group: userListContainerGroup,
+                        wasExpanded: isExpanded,
+                        willBeExpanded: nextExpanded
+                    });
+
+                    // Use your existing helper
+                    this._setExpanded(userListContainerGroup, nextExpanded);
+                });
             }
         }
+
 
         updateFemaleUserCount(count) {
             this.verbose('Updating female user count:', count);
