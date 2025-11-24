@@ -454,7 +454,6 @@
 
 .ca-user-list-container-group.ca-collapsed {
     flex: 0 0 auto;
-    max-height: 45px;
 }
 
 .ca-collapsed .ca-user-list-toggle {
