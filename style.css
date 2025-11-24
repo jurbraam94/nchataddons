@@ -11,7 +11,7 @@
     min-width: 450px;
 }
 
-#right-panel .ca-body {
+#right-panel .ca-body, .ca-sections-wrapper {
     padding-left: 12px;
     padding-right: 12px;
     display: flex;
@@ -20,7 +20,6 @@
     flex: 1 1 auto;
     overflow: hidden;
 }
-
 
 .ca-section-title {
     display: flex;
@@ -1249,4 +1248,44 @@ svg.svg-large {
 .ca-section-title .clear-logs:hover {
     opacity: 1;
     text-decoration: underline;
+}
+
+/* Vertical resizers between log sections */
+.ca-resizer {
+    flex: 0 0 auto;
+    height: 4px;
+    background: rgba(148, 163, 184, 0.8);
+    cursor: row-resize;
+    user-select: none;
+    border-radius: 999px;
+    margin: 4px 0;
+}
+
+.ca-resizer-inner {
+    margin: 0;
+    background: rgba(148, 163, 184, 0.5);
+}
+
+.ca-resizer:hover,
+.ca-resizer:active {
+    background: rgba(191, 219, 254, 1);
+}
+
+/* The log sections column (already flex, just making intent clear) */
+.ca-sections-wrapper {
+    display: flex;
+    flex-direction: column;
+    /* you already have: gap, flex:1, overflow: hidden etc. */
+}
+
+/* Ensure the 3 sections can grow/shrink, but never collapse completely */
+.ca-section-expand {
+    flex: 1 1 0;
+    min-height: 60px; /* or whatever feels good */
+}
+
+/* While dragging: prevent text selection and show resize cursor globally */
+.ca-sections-wrapper.ca-resizing {
+    user-select: none;
+    cursor: row-resize;
 }
