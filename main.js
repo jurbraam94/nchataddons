@@ -443,7 +443,7 @@
             const listEl = popup.querySelector('#ca-predefined-messages-list');
             const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
             const textInput = popup.querySelector('#ca-predefined-messages-text');
-            const indexInput = popup.querySelector('#ca-predefined-messages-index');
+            const indexInput = popup.querySelector('#ca-predefined-builmessages-index');
 
             if (!listEl || !subjectInput || !textInput || !indexInput) {
                 console.error('[CA] _renderPredefinedList: missing elements');
@@ -3457,8 +3457,9 @@ Private send interception
           </a>
         </div> <!-- /.ca-nav -->
         <div class="ca-sections-wrapper">
-            <!-- Sent messages section -->
-            <div class="ca-section ca-section-expand" data-section="sent" id="${this.sel.raw.log.sentMessagesBox}">
+            <div class="ca-section ca-section-expand"
+                 data-section="sent"
+                 id="ca-log-section-sent">
               <div class="ca-section-title">
                 <span>Sent Messages</span>
                 <span class="clear-logs"
@@ -3466,11 +3467,14 @@ Private send interception
                       role="button"
                       tabindex="0">Clear</span>
               </div>
+            
+              <!-- keep this one as the real log container -->
               <div id="${this.sel.raw.log.sentMessagesBox}"
                    class="ca-log-box ca-section-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
-    
+            
+                
             <!-- Resizer between Sent and Received -->
             <div class="ca-resizer" data-resizer="sent-received"></div>
 
