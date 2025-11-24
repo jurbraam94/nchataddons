@@ -572,7 +572,7 @@
                 panel: null,
                 panelNav: null,
                 sentMessagesBox: null,
-                receivedMessagesBox: null,
+                messagesWrapper: null,
                 presenceBox: null,
                 logClear: null,
                 repliedMessageBox: null,
@@ -653,10 +653,10 @@
                         ca_sent_chip_unread: '.ca-sent-chip-unread',
                         user_item: '.user_item'
                     },
-                    sent: '#ca-log-box-sent',
-                    received: '#ca-log-box-received',
-                    replied: '#ca-log-received-replied',
-                    unreplied: '#ca-log-received-unreplied',
+                    sentMessagesBox: '#ca-log-box-sent',
+                    messagesWrapper: '.ca-sections-wrapper',
+                    repliedMessagesBox: '#ca-log-received-replied',
+                    unrepliedMessagesBox: '#ca-log-received-unreplied',
                     presence: '#ca-log-box-presence',
                     clear: '#ca-log-clear',
                     general: '#ca-logs-box'
@@ -1472,39 +1472,13 @@
                 this.openGlobalPredefinedTemplatesPopup();
             });
 
-            // --- Settings button (cog, SVG, same style/color) ---
-            const settingsBtn = document.createElement('div');
-            settingsBtn.classList.add('panel_option', 'panel_option_settings');
-            settingsBtn.title = 'Settings (debug & verbose)';
-
-            settingsBtn.innerHTML = `
-                <span class="ca-log-action">
-                    ${this.buildSvgIconString(
-                'lucide lucide-settings',
-                `
-                            <circle cx="12" cy="12" r="3"></circle>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65 1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6 0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65 1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65 1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65 1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65 1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65 1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>
-                        `,
-                true
-            )}
-                </span>
-            `;
-
-            settingsBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.openSettingsPopup();
-            });
-
-            const firstButton = bar.querySelector('.panel_option');
             // Insert in front so they appear together with the existing buttons
             if (existingOption) {
                 bar.insertBefore(refreshBtn, existingOption);
                 bar.insertBefore(templatesBtn, existingOption);
-                bar.insertBefore(settingsBtn, existingOption);
             } else {
                 bar.appendChild(refreshBtn);
                 bar.appendChild(templatesBtn);
-                bar.appendChild(settingsBtn);
             }
         }
 
@@ -2430,7 +2404,7 @@ Private send interception
         _attachLogClickHandlers() {
             const boxes = [
                 this.ui.sentMessagesBox,
-                this.ui.receivedMessagesBox,
+                this.ui.messagesWrapper,
                 this.ui.presenceBox,
                 this.ui.unrepliedMessageBox,
                 this.ui.repliedMessageBox,
@@ -3859,7 +3833,6 @@ Private send interception
             panel.className = 'ca-panel ca-mini';
 
             panel.innerHTML = `
-    <div class="ca-body">
       <div class="ca-section ca-section-compact">
         <div class="ca-log-dual">
           <div class="ca-section ca-log-section">
@@ -3886,7 +3859,6 @@ Private send interception
                    aria-live="polite"></div>
             </div>
         </div>
-      </div>
     </div>
   `;
 
@@ -3921,109 +3893,297 @@ Private send interception
             const panelEl = document.createElement('section');
             panelEl.id = this.sel.raw.rightPanel;
             panelEl.classList.add('ca-panel');
-            panelEl.id = this.sel.raw.rightPanel;
-            panelEl.classList.add('ca-panel');
-            panelEl.innerHTML = `
-             <div class="ca-body">
-              <div class="ca-nav">
-            
-                <!-- BROADCAST: megafoon -->
-                <a id="ca-nav-bc"
-                   data-action="broadcast"
-                   href="#"
-                   class="ca-dm-link ca-dm-right ca-log-action"
-                   title="Broadcast message">
-                  ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M3 10v4c0 .55.45 1 1 1h1l4 5v-16l-4 5h-1c-.55 0-1 .45-1 1zm13-5l-8 5v4l8 5v-14zm2 4h3v6h-3v-6z"/>`, false)}
-                </a>
-            
-                <!-- SEND SPECIFIC: pijltje -->
-                <a id="ca-nav-specific"
-                   href="#"
-                   data-action="send-message"
-                   class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
-                   title="Send specific message">
-                  ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<path d="M8 4l12 8-12 8V4z"></path>`, false)}
-                </a>
-            
-                <!-- CLEAR LOGS: prullenbak -->
-                <a id="${this.sel.raw.log.clear}"
-                   href="#"
-                   data-action="clear-all-logs"
-                   class="ca-dm-link ca-dm-right ca-log-action"
-                   title="Clear logs">
-                    ${this.buildSvgIconString("lucide lucide-triangle-right",
-                `<g transform="translate(0,-1)">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-            <path d="M10 11v6"></path>
-            <path d="M14 11v6"></path>
-        </g>`, false)}
-                </a>
-            
-                <!-- STORAGE TOGGLE: LS aan/uit -->
-                <a id="ca-nav-storage-toggle"
-                   href="#"
-                   class="ca-dm-link ca-dm-right ca-log-action"
-                   data-action="storage-toggle"
-                   title="">
-                </a>
-            
-                <label class="ca-debug-toggle" title="Enable debug logging">
-                  <input type="checkbox" id="ca-debug-checkbox">
-                  <span>Debug</span>
-                </label>
-                <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
-                  <input type="checkbox" id="ca-verbose-checkbox">
-                  <span>Verbose</span>
-                </label>
-              </div>
-                        
-                <div class="ca-section ca-section-compact">
-                  <div class="ca-section-title">
-                      <span>Sent Messages</span>
-                      <span class="clear-logs" data-kinds="dm-out" role="button" tabindex="0">Clear</span>
-                  </div>
-                  <div id="${this.sel.raw.log.sent}"
-                       class="ca-log-box ca-log-box-compact ${this.sel.raw.log.classes.ca_box_scrollable}"
-                       aria-live="polite"></div>
-                </div>
-            
-                <hr class="ca-divider">
-            
-                <div class="ca-section ca-section-expand">
-                  <div class="ca-section-title">
-                    <span>Received Messages</span>
-                      <span class="clear-logs"
-                            data-kinds="dm-in"
-                            data-rebuild="received"
-                            role="button" tabindex="0">Clear</span>
-                  </div>
-                  <div id="${this.sel.raw.log.received}" 
-                       class="ca-log-box ca-log-box-expand"
-                       aria-live="polite">
-                    <div class="ca-log-subsection-unreplied-wrapper">
-                      <div class="ca-log-subsection-header">Not Replied</div>
-                      <div id="${this.sel.raw.log.unreplied}"
-                            class="${this.sel.raw.log.classes.ca_box_scrollable}">
-                           </div>
-                    </div>
-                    <div class="ca-log-subsection-replied-wrapper">
-                      <div class="ca-log-subsection-header">Replied</div>
-                      <div id="${this.sel.raw.log.replied}"
-                            class="${this.sel.raw.log.classes.ca_box_scrollable}">
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>`;
 
-            this.qs(`#global_chat`).appendChild(panelEl);
+            panelEl.innerHTML = `
+      <div class="ca-sections-wrapper">
+        <div class="ca-nav">
+          <!-- BROADCAST: megafoon -->
+          <a id="ca-nav-bc"
+             data-action="broadcast"
+             href="#"
+             class="ca-dm-link ca-dm-right ca-log-action"
+             title="Broadcast message">
+            ${this.buildSvgIconString(
+                "lucide lucide-triangle-right",
+                `<path d="M3 10v4c0 .55.45 1 1 1h1l4 5v-16l-4 5h-1c-.55 0-1 .45-1 1zm13-5l-8 5v4l8 5v-14zm2 4h3v6h-3v-6z"/>`,
+                false
+            )}
+          </a>
+
+          <!-- SEND SPECIFIC: pijltje -->
+          <a id="ca-nav-specific"
+             href="#"
+             data-action="send-message"
+             class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
+             title="Send specific message">
+            ${this.buildSvgIconString(
+                "lucide lucide-triangle-right",
+                `<path d="M8 4l12 8-12 8V4z"></path>`,
+                false
+            )}
+          </a>
+
+          <!-- CLEAR LOGS: prullenbak -->
+          <a id="${this.sel.raw.log.clear}"
+             href="#"
+             data-action="clear-all-logs"
+             class="ca-dm-link ca-dm-right ca-log-action"
+             title="Clear logs">
+            ${this.buildSvgIconString(
+                "lucide lucide-triangle-right",
+                `<g transform="translate(0,-1)">
+                 <polyline points="3 6 5 6 21 6"></polyline>
+                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                 <path d="M10 11v6"></path>
+                 <path d="M14 11v6"></path>
+               </g>`,
+                false
+            )}
+          </a>
+
+          <!-- STORAGE TOGGLE: LS aan/uit -->
+          <a id="ca-nav-storage-toggle"
+             href="#"
+             class="ca-dm-link ca-dm-right ca-log-action"
+             data-action="storage-toggle"
+             title="">
+          </a>
+
+          <!-- SETTINGS: cog icon in panel nav -->
+          <a id="ca-nav-settings"
+             href="#"
+             class="ca-dm-link ca-dm-right ca-log-action"
+             data-action="open-settings"
+             title="Settings (debug &amp; verbose)">
+            ${this.buildSvgIconString(
+                "lucide lucide-settings",
+                `<circle cx="12" cy="12" r="3"></circle>
+               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65
+                        1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6
+                        0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65
+                        1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65
+                        1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65
+                        1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65
+                        1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65
+                        1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>`,
+                false
+            )}
+          </a>
+        </div> <!-- /.ca-nav -->
+        <div class="ca-sections-wrapper">
+            <!-- Sent messages section -->
+            <div class="ca-section ca-section-expand" data-section="sent" id="${this.sel.raw.log.sentMessagesBox}">
+              <div class="ca-section-title">
+                <span>Sent Messages</span>
+                <span class="clear-logs"
+                      data-kinds="dm-out"
+                      role="button"
+                      tabindex="0">Clear</span>
+              </div>
+              <div id="${this.sel.raw.log.sentMessagesBox}"
+                   class="ca-log-box ca-section-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+                   aria-live="polite"></div>
+            </div>
+    
+            <!-- Resizer between Sent and Received -->
+            <div class="ca-resizer" data-resizer="sent-received"></div>
+
+    
+            <!-- Received messages section (unreplied / not replied) -->
+            <div class="ca-section ca-section-expand" data-section="unreplied" id="${this.sel.raw.log.unrepliedMessageBox}">
+              <div class="ca-section-title">
+                <span>Unreplied Messages</span>
+                <span class="clear-logs"
+                      data-kinds="dm-in"
+                      data-rebuild="received"
+                      role="button"
+                      tabindex="0">Clear</span>
+              </div>
+              <div id="${this.sel.raw.log.messagesWrapper}"
+                   class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+                   aria-live="polite"></div>
+            </div>
+    
+            <!-- Resizer between Received and Replied -->
+            <div class="ca-resizer" data-resizer="received-replied"></div>
+    
+            <!-- Replied messages section -->
+            <div class="ca-section ca-section-expand" data-section="replied" id="${this.sel.raw.log.repliedMessageBox}">
+              <div class="ca-section-title">
+                <span>Replied Messages</span>
+              </div>
+              <div id="${this.sel.raw.log.repliedMessagesBox}"
+                   class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+                   aria-live="polite"></div>
+            </div>
+         </div>
+      </div>
+    `;
+
+            this.qs('#global_chat').appendChild(panelEl);
             this.ui.panel = panelEl;
             this.ui.panelNav = panelEl.querySelector('.ca-nav');
             this._wirePanelNav();
+            this._setupResizableLogSections();
         }
+
+        _setupResizableLogSections() {
+            const panel = this.ui.panel;
+
+            if (!panel) {
+                console.error('[CA] _setupResizableLogSections: panel not initialized');
+                return;
+            }
+
+            // You have two .ca-sections-wrapper elements (outer with nav + inner with sections),
+            // we want the innermost one that actually contains the 3 sections.
+            const wrappers = panel.querySelectorAll('.ca-sections-wrapper');
+            if (!wrappers.length) {
+                console.error('[CA] _setupResizableLogSections: no .ca-sections-wrapper found in panel');
+                return;
+            }
+
+            const container = wrappers[wrappers.length - 1];
+
+            // Initialize flex-grow for all resizable sections
+            const sections = container.querySelectorAll('.ca-section-expand');
+            if (!sections.length) {
+                console.warn('[CA] _setupResizableLogSections: no .ca-section-expand sections found');
+            }
+
+            sections.forEach((sec) => {
+                const style = window.getComputedStyle(sec);
+                const grow = parseFloat(style.flexGrow || '0');
+
+                // If no explicit flex-grow yet, default to 1
+                if (!sec.style.flexGrow || sec.style.flexGrow.trim() === '') {
+                    sec.style.flexGrow = grow > 0 ? String(grow) : '1';
+                }
+
+                // Safety: don't let any section fully collapse
+                if (!sec.style.minHeight || sec.style.minHeight.trim() === '') {
+                    sec.style.minHeight = '60px';
+                }
+            });
+
+            const resizers = container.querySelectorAll('.ca-resizer');
+            if (!resizers.length) {
+                console.warn('[CA] _setupResizableLogSections: no .ca-resizer elements found');
+                return;
+            }
+
+            const manageResize = (md, resizer) => {
+                if (!resizer) {
+                    console.error('[CA] manageResize called without resizer');
+                    return;
+                }
+
+                const prev = resizer.previousElementSibling;
+                const next = resizer.nextElementSibling;
+
+                if (!prev || !next) {
+                    console.warn('[CA] Resizer without two neighbors (prev/next)', resizer);
+                    return;
+                }
+
+                if (
+                    !prev.classList.contains('ca-section') &&
+                    !prev.classList.contains('ca-section-expand')
+                ) {
+                    // Safety: ignore if something is wrong with the DOM
+                    console.warn('[CA] Resizer prev sibling is not a section', prev);
+                    return;
+                }
+
+                if (
+                    !next.classList.contains('ca-section') &&
+                    !next.classList.contains('ca-section-expand')
+                ) {
+                    console.warn('[CA] Resizer next sibling is not a section', next);
+                    return;
+                }
+
+                md.preventDefault();
+
+                const prevRect = prev.getBoundingClientRect();
+                const nextRect = next.getBoundingClientRect();
+
+                let prevSize = prevRect.height;
+                let nextSize = nextRect.height;
+                const sumSize = prevSize + nextSize;
+
+                const getGrow = (el) => {
+                    const inlineGrow = parseFloat(el.style.flexGrow || '');
+                    if (!Number.isNaN(inlineGrow) && inlineGrow > 0) {
+                        return inlineGrow;
+                    }
+                    const computedGrow = parseFloat(window.getComputedStyle(el).flexGrow || '0');
+                    return computedGrow > 0 ? computedGrow : 1;
+                };
+
+                const prevGrow = getGrow(prev);
+                const nextGrow = getGrow(next);
+                const sumGrow = prevGrow + nextGrow;
+
+                let lastPosY = md.clientY;
+
+                container.classList.add('ca-resizing');
+
+                const onMouseMove = (mm) => {
+                    const posY = mm.clientY;
+                    let delta = posY - lastPosY;
+
+                    // adjust sizes
+                    prevSize += delta;
+                    nextSize -= delta;
+
+                    // Prevent negative heights
+                    if (prevSize < 0) {
+                        nextSize += prevSize;
+                        delta -= prevSize;
+                        prevSize = 0;
+                    }
+                    if (nextSize < 0) {
+                        prevSize += nextSize;
+                        delta += nextSize;
+                        nextSize = 0;
+                    }
+
+                    const prevGrowNew = sumGrow * (prevSize / sumSize);
+                    const nextGrowNew = sumGrow * (nextSize / sumSize);
+
+                    prev.style.flexGrow = String(prevGrowNew);
+                    next.style.flexGrow = String(nextGrowNew);
+
+                    lastPosY = posY;
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    container.classList.remove('ca-resizing');
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            };
+
+            // Delegate mousedown for all resizers in this container
+            container.addEventListener('mousedown', (md) => {
+                const target = md.target;
+                if (!(target instanceof HTMLElement)) {
+                    return;
+                }
+
+                const resizer = target.closest('.ca-resizer');
+                if (!resizer) {
+                    return;
+                }
+
+                manageResize(md, resizer);
+            });
+        }
+
 
         _updateStorageToggleUi() {
             const el = document.getElementById('ca-nav-storage-toggle');
@@ -4133,10 +4293,16 @@ Private send interception
                         this.handleStorageToggleClick();
                         break;
 
+                    case 'open-settings':
+                        this.verbose('Nav: settings clicked');
+                        this.openSettingsPopup();
+                        break;
+
                     default:
                         console.warn('[CA] _wirePanelNav: unhandled data-action:', action);
                         break;
                 }
+
             });
         }
 
@@ -4668,27 +4834,18 @@ Private send interception
             });
         }
 
-
         _bindStaticRefs() {
-            this.ui.sentMessagesBox = this.qs(this.sel.log.sent);
-            this.ui.receivedMessagesBox = this.qs(this.sel.log.received);
-            this.ui.repliedMessageBox = this.qs(this.sel.log.replied);
-            this.ui.unrepliedMessageBox = this.qs(this.sel.log.unreplied);
+            this.ui.sentMessagesBox = this.qs(this.sel.log.sentMessagesBox);
+            this.ui.messagesWrapper = this.qs(this.sel.log.messagesWrapper);
+            this.ui.repliedMessageBox = this.qs(this.sel.log.repliedMessagesBox);
+            this.ui.unrepliedMessageBox = this.qs(this.sel.log.unrepliedMessagesBox);
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
             this.ui.loggingBox = this.qs(this.sel.log.general);
 
-            // Debug / verbose checkboxes in the panel nav
+            // Panel-level debug/verbose checkboxes are optional now (we removed them from the nav)
             this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
             this.ui.verboseCheckbox = this.qs('#ca-verbose-checkbox');
-
-            if (!this.ui.debugCheckbox) {
-                console.warn('[CA] _bindStaticRefs: #ca-debug-checkbox not found');
-            }
-
-            if (!this.ui.verboseCheckbox) {
-                console.warn('[CA] _bindStaticRefs: #ca-verbose-checkbox not found');
-            }
         }
 
         _wireDebugCheckbox() {
@@ -4940,10 +5097,6 @@ Private send interception
                     break;
 
                 case 'dm-in': {
-                    // ensure subsection refs are bound (in case the box was rebuilt)
-                    this.ui.unrepliedMessageBox = this.ui.unrepliedMessageBox || this.qs(this.sel.log.unreplied);
-                    this.ui.repliedMessageBox = this.ui.repliedMessageBox || this.qs(this.sel.log.replied);
-
                     // unread → Not Replied, else → Replied
                     if (activityLog.unread !== false) {
                         targetContainer = this.ui.unrepliedMessageBox;
@@ -4963,7 +5116,7 @@ Private send interception
                     break;
 
                 default:
-                    targetContainer = this.ui.receivedMessagesBox;
+                    targetContainer = this.ui.messagesWrapper;
             }
 
             if (!targetContainer) {
