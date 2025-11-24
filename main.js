@@ -2231,7 +2231,10 @@ Private send interception
         }
 
         cloneAndRenderNewUserElement(parseUserEl, updatedUserJson) {
-            const containerContent = this.qs(`.ca-user-list-content`, updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer);
+            const containerContent = this.qs(
+                `.ca-user-list-content`,
+                updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer
+            );
             const newUserEl = parseUserEl.cloneNode(true);
 
             const wrapper = document.createElement('div');
@@ -2244,12 +2247,28 @@ Private send interception
 
             wrapper.appendChild(nameSpan);
 
+            // Click on username row → open profile (our behavior)
             wrapper.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 this.openProfileOnHost(updatedUserJson.uid);
             });
+
+            // 🔥 Avatar click override (block original site handler)
+            const avatarImg = newUserEl.querySelector('.user_item_avatar img.avav');
+            if (avatarImg) {
+                avatarImg.addEventListener(
+                    'click',
+                    (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        this.openProfileOnHost(updatedUserJson.uid);
+                    },
+                    true // use capture so we run before any bubbling/delegated handlers
+                );
+            }
 
             // Age (only if exists)
             if (updatedUserJson?.age > 0) {
@@ -2259,8 +2278,13 @@ Private send interception
                 wrapper.appendChild(ageSpan);
             }
 
-            this.verbose('[_updateOrCreateUserElement] Created new user element for', updatedUserJson.uid, updatedUserJson.name);
+            this.verbose(
+                '[_updateOrCreateUserElement] Created new user element for',
+                updatedUserJson.uid,
+                updatedUserJson.name
+            );
 
+            // Our other handlers
             this.ensureDmLink(newUserEl, updatedUserJson);
 
             if (updatedUserJson.isFemale && this._isAllowedRank(updatedUserJson.rank)) {
@@ -2270,9 +2294,10 @@ Private send interception
             this.updateProfileChip(updatedUserJson.uid, newUserEl);
 
             // Replace old <p class="username">...</p>
-            this.qs('.username', newUserEl).replaceWith(wrapper)
+            this.qs('.username', newUserEl).replaceWith(wrapper);
             containerContent.appendChild(newUserEl);
         }
+
 
         updateUser(fetchedUserJson, existingUserEl) {
             // Update in store first
@@ -3444,14 +3469,7 @@ Private send interception
             ${this.buildSvgIconString(
                 "lucide lucide-settings",
                 `<circle cx="12" cy="12" r="3"></circle>
-               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l-.5.87a1.65
-                        1.65 0 0 1-2.27.6l-.9-.52a1.65 1.65 0 0 0-1.6
-                        0l-.9.52a1.65 1.65 0 0 1-2.27-.6l-.5-.87a1.65
-                        1.65 0 0 0 .33-1.82l-.5-.87a1.65 1.65 0 0 0-1.27-.8l-1-.1a1.65
-                        1.65 0 0 1-1.48-1.65v-1a1.65 1.65 0 0 1 1.48-1.65l1-.1a1.65
-                        1.65 0 0 0 1.27-.8l.5-.87a1.65 1.65 0 0 1 2.27-.6l.9.52a1.65
-                        1.65 0 0 0 1.6 0l.9-.52a1.65 1.65 0 0 1 2.27.6l.5.87a1.65
-                        1.65 0 0 0 .33 1.82l.5.87a1.65 1.65 0 0 1 0 1.8z"></path>`,
+               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.7 0 1.31-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.02A1.65 1.65 0 0 0 11 3.09V3a2 2 0 1 1 4 0v.09c0 .7.4 1.31 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.02c.2.6.81 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.31.4-1.51 1z"/>`,
                 false
             )}
           </a>
