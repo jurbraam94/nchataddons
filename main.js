@@ -3662,12 +3662,19 @@
                 el.classList.toggle('ca-collapsed', !expanded);
             };
 
-            const onHeaderClick = (clicked) => () => {
-                setExpanded(clicked, !clicked.classList.contains('ca-expanded'));
+            const onHeaderClick = (container) => () => {
+                const isExpanded = container.classList.contains('ca-expanded');
+                setExpanded(container, !isExpanded);
             };
 
             for (const container of this.ui.userContainersWrapper.children) {
-                const header = container.querySelector('.ca-user-list-header .ca-user-list-title');
+                const header = container.querySelector('.ca-user-list-header');
+
+                if (!header) {
+                    console.warn('[CA] Missing .ca-user-list-header for user container', container);
+                    continue;
+                }
+
                 header.addEventListener('click', onHeaderClick(container));
             }
         }
