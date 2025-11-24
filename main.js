@@ -3445,9 +3445,10 @@
 
             this.NO_LS_MODE = nextMode;
             this._writeStorageMode(this.NO_LS_MODE);
-            this.Store = new window.KeyValueStore({
+            this.Store = new KeyValueStore({
                 storage: this._chooseStorage(this.NO_LS_MODE)
             });
+
             this._updateStorageToggleUi();
             this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
         }
