@@ -184,7 +184,7 @@
 
             const walk = (src) => {
                 if (!src || typeof src !== "object") return undefined;
-                if (seen.has(src)) return undefined; /
+                if (seen.has(src)) return undefined;
                 seen.add(src);
 
                 const out = Array.isArray(src) ? [] : {};

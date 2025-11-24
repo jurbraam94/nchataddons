@@ -1,4 +1,3 @@
-/* ===== Unified 321ChatAddons panel ===== */
 .ca-panel {
     display: flex;
     flex-direction: column;
@@ -36,7 +35,6 @@
     align-items: center;
 }
 
-/* Section layout variants */
 .ca-section {
     display: flex;
     flex-direction: column;
@@ -47,7 +45,6 @@
     flex: 0 0 auto;
 }
 
-/* Used for the “Received Messages” section wrapper (replaces inline flex + min-height:0) */
 .ca-section-expand {
     flex: 1 1 0;
     overflow: hidden;
@@ -59,7 +56,6 @@
     display: none;
 }
 
-/* Top nav for tools */
 .ca-nav {
     display: flex;
     gap: 8px;
@@ -69,7 +65,6 @@
     margin-top: 6px;
 }
 
-/* Draggable popup */
 .ca-popup {
     position: fixed;
     top: 18vh;
@@ -130,7 +125,6 @@
     gap: 10px;
 }
 
-/* Popup-specific widgets: ensure consistent colors and rounded inputs */
 .ca-popup input[type="text"], .ca-popup textarea {
     font-size: 14px;
     line-height: 1.3;
@@ -155,7 +149,6 @@
     min-height: calc(5 * 1.3em + 20px);
 }
 
-/* Accent button in popup: match standard .ca-btn styling */
 .ca-popup .ca-btn {
     border: 1px solid #334155;
     background: linear-gradient(#1f2937, #111827);
@@ -166,7 +159,6 @@
     background: linear-gradient(#192231, #0e1420);
 }
 
-/* Ensure popup action buttons (send, broadcast, etc.) match .ca-btn styling; keep reset as anchor */
 .ca-popup button:not(.ca-popup-close),
 .ca-popup input[type="button"],
 .ca-popup input[type="submit"],
@@ -202,7 +194,6 @@
     cursor: not-allowed;
 }
 
-/* Popup Reset tracking stays an anchor: bold + white, inline with Send */
 .ca-popup .ca-reset-link,
 .ca-popup .ca-reset {
     background: transparent;
@@ -222,7 +213,6 @@
     text-decoration: underline;
 }
 
-/* Inputs/buttons */
 .ca-panel input[type="text"], .ca-panel textarea {
     font-size: 14px;
     line-height: 1.3;
@@ -247,18 +237,15 @@
     min-height: calc(3 * 1.3em + 20px);
 }
 
-/* Slim input helper for compact fields (e.g., username) */
 .ca-panel .ca-input-slim {
     font-size: 13px;
     padding: 6px 8px;
 }
 
-/* Ensure a little space between username input and Send button */
 #ca-specific-username {
     margin-right: 8px;
 }
 
-/* Row spacing */
 .ca-section .ca-row + textarea {
     margin-top: 8px;
 }
@@ -267,7 +254,6 @@
     margin-top: 8px;
 }
 
-/* Float Send buttons to the right */
 #ca-specific-send, #ca-bc-send {
     margin-left: auto;
 }
@@ -323,7 +309,6 @@
     min-height: 18px;
 }
 
-/* moved from inline */
 .ca-reset {
     margin-left: auto;
     background: transparent;
@@ -336,7 +321,6 @@
     font-size: 12px;
 }
 
-/* Anchor look for Reset tracking in headers */
 .ca-reset-link {
     margin-left: auto;
     background: transparent;
@@ -353,7 +337,6 @@
     color: #ffffff;
 }
 
-/* Divider */
 .ca-divider {
     height: 1px;
     background: #e6eefc;
@@ -361,7 +344,6 @@
     border: 0;
 }
 
-/* ===== Checkboxes on user list (right side) ===== */
 .user_item {
     position: relative;
 }
@@ -384,7 +366,6 @@
     border-radius: 8px;
 }
 
-/* Already messaged checkmark (non-interactive) */
 .user_item .ca-sent-chip {
     position: absolute;
     left: 35px;
@@ -395,7 +376,7 @@
     width: 13px;
     height: 13px;
     border-radius: 4px;
-    pointer-events: none; /* never intercept clicks */
+    pointer-events: none;
 }
 
 #private_content {
@@ -429,7 +410,6 @@
     border-radius: 0;
 }
 
-/* Already messaged checkmark (non-interactive) */
 .user_item .ca-sent-chip.ca-sent-chip-all-read {
     background: #22c55e;
     color: #073b16;
@@ -438,7 +418,6 @@
     line-height: 1;
 }
 
-/* Already messaged checkmark (non-interactive) */
 .user_item .ca-sent-chip.ca-sent-chip-unread {
     background: #c52222;
     color: #073b16;
@@ -447,7 +426,6 @@
     line-height: 1;
 }
 
-/* Collapsible user list containers */
 .ca-user-list-container {
     display: flex;
     flex-direction: column;
@@ -458,18 +436,15 @@
     min-height: 0;
 }
 
-/* When both containers are expanded, each takes 50% */
 .ca-user-list-container.ca-expanded {
     flex: 1 1 50%;
 }
 
-/* When collapsed, minimal height */
 .ca-user-list-container.ca-collapsed {
     flex: 0 0 auto;
     max-height: 45px;
 }
 
-/* Collapsible header with toggle button */
 .ca-user-list-header {
     padding: 10px 12px 8px 8px;
     background: #1c3b35;
@@ -481,7 +456,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 2px; /* small gap between rows */
+    gap: 2px;
 }
 
 .ca-user-list-header:hover {
@@ -536,7 +511,6 @@
     max-height: 250px;
 }
 
-/* visible state */
 #ca-log-image-preview.ca-visible {
     display: block;
 }
@@ -578,7 +552,6 @@
     transform: rotate(-90deg);
 }
 
-/* List content area */
 .ca-user-list-content {
     transition: all 0.3s ease;
 }
@@ -586,11 +559,10 @@
 #ca-user-container {
     display: flex;
     flex-direction: column;
-    flex: 1 1 0; /* let it fill the right panel */
+    flex: 1 1 0;
     min-height: 0;
 }
 
-/* The part that actually scrolls */
 .ca-user-list-content {
     flex: 1 1 0;
     min-height: 0;
@@ -606,7 +578,6 @@
     max-height: 45px;
 }
 
-/* ===== Activity Log ===== */
 .ca-log-section {
     display: flex;
     flex-direction: column;
@@ -614,7 +585,6 @@
     flex: 0 0 auto;
 }
 
-/* Presence log section stays at bottom with fixed height */
 .ca-section.ca-log-section {
     margin-top: 0;
     flex: 0 0 auto;
@@ -629,13 +599,12 @@
     overflow-y: auto;
     padding: 8px;
     display: flex;
-    flex-direction: column; /* normal flow, newest at bottom */
+    flex-direction: column;
     gap: 6px;
     font-size: 12px;
     line-height: 1.35;
 }
 
-/* Variants: compact for sent, expand for received */
 .ca-log-box-compact {
     max-height: 120px;
     min-height: 80px;
@@ -643,14 +612,12 @@
     overflow-y: auto;
 }
 
-/* Replaces inline style on received box: allow it to grow and shrink within flex column */
 .ca-log-box-expand {
     flex: 1 1 0;
     max-height: none;
     overflow-y: auto;
 }
 
-/* Subsection styling within received messages box */
 .ca-log-subsection-header {
     font-size: 11px;
     font-weight: 700;
@@ -662,14 +629,12 @@
     flex-shrink: 0;
 }
 
-/* Fixed layout for subsections - unreplied at top, replied at bottom */
 #ca-log-box-received {
     display: flex !important;
     flex-direction: column !important;
     padding: 0 !important;
 }
 
-/* Not replied section - top half */
 .ca-log-subsection-unreplied-wrapper {
     flex: 1 1 50%;
     display: flex;
@@ -678,7 +643,6 @@
     border-bottom: 1px solid #334155;
 }
 
-/* Replied section - bottom half */
 .ca-log-subsection-replied-wrapper {
     flex: 1 1 50%;
     display: flex;
@@ -696,17 +660,11 @@
     gap: 6px;
 }
 
-/* ========================================
- * Custom Scrollbar Styling for Website
- * ======================================== */
-
-/* Standard scrollbar properties (Firefox) */
 * {
     scrollbar-width: thin;
     scrollbar-color: #fff rgba(255, 255, 255, 0.1);
 }
 
-/* Webkit browsers (Chrome, Safari, Edge) */
 *::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -731,8 +689,6 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
-
-/* Presence log box within fixed-height section - show exactly 5 lines */
 .ca-log-section .ca-log-box {
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -752,7 +708,7 @@
 }
 
 .ca-log-dot {
-    font-size: 12px; /* tweak for your layout */
+    font-size: 12px;
     line-height: 1;
     min-width: 10px;
 }
@@ -776,7 +732,6 @@
     font-weight: 700;
 }
 
-/* Expand/collapse indicator */
 .ca-expand-indicator {
     flex-shrink: 0;
     width: 16px;
@@ -803,7 +758,6 @@
     background: rgba(147, 197, 253, 0.3);
 }
 
-/* Style images (emoticons) in log entries */
 .ca-log-text img {
     max-height: 20px;
     max-width: 20px;
@@ -811,17 +765,14 @@
     display: inline-block;
 }
 
-/* Color coding */
 .ca-log-dot-green {
     color: #15e315
 }
 
-/* green */
 .ca-log-dot-red {
     color: #dd1212
 }
 
-/* green */
 .ca-log-dot-gray {
     color: #818183;
 }
@@ -832,16 +783,12 @@
     }
 }
 
-/* Use the same first-line height as your log text */
 .ca-log-box {
     --ca-firstline: 1.35em;
 }
 
-/* matches your 12px / 1.35 line-height */
-
-/* Row: top-align so the first line of text sits at the top */
 .ca-log-entry {
-    align-items: flex-start !important; /* override earlier center rule */
+    align-items: flex-start !important;
 }
 
 .ca-log-entry a {
@@ -850,16 +797,11 @@
     font-weight: 900;
 }
 
-/* Cell wrappers:
-   - sit at the top of the row (so their top aligns with the text’s first line)
-   - have a min height equal to one line
-   - center their inner content vertically within that first-line band
-*/
 .ca-log-cell {
-    align-self: flex-start; /* anchor to top of row */
+    align-self: flex-start;
     display: flex;
-    align-items: center; /* center inner content vertically */
-    min-height: var(--ca-firstline); /* only one line tall */
+    align-items: center;
+    min-height: var(--ca-firstline);
 }
 
 .ca-log-actions {
@@ -903,11 +845,10 @@ svg.svg-large {
 }
 
 .ca-log-action:hover {
-    color: #f87171; /* soft red on hover */
+    color: #f87171;
     text-decoration: none;
 }
 
-/* === Menu-side mini panel ======================================== */
 .ca-panel.ca-mini {
     width: 100%;
 }
@@ -933,15 +874,13 @@ svg.svg-large {
     padding-bottom: 20px;
     padding-left: 20px;
     padding-right: 20px;
-    flex: 1 1 0; /* equal width growth and shrink */
+    flex: 1 1 0;
 }
 
-/* Slightly tighter section spacing works well inside bcell_mid */
 .ca-section.ca-section-compact {
     margin-top: 8px;
 }
 
-/* Bottom row: checkbox subrow */
 .ca-user-list-header .ca-subrow {
     display: flex;
     align-items: center;
@@ -978,9 +917,8 @@ svg.svg-large {
     margin-left: 5px;
 }
 
-/* Make sure the username doesn't get pushed oddly */
 .ca-user-list-container .user_item_data .username {
-    margin: 0; /* prevent unexpected line breaks/offsets */
+    margin: 0;
 }
 
 #show_private {
@@ -1026,7 +964,6 @@ svg.svg-large {
     overflow: auto;
 }
 
-/* Make predefined messages popup smaller than default */
 #ca-predefined-messages-popup.ca-popup {
     width: 360px;
     max-width: 90vw;
@@ -1073,12 +1010,10 @@ svg.svg-large {
     gap: 4px;
 }
 
-/* Collapse editor body when playing with a tiny modal */
 .ca-predefined-editor-collapsed .ca-predefined-messages-editor-body {
     display: none;
 }
 
-/* Slight tweak for button row */
 .ca-predefined-messages-buttons {
     display: flex;
     gap: 4px;
@@ -1086,7 +1021,6 @@ svg.svg-large {
     margin-top: 4px;
 }
 
-/* Wrapper for each predefined item */
 .ca-predefined-messages-item {
     display: flex;
     flex-direction: column;
@@ -1099,15 +1033,12 @@ svg.svg-large {
     border-bottom: 1px solid #334155;
 }
 
-/* Buttons row stays right-aligned */
 .ca-predefined-messages-actions {
     display: flex;
     gap: 4px;
     margin-left: auto;
 }
 
-
-/* Button row container */
 .ca-predefined-messages-actions {
     display: flex;
     gap: 4px;
@@ -1132,7 +1063,6 @@ svg.svg-large {
     color: #e5e7eb;
 }
 
-/* Top predefined bar */
 .ca-predefined-messages-bar {
     padding: 3px 6px;
     font-size: 11px;
@@ -1145,13 +1075,11 @@ svg.svg-large {
     gap: 4px;
 }
 
-/* Actions glued to the right */
 .ca-predefined-messages-bar-actions {
     display: flex;
     gap: 2px;
 }
 
-/* If ca-btn-slim exists and is too large, tighten it here */
 .ca-btn-slim {
     padding: 2px 6px;
     font-size: 11px;
@@ -1183,7 +1111,6 @@ svg.svg-large {
     margin-left: auto;
 }
 
-/* Right panel: reserve fixed-ish space */
 #chat_right {
     min-width: 300px;
     display: flex !important;
@@ -1201,12 +1128,13 @@ svg.svg-large {
     flex-direction: column;
 }
 
-/* Per-section clear buttons (generic) */
 .ca-section-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+
+    padding: 3px 0px 3px 0px;
 }
 
 .ca-section-title .clear-logs {
@@ -1221,7 +1149,6 @@ svg.svg-large {
     text-decoration: underline;
 }
 
-/* Vertical resizers between log sections */
 .ca-resizer {
     flex: 0 0 auto;
     height: 4px;
@@ -1248,20 +1175,16 @@ ca-user-icon-row {
     align-items: center;
 }
 
-/* The log sections column (already flex, just making intent clear) */
 .ca-sections-wrapper {
     display: flex;
     flex-direction: column;
-    /* you already have: gap, flex:1, overflow: hidden etc. */
 }
 
-/* Ensure the 3 sections can grow/shrink, but never collapse completely */
 .ca-section-expand {
     flex: 1 1 0;
-    min-height: 60px; /* or whatever feels good */
+    min-height: 60px;
 }
 
-/* While dragging: prevent text selection and show resize cursor globally */
 .ca-sections-wrapper.ca-resizing {
     user-select: none;
     cursor: row-resize;
