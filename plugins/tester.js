@@ -135,9 +135,4 @@ class ChatAddonTester {
     }
 }
 
-const text = document.body.innerText || "";
-if (!text.includes("Verifieer dat u een mens bent")) {
-    window.tester = new ChatAddonTester(window.app);
-} else {
-    console.warn("Human verification page detected — not initializing.");
-}
+window.tester = ChatAddonTester;

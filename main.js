@@ -19,40 +19,34 @@
             this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
             this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
             this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
-            this.SHOW_BROADCAST_SELECTION_BOXES_KEY = `${this.STORAGE_KEY_PREFIX}.showBroadcastSelectionBoxes`;
+            this.SHOW_BROADCAST_SELECTION_BOXES_KEY = `${this.STORAGE_KEY_PREFIX}.shouldShowBroadcastCheckboxes`;
             this.LAST_DM_UID_KEY = `${this.STORAGE_KEY_PREFIX}.lastDmUid`;
             this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
             this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
             this.activeTextInput = null;
-            const mode = this._readStorageMode?.() || "local";
+            const mode = this._readStorageMode() || "local";
             const storageBackend = this._chooseStorage
                 ? this._chooseStorage(mode)
                 : window.localStorage;
 
             this.Store = new KeyValueStore({
-                namespace: this.STORAGE_KEY_PREFIX || "CA",
                 storage: storageBackend
             });
 
             this.ActivityLogStore = new ActivityLogStore({
                 kv: this.Store,
-                cacheKey: this.ACTIVITY_LOG_KEY || "CA_ACTIVITY_LOG",
+                cacheKey: this.ACTIVITY_LOG_KEY,
                 max: 200,
                 app: this
             });
 
             this.UserStore = new UsersStore({
                 kv: this.Store,
-                cacheKey: this.USERS_KEY || "CA_USERS",
+                cacheKey: this.USERS_KEY,
                 app: this
             });
 
-            if (typeof ChatAddonTester === "function") {
-                this.tester = new ChatAddonTester(this);
-            } else {
-                console.warn("[App] ChatAddonTester plugin not available");
-                this.tester = null;
-            }
+            this.tester = new ChatAddonTester(this);
 
             this.options = {};
             this.state = {
@@ -167,11 +161,6 @@
         }
 
         buildRawTree() {
-            if (!this.sel || typeof this.sel !== "object") {
-                console.error("initRawSelectors: this.sel is not an object");
-                return;
-            }
-
             const seen = new WeakSet();
 
             const strip = (s) => {
@@ -300,7 +289,7 @@
             this.installLogImageHoverPreview();
 
             if (this.shouldShowBroadcastCheckboxes) {
-                document.querySelector('#ca-female-users-container').classList.add("ca-show-ck");
+                document.querySelector('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
             }
 
             await this.restoreLastDmFromStore();
@@ -1537,8 +1526,8 @@
                 console.warn(`[PrivateChat] No messages accepted for uid ${uidStr} (attempt ${tries})`);
 
                 if (tries >= 3) {
-                    const wm = this.getGlobalWatermark();
-                    updatedUser.stalePrivateDmBeforeDate = this.getTimeStampInWebsiteFormat();
+                    const wm = this.getTimeStampInWebsiteFormat();
+                    updatedUser.stalePrivateDmBeforeDate = wm;
                     console.warn(
                         `[PrivateChat] 3x nothing parsed for uid ${uidStr}; ` +
                         `setting stalePrivateDmBeforeDate to watermark ${wm}`
@@ -1895,12 +1884,6 @@
             }
         }
 
-        resolveHostFn(name) {
-            const fromSelf = (typeof window[name] === 'function') ? window[name] : null;
-            const fromParent = (window.parent && typeof window.parent[name] === 'function') ? window.parent[name] : null;
-            return fromSelf || fromParent || null;
-        }
-
         applyLegacyAndOpenDm({uid, name, avatar}) {
             this.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
 
@@ -1922,7 +1905,7 @@
             if (!this.safeCall(window, 'hideModal')) return false;
             if (!this.safeCall(window, 'hideOver')) return false;
 
-            const openDm = this.resolveHostFn('openPrivate');
+            const openDm = window['openPrivate'] || window.parent['openPrivate'] || null;
             this.debug('applyLegacyAndOpenDm: openPrivate function found:', !!openDm);
             if (!openDm) {
                 console.warn('[321ChatAddons] openPrivate() not available on host');
@@ -1949,20 +1932,12 @@
 
         openProfileOnHost(uid) {
             this.debug('openProfileOnHost called with uid:', uid);
-            const getProfile = (typeof window.getProfile === 'function')
-                ? window.getProfile
-                : (window.parent && typeof window.parent.getProfile === 'function')
-                    ? window.parent.getProfile
-                    : null;
 
-            this.debug('openProfileOnHost: getProfile function found:', !!getProfile);
-            this.verbose(`Open profile on host for uid=${uid}`);
-
-            if (getProfile) {
+            if (window.getProfile) {
                 const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
-                this.debug('openProfileOnHost: Calling getProfile with:', uidNum);
-                getProfile(uidNum);
-                this.debug('openProfileOnHost: getProfile call completed');
+                this.debug('openProfileOnHost: Calling window.getProfile with:', uidNum);
+                window.getProfile(uidNum);
+                this.debug('openProfileOnHost: window.getProfile call completed');
             } else {
                 console.warn(`Host profile method not found; falling back to URL (uid: ${uid})`);
                 const url = this.buildProfileUrlForId(uid);
@@ -1977,11 +1952,6 @@
 
             loggedInFemaleUsers.forEach((femaleUser) => {
                 const uid = femaleUser.uid;
-
-                if (!this._isAllowedRank(femaleUser.rank)) {
-                    this.verbose('Skipping user:', uid, 'due to rank:', femaleUser.rank);
-                    return;
-                }
 
                 if (this.ActivityLogStore.hasSentMessageToUser(uid)) {
                     console.log(`Skipping message to ${femaleUser.name} (already replied)`);
@@ -2106,11 +2076,7 @@
             iconRow.className = 'ca-user-icon-row';
             this.qs('.user_item_data', newUserItemEl).appendChild(iconRow);
             this.ensureDmLink(iconRow, updatedUserJson);
-
-            if (updatedUserJson.isFemale && this._isAllowedRank(updatedUserJson.rank)) {
-                this.ensureBroadcastCheckbox(iconRow, updatedUserJson.uid);
-            }
-
+            this.ensureBroadcastCheckbox(iconRow, updatedUserJson.uid);
             this.updateProfileChip(updatedUserJson.uid, newUserItemEl);
             this.qs('.username', newUserItemEl).replaceWith(wrapper);
             containerContent.appendChild(newUserItemEl);
@@ -2507,7 +2473,7 @@
                 console.error('[USER_LIST] Could not find user in store for uid', user.uid);
             }
 
-            this.debug('Handling logged in status for user: ', user);
+            this.verbose('Handling logged in status for user: ', user);
 
             if (!user.isLoggedIn) {
                 this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper)?.remove();
@@ -2517,7 +2483,7 @@
                 this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
                 this.logLine(user.isLoggedIn ? 'login' : 'logout', null, user);
             }
-            this.debug(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
+            this.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
         }
 
         setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
@@ -2834,7 +2800,6 @@
 
                 userEl.classList.remove(this.sel.raw.log.classes.ca_replied_messages);
                 userEl.classList.add(this.sel.raw.log.classes.ca_unread_messages);
-
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_unread);
                 chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_read);
                 chip.textContent = `${unreadReceivedMessagesCount}`;
@@ -2861,7 +2826,7 @@
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
                 this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl)?.remove();
-                this.debug('Removing sent chip from user:', uid);
+                this.verbose('Removing sent chip from user:', uid);
             }
         }
 
@@ -3002,19 +2967,69 @@
             return this.qs(`.list_mood`, el).innerHTML;
         }
 
-        _isAllowedRank(rank) {
-            return (rank === '1' || rank === '50') && (roomRank !== '4');
-        }
-
         async ensureBroadcastCheckbox(userItemDataEl, uid) {
-            this.verbose('ensureBroadcastCheckbox:', userItemDataEl, uid);
+            let include = false;
+            include = !!(await this.UserStore.isIncludedForBroadcast(uid));
 
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.className = 'ca-ck';
-            cb.checked = await this.UserStore.isIncludedForBroadcast(uid);
-            userItemDataEl.append(cb);
-            cb.addEventListener('change', (e) => this.handleCheckboxChange?.(e, uid, newUserItemEl));
+            // Anchor instead of native checkbox, same style as DM icon
+            const toggle = document.createElement('a');
+            toggle.href = '#';
+            toggle.className = 'ca-ck ca-log-action ca-bc-toggle';
+            toggle.setAttribute('role', 'button');
+            toggle.setAttribute('data-action', 'toggle-broadcast');
+            toggle.dataset.caIncluded = include ? '1' : '0';
+            toggle.title = include ? 'Exclude from broadcast' : 'Include in broadcast';
+            toggle.setAttribute('aria-pressed', include ? 'true' : 'false');
+
+            // Unchecked SVG (square)
+            const uncheckedSvg = this.renderSvgIconWithClass(
+                'lucide lucide-square',
+                `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>`
+            );
+            uncheckedSvg.classList.add('ca-bc-icon-unchecked');
+
+            // Checked SVG (square + check mark)
+            const checkedSvg = this.renderSvgIconWithClass(
+                'lucide lucide-check-square',
+                `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>
+                                <polyline points="7 12 10 15 16 9"></polyline>`
+            );
+            checkedSvg.classList.add('ca-bc-icon-checked');
+
+            const applyVisualState = (isIncluded) => {
+                if (isIncluded) {
+                    checkedSvg.style.display = '';
+                    uncheckedSvg.style.display = 'none';
+                    toggle.dataset.caIncluded = '1';
+                    toggle.title = 'Exclude from broadcast';
+                    toggle.setAttribute('aria-pressed', 'true');
+                } else {
+                    checkedSvg.style.display = 'none';
+                    uncheckedSvg.style.display = '';
+                    toggle.dataset.caIncluded = '0';
+                    toggle.title = 'Include in broadcast';
+                    toggle.setAttribute('aria-pressed', 'false');
+                }
+            };
+
+            toggle.appendChild(uncheckedSvg);
+            toggle.appendChild(checkedSvg);
+            applyVisualState(include);
+
+            toggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const currentlyIncluded = toggle.dataset.caIncluded === '1';
+                const nextInclude = !currentlyIncluded;
+
+                applyVisualState(nextInclude);
+                this.UserStore.includeUserForBroadcast(uid, nextInclude);
+                this.debug?.(`[BC] isIncludedForBroadcast → uid=${uid}, include=${include}`);
+            });
+
+            userItemDataEl.appendChild(toggle);
         }
 
         ensureDmLink(userItemDataEl, user) {
@@ -3038,12 +3053,6 @@
             });
 
             userItemDataEl.appendChild(dmLink);
-        }
-
-        handleCheckboxChange(e, uid /*, el */) {
-            const include = !!e?.target?.checked;
-            this.UserStore?.includeUserForBroadcast?.(uid, include);
-            this.debug?.(`[BC] isIncludedForBroadcast → uid=${uid}, include=${include}`);
         }
 
         buildMenuLogPanel() {
@@ -3099,9 +3108,7 @@
             const logDualEl = this.qs('.ca-log-dual');
             logDualEl.appendChild(rListEl);
 
-            if (typeof this._attachLogClickHandlers === 'function') {
-                this._attachLogClickHandlers();
-            }
+            this._attachLogClickHandlers();
         }
 
         buildSvgIconString(className, svgInnerHTML, small = true) {
@@ -3586,51 +3593,70 @@
 
             const sub = document.createElement('div');
             sub.className = 'ca-subrow';
-            sub.innerHTML = `
-        <label>
-            <input id="ca-female-ck-toggle" type="checkbox" />
-            <span>Show selection boxes</span>
-        </label>
-        <label style="margin-left: 8px;">
-            <input id="ca-female-hide-replied" type="checkbox" />
-            <span>Hide replied users</span>
-        </label>
-    `;
             header.appendChild(sub);
 
             const femaleUsersListContent = document.createElement('div');
             femaleUsersListContent.className = 'ca-user-list-content';
             femaleUsersContainer.appendChild(femaleUsersListContent);
 
-            const showBroadcastCheckboxesToggle = sub.querySelector('#ca-female-ck-toggle');
-            showBroadcastCheckboxesToggle.checked = this.shouldShowBroadcastCheckboxes;
+            this.renderAndWireEnableBroadcastCheckbox(sub, this.ui.femaleUsersContainer);
+            this.renderAndWireHideRepliedToggle(sub);
+            this.verbose('Created female users container');
+        }
 
-            showBroadcastCheckboxesToggle.addEventListener('change', (e) => {
+        renderAndWireHideRepliedToggle(elToAppendTo, targetContainer) {
+            const label = document.createElement('label');
+            label.style.marginLeft = '8px';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = 'ca-hide-replied-ck-toggle';
+            checkbox.checked = !!this.shouldHideRepliedUsers;
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = 'Hide replied users';
+
+            label.appendChild(checkbox);
+            label.appendChild(textSpan);
+
+            checkbox.addEventListener('change', (e) => {
+                const checked = !!e.target.checked;
+                this.debug('[CA] Hide replied users:', checked);
+                this.shouldHideRepliedUsers = checked;
+                this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
+                targetContainer.classList.toggle('ca-hide-replied-ck-toggle', checked);
+                this.applyHideRepliedUsers(checked);
+            });
+
+            elToAppendTo.appendChild(label);
+        }
+
+        renderAndWireEnableBroadcastCheckbox(elToAppendTo, targetContainer) {
+            const label = document.createElement('label');
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = 'ca-broadcast-ck-toggle';
+            checkbox.checked = !!this.shouldShowBroadcastCheckboxes;
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = 'Show broadcast boxes';
+
+            label.appendChild(checkbox);
+            label.appendChild(textSpan);
+
+            checkbox.addEventListener('change', (e) => {
                 const checked = !!e.target.checked;
                 this.shouldShowBroadcastCheckboxes = checked;
                 this.Store.set(this.SHOW_BROADCAST_SELECTION_BOXES_KEY, checked);
-                femaleUsersContainer.classList.toggle('ca-show-ck', checked);
-                this.verbose('[CA] Female user checkbox visibility:', checked ? 'shown' : 'hidden');
+                targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
+                this.debug(
+                    '[CA] Female user checkbox visibility:',
+                    checked ? 'shown' : 'hidden'
+                );
             });
 
-            const hideRepliedToggle = sub.querySelector('#ca-female-hide-replied');
-            hideRepliedToggle.checked = this.shouldHideRepliedUsers;
-            if (hideRepliedToggle) {
-                hideRepliedToggle.addEventListener('change', (e) => {
-                    const checked = !!e.target.checked;
-                    this.verbose('[CA] Hide replied users:', checked);
-
-                    this.shouldHideRepliedUsers = checked;
-                    this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
-
-                    this.applyHideRepliedUsers(checked);
-                });
-            } else {
-                console.error('.ca-female-hide-replied not found');
-            }
-
-            this.verbose('Created female users container without cloning male users container');
-
+            elToAppendTo.appendChild(label);
         }
 
         applyHideRepliedUsers(hide) {
@@ -3700,7 +3726,20 @@
             }
 
             for (const userListContainerGroup of containerGroups) {
-                this.qs('.ca-user-list-header', userListContainerGroup).addEventListener('click', (event) => {
+                const headerEl = this.qs('.ca-user-list-header', userListContainerGroup);
+                if (!headerEl) {
+                    console.warn('[CA] wireUserContainerHeaders: header not found in group', userListContainerGroup);
+                    continue;
+                }
+
+                headerEl.addEventListener('click', (event) => {
+                    // 🔴 If the click is inside the checkbox subrow, do nothing here.
+                    // Let the checkbox / label behave normally.
+                    const inSubrow = event.target.closest('.ca-subrow');
+                    if (inSubrow) {
+                        return;
+                    }
+
                     event.preventDefault();
                     event.stopPropagation();
 
@@ -3713,12 +3752,10 @@
                         willBeExpanded: nextExpanded
                     });
 
-                    // Use your existing helper
                     this._setExpanded(userListContainerGroup, nextExpanded);
                 });
             }
         }
-
 
         updateFemaleUserCount(count) {
             this.verbose('Updating female user count:', count);
@@ -4103,8 +4140,8 @@
                 btn._caClearWired = true;
 
                 const handle = (e) => {
-                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-                    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                    e.preventDefault();
+                    e.stopPropagation();
 
                     const kindsAttr = (btn.dataset?.kinds || '').trim();
                     if (!kindsAttr) {

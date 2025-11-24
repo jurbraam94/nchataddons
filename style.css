@@ -516,13 +516,23 @@
     margin: 0;
 }
 
-/* User icon row */
-ca-user-icon-row {
+.ca-user-list-container .ca-bc-toggle {
+    display: none;
+}
+
+.ca-user-list-container.ca-show-broadcast-ck
+.user_item[data-gender="2"][data-rank="1"] .ca-bc-toggle,
+.ca-user-list-container.ca-show-broadcast-ck
+.user_item[data-gender="2"][data-rank="50"] .ca-bc-toggle {
+    display: unset;
+}
+
+.ca-user-icon-row {
     display: inline-flex;
+    gap: 5px;
     align-items: center;
 }
 
-/* Log styles */
 .ca-log-section {
     display: flex;
     flex-direction: column;

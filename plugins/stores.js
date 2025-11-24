@@ -1,13 +1,12 @@
 (async function () {
     /** Key/Value store backed by localStorage */
     class KeyValueStore {
-        constructor({namespace = "", storage} = {}) {
-            this.ns = namespace ? namespace + ":" : "";
+        constructor({storage}) {
             this.storage = storage || localStorage;
         }
 
         _key(k) {
-            return this.ns + String(k ?? "");
+            return String(k ?? "");
         }
 
         has(key) {
