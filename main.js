@@ -1281,23 +1281,6 @@
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'from myself'};
             }
 
-            if (user.stalePrivateDmBeforeDate && privateChatLog.log_date) {
-                const msgNum = this.parseLogDateToNumber(
-                    this.ToHourMinuteSecondFormat(privateChatLog.log_date)
-                );
-                const cutoffNum = this.parseLogDateToNumber(
-                    this.ToHourMinuteSecondFormat(user.stalePrivateDmBeforeDate)
-                );
-
-                if (msgNum <= cutoffNum) {
-                    this.debug(
-                        `Stale DM cutoff: skipping message ${privateChatLog.log_id} for uid ${user.uid}; ` +
-                        `cutoff=${user.stalePrivateDmBeforeDate}`
-                    );
-                    return {accepted: false, logId: privateChatLog.log_id, reason: 'stale-cutoff'};
-                }
-            }
-
             if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
                 this.debug(
                     `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
@@ -1512,11 +1495,6 @@
                     updatedUser.noNewPrivateDmTries = 0;
                     shouldSave = true;
                 }
-                if (updatedUser.stalePrivateDmBeforeDate) {
-                    updatedUser.stalePrivateDmBeforeDate = '';
-                    this.debug(`[PrivateChat] Clearing stalePrivateDmBeforeDate for uid ${uidStr} after new messages`);
-                    shouldSave = true;
-                }
             } else {
                 const prevTries = Number(user.noNewPrivateDmTries) || 0;
                 const tries = prevTries + 1;
@@ -1527,10 +1505,10 @@
 
                 if (tries >= 3) {
                     const wm = this.getTimeStampInWebsiteFormat();
-                    updatedUser.stalePrivateDmBeforeDate = wm;
+                    updatedUser.parsedDmInUpToLog = 0;
                     console.warn(
                         `[PrivateChat] 3x nothing parsed for uid ${uidStr}; ` +
-                        `setting stalePrivateDmBeforeDate to watermark ${wm}`
+                        `reset the complete chat history (setting parsedDmUptoLog to 0)`
                     );
                 }
             }
@@ -2596,7 +2574,6 @@
             if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
             return s;
         }
-        ;
 
         isMessageNewer(logDateStr) {
             const watermark = this.getGlobalWatermark();
@@ -3513,23 +3490,38 @@
             this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
         }
 
-        createOtherUsersContainer() {
-            const otherUsersContainerGroup = document.createElement('div');
-            otherUsersContainerGroup.classList.add('ca-user-list-container-group');
-            otherUsersContainerGroup.classList.add('ca-collapsed');
+        _createUserListContainer(options) {
+            const {
+                wrapperEl,
+                containerId,
+                countId,
+                labelText,
+                headerExtraClass,
+                isExpanded,
+                includeSubrow
+            } = options || {};
 
-            this.ui.userContainersWrapper.appendChild(otherUsersContainerGroup);
-            this.ui.otherUserContainerGroup = otherUsersContainerGroup;
+            if (!wrapperEl) {
+                console.error('[CA] _createUserListContainer: wrapperEl is missing');
+                return null;
+            }
+
+            if (!containerId || !countId) {
+                console.error('[CA] _createUserListContainer: containerId or countId is missing', {
+                    containerId,
+                    countId
+                });
+                return null;
+            }
+
+            const group = document.createElement('div');
+            group.classList.add('ca-user-list-container-group');
+            group.classList.add(isExpanded ? 'ca-expanded' : 'ca-collapsed');
+            wrapperEl.appendChild(group);
 
             const header = document.createElement('div');
-            header.className = 'ca-user-list-header ca-male-users-header';
-            this.ui.otherUserContainerGroup.appendChild(header);
-
-            const otherUsersContainer = document.createElement('div');
-            otherUsersContainer.id = this.sel.raw.users.otherUsersContainer;
-            otherUsersContainer.classList.add('ca-user-list-container');
-            this.ui.otherUserContainerGroup.appendChild(otherUsersContainer);
-            this.ui.otherUsersContainer = otherUsersContainer;
+            header.className = `ca-user-list-header ${headerExtraClass || ''}`.trim();
+            group.appendChild(header);
 
             const title = document.createElement('div');
             title.className = 'ca-user-list-title';
@@ -3537,12 +3529,12 @@
 
             const countSpan = document.createElement('span');
             countSpan.className = 'ca-user-list-count';
-            countSpan.id = this.sel.raw.users.otherUserCount;
+            countSpan.id = countId;
             countSpan.textContent = '0';
             title.appendChild(countSpan);
 
             const labelSpan = document.createElement('span');
-            labelSpan.textContent = 'Other Users';
+            labelSpan.textContent = labelText || '';
             title.appendChild(labelSpan);
 
             const toggle = document.createElement('div');
@@ -3550,59 +3542,95 @@
             toggle.textContent = '▼';
             title.appendChild(toggle);
 
-            const otherUsersListContent = document.createElement('div');
-            otherUsersListContent.className = 'ca-user-list-content';
-            otherUsersContainer.appendChild(otherUsersListContent);
+            let subrow = null;
+            if (includeSubrow) {
+                subrow = document.createElement('div');
+                subrow.className = 'ca-subrow';
+                header.appendChild(subrow);
+            }
+
+            const container = document.createElement('div');
+            container.id = containerId;
+            container.className = 'ca-user-list-container';
+            group.appendChild(container);
+
+            const content = document.createElement('div');
+            content.className = 'ca-user-list-content';
+            container.appendChild(content);
+
+            return {
+                group,
+                header,
+                title,
+                countSpan,
+                labelSpan,
+                toggle,
+                subrow,
+                container,
+                content
+            };
+        }
+
+        createOtherUsersContainer() {
+            if (!this.ui || !this.ui.userContainersWrapper) {
+                console.error('[CA] createOtherUsersContainer: userContainersWrapper is not set');
+                return;
+            }
+
+            const refs = this._createUserListContainer({
+                wrapperEl: this.ui.userContainersWrapper,
+                containerId: this.sel.raw.users.otherUsersContainer,
+                countId: this.sel.raw.users.otherUserCount,
+                labelText: 'Other Users',
+                headerExtraClass: 'ca-male-users-header',
+                isExpanded: false,
+                includeSubrow: false
+            });
+
+            if (!refs) {
+                console.error('[CA] createOtherUsersContainer: failed to create container refs');
+                return;
+            }
+
+            this.ui.otherUserContainerGroup = refs.group;
+            this.ui.otherUsersContainer = refs.container;
         }
 
         createFemaleUsersContainer() {
-            const femaleUserContainerGroup = document.createElement('div');
-            this.ui.userContainersWrapper.appendChild(femaleUserContainerGroup);
-            this.ui.femaleUserContainerGroup = femaleUserContainerGroup;
+            if (!this.ui || !this.ui.userContainersWrapper) {
+                console.error('[CA] createFemaleUsersContainer: userContainersWrapper is not set');
+                return;
+            }
 
-            femaleUserContainerGroup.classList.add('ca-user-list-container-group');
-            femaleUserContainerGroup.classList.add('ca-expanded');
+            const refs = this._createUserListContainer({
+                wrapperEl: this.ui.userContainersWrapper,
+                containerId: this.sel.raw.users.femaleUsersContainer,
+                countId: this.sel.raw.users.femaleUserCount,
+                labelText: 'Female Users',
+                headerExtraClass: 'ca-female-users-header',
+                isExpanded: true,
+                includeSubrow: true
+            });
 
-            const header = document.createElement('div');
-            header.className = 'ca-user-list-header ca-female-users-header';
-            this.ui.femaleUserContainerGroup.appendChild(header);
+            if (!refs) {
+                console.error('[CA] createFemaleUsersContainer: failed to create container refs');
+                return;
+            }
 
-            const femaleUsersContainer = document.createElement('div');
-            femaleUsersContainer.id = this.sel.raw.users.femaleUsersContainer;
-            femaleUsersContainer.className = 'ca-user-list-container';
-            this.ui.femaleUserContainerGroup.appendChild(femaleUsersContainer);
-            this.ui.femaleUsersContainer = femaleUsersContainer;
+            this.ui.femaleUserContainerGroup = refs.group;
+            this.ui.femaleUsersContainer = refs.container;
 
-            const title = document.createElement('div');
-            title.className = 'ca-user-list-title';
-            header.appendChild(title);
+            if (refs.subrow) {
+                // your current signatures; this matches the call you showed
+                this.renderAndWireEnableBroadcastCheckbox(refs.subrow, this.ui.femaleUsersContainer);
+                this.renderAndWireHideRepliedToggle(refs.subrow);
+            } else {
+                console.warn('[CA] createFemaleUsersContainer: subrow is missing, cannot render toggles');
+            }
 
-            const countSpan = document.createElement('span');
-            countSpan.className = 'ca-user-list-count';
-            countSpan.id = this.sel.raw.users.femaleUserCount;
-            countSpan.textContent = '0';
-            title.appendChild(countSpan);
-
-            const labelSpan = document.createElement('span');
-            labelSpan.textContent = 'Female Users';
-            title.appendChild(labelSpan);
-
-            const toggle = document.createElement('div');
-            toggle.className = 'ca-user-list-toggle';
-            toggle.textContent = '▼';
-            title.appendChild(toggle);
-
-            const sub = document.createElement('div');
-            sub.className = 'ca-subrow';
-            header.appendChild(sub);
-
-            const femaleUsersListContent = document.createElement('div');
-            femaleUsersListContent.className = 'ca-user-list-content';
-            femaleUsersContainer.appendChild(femaleUsersListContent);
-
-            this.renderAndWireEnableBroadcastCheckbox(sub, this.ui.femaleUsersContainer);
-            this.renderAndWireHideRepliedToggle(sub);
-            this.verbose('Created female users container');
+            if (typeof this.verbose === 'function') {
+                this.verbose('Created female users container');
+            }
         }
 
         renderAndWireHideRepliedToggle(elToAppendTo, targetContainer) {

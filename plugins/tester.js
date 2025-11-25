@@ -32,6 +32,7 @@ class ChatAddonTester {
             uidStr,
             params
         );
+
         if (!rawResponse) {
             console.warn("[ChatAddonTester] Empty or null response");
             return rawResponse;

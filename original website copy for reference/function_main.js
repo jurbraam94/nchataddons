@@ -2411,7 +2411,7 @@ $(document).ready(function () {
         $.post('system/action/action_chat.php', {
             private_delete: toDelete,
         }, function (response) {
-            if (response == 1) {
+            if (response === 1) {
                 toClear.parent().replaceWith("");
                 if ($('.priv_mess').length < 1 && $('#private_menu:visible').length) {
                     hideMenu('private_menu');
