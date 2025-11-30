@@ -72,7 +72,7 @@ class ChatAddonTester {
             "==="
         );
 
-        let userBefore = await this.app.UserStore.getOrFetch(uidStr);
+        let userBefore = await this.app.userStore.getOrFetch(uidStr);
         console.log("[ChatAddonTester] User BEFORE processing:", {
             uid: userBefore?.uid,
             parsedDmInUpToLog: userBefore?.parsedDmInUpToLog,
@@ -123,7 +123,7 @@ class ChatAddonTester {
             undefined
         );
 
-        let userAfter = await this.app.UserStore.getOrFetch(uidStr);
+        let userAfter = await this.app.userStore.getOrFetch(uidStr);
         console.log("[ChatAddonTester] User AFTER processing:", {
             uid: userAfter?.uid,
             parsedDmInUpToLog: userAfter?.parsedDmInUpToLog,

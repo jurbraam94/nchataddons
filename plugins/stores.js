@@ -1,7 +1,7 @@
 // (async function () {
 /** Key/Value store backed by localStorage */
 class SettingsStore {
-    constructor({keyValueStore, helpers, logger}) {
+    constructor({keyValueStore, helpers}) {
         this.DEBUG_COOKIE = `debug`;
         this.VERBOSE_COOKIE = `verbose`;
         this.DEBUG_MODE_KEY = `debugMode`;
@@ -16,12 +16,11 @@ class SettingsStore {
 
 
         this.store = keyValueStore;
-        this.Helpers = helpers;
-        this.logger = logger;
+        this.helpers = helpers;
     }
 
     setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
-        if (userManagerVisibleColumnPrefs) this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
+        this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
     }
 
     getUserManagerVisibleColumnPrefs() {
@@ -41,7 +40,7 @@ class SettingsStore {
     }
 
     setLastDmUid(lastDmUid) {
-        if (lastDmUid) this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
+        this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
     }
 
     clearLastDmUid() {
@@ -55,7 +54,7 @@ class SettingsStore {
     }
 
     setShowBroadcastSelectionBoxes(showBroadcastSelectionBoxes) {
-        if (showBroadcastSelectionBoxes) this.store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
+        this.store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
     }
 
     getShouldIncludeOthers() {
@@ -65,7 +64,7 @@ class SettingsStore {
     }
 
     setShouldIncludeOthers(shouldIncludeOthers) {
-        if (shouldIncludeOthers) this.store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
+        this.store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
     }
 
     getHideReplied() {
@@ -75,7 +74,7 @@ class SettingsStore {
     }
 
     setHideReplied(hideReplied) {
-        if (hideReplied) this.store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
+        this.store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
     }
 
     getGlobalWatermark() {
@@ -85,22 +84,22 @@ class SettingsStore {
     }
 
     getDebugMode() {
-        return this.store._getCookie(this.DEBUG_COOKIE) === 'true' ||
+        return this.store.getCookie(this.DEBUG_COOKIE) === 'true' ||
             this.store.get(this.DEBUG_MODE_KEY) === 'true';
     }
 
     getVerboseMode() {
-        return this.store._getCookie(this.VERBOSE_COOKIE) === 'true' ||
+        return this.store.getCookie(this.VERBOSE_COOKIE) === 'true' ||
             this.store.get(this.VERBOSE_MODE_KEY) === 'true';
     }
 
     setDebugMode(isEnabled) {
-        this.store._setCookie(this.DEBUG_COOKIE, String(isEnabled));
+        this.store.setCookie(this.DEBUG_COOKIE, String(isEnabled));
         this.store.set(this.DEBUG_MODE_KEY, isEnabled);
     }
 
     setVerboseMode(isEnabled) {
-        this.store._setCookie(this.VERBOSE_COOKIE, String(isEnabled));
+        this.store.setCookie(this.VERBOSE_COOKIE, String(isEnabled));
         this.store.set(this.VERBOSE_MODE_KEY, isEnabled);
     }
 
@@ -143,7 +142,7 @@ class KeyValueStore {
     }
 
     _writeStorageMode(mode) {
-        this._setCookie(this.STORAGE_COOKIE, mode);
+        this.setCookie(this.STORAGE_COOKIE, mode);
         this.storage = this._chooseStorage(mode);
     }
 
@@ -152,13 +151,13 @@ class KeyValueStore {
         return localStorage;
     }
 
-    _setCookie(name, value, days = 400) {
+    setCookie(name, value, days = 400) {
         const d = new Date();
         d.setDate(d.getDate() + days);
         document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
     }
 
-    _getCookie(name) {
+    getCookie(name) {
         const m = document.cookie.match(
             new RegExp(
                 "(?:^|; )" +
@@ -171,7 +170,7 @@ class KeyValueStore {
 
 
     _readStorageMode() {
-        const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
+        const v = (this.getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
         return (v === 'wipe' || v === 'block') ? v : 'allow';
     }
 
@@ -264,12 +263,11 @@ class KeyValueStore {
 }
 
 class ActivityLogStore {
-    constructor({keyValueStore, helpers, logger} = {}) {
+    constructor({keyValueStore, helpers} = {}) {
         this.ACTIVITY_LOG_KEY = `activityLog`;
 
         this.store = keyValueStore;
-        this.Helpers = helpers;
-        this.logger = logger;
+        this.helpers = helpers;
     }
 
     getAllOnlineWomen() {
@@ -343,7 +341,7 @@ class ActivityLogStore {
                 && (!onlyUnread || log.unread)
                 && log.guid !== String(user_id)
         );
-        this.logger.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+        this.helpers.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
         return result;
     }
 
@@ -428,7 +426,7 @@ class ActivityLogStore {
         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
             .filter(log => log.guid <= parsedDmInUpToLog)
             .map(log => ({...log, unread: false}))
-        this.logger.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
+        this.helpers.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
         return this.setAll(allUnreadMessagesForUid);
     }
 
@@ -459,13 +457,12 @@ class ActivityLogStore {
 
 /** Users store (array-backed, like ActivityLogStore) */
 class UserStore {
-    constructor({keyValueStore, api, helpers, logger} = {}) {
+    constructor({keyValueStore, api, helpers} = {}) {
         this.USERS_KEY = `users`;
 
         this.store = keyValueStore;
-        this.Api = api;
-        this.Helpers = helpers;
-        this.logger = logger;
+        this.api = api;
+        this.helpers = helpers;
     }
 
     _deleteUserByUid(uid) {
@@ -626,7 +623,7 @@ class UserStore {
             throw new Error('set() requires user.uid')
         }
         const merged = this._mergeUser(user);
-        this.logger.verbose(`Saving merged user`, user);
+        this.helpers.verbose(`Saving merged user`, user);
 
         return this._save(merged);
     }
@@ -637,7 +634,7 @@ class UserStore {
             console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
             return null;
         }
-        this.logger.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
+        this.helpers.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
         const updated = {...u, parsedDmInUpToLog};
         return this.set(updated);
     }
@@ -717,7 +714,7 @@ class UserStore {
     async getOrFetch(id) {
         let user = this.get(id);
         if (!user) {
-            const getProfileResponseHtml = await this.Api.searchUserNameRemote(String(id));
+            const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
             const doc = this.helpers.createElementFromString(getProfileResponseHtml);
             const foundUser = await this.getOrFetchByName(doc?.querySelector('.pro_name')?.textContent?.trim());
 
@@ -735,7 +732,7 @@ class UserStore {
         let user = this.getByName(name);
 
         if (!user) {
-            const result = this.helpers.parseUserSearchHTML(await this.Api.searchUserRemoteByUsername(String(name)));
+            const result = this.helpers.parseUserSearchHTML(await this.api.searchUserRemoteByUsername(String(name)));
 
             if (Array.isArray(result) && result.length > 1) {
                 console.warn(`Invalid result:`, result);

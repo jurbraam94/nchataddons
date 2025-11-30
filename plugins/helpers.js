@@ -1,7 +1,28 @@
 class Helpers {
     constructor() {
         this.FEMALE_CODE = '2';
+        this.verboseMode = false;
+        this.debugMode = false;
     }
+
+    init({verboseMode, debugMode}) {
+        this.verboseMode = verboseMode;
+        this.debugMode = debugMode;
+    }
+
+    debug(...args) {
+
+        if (this.debugMode) {
+            console.log('[DEBUG]', ...args);
+        }
+    };
+
+    verbose(...args) {
+
+        if (this.verboseMode) {
+            console.log('[VERBOSE]', ...args);
+        }
+    };
 
     extractUserId(el) {
         return el.getAttribute('data-id') || null;
@@ -313,6 +334,7 @@ class Helpers {
         };
 
         const HOVER_SELECTOR = 'img.chat_image, img.avav';
+
 
         const attachHoverHandlers = (container) => {
             if (!container) return;

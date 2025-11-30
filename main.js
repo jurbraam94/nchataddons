@@ -3,21 +3,17 @@ class App {
         this.FEMALE_CODE = '2';
         this.activeTextInput = null;
 
-        // Create core helpers/stores once
         this.helpers = new Helpers();
-
         this.keyValueStore = new KeyValueStore();
 
-        this.logger = new Logger({
-            settingsStore: this.settingsStore
-        });
+        // this.logger = new Logger({
+        //     settingsStore: this.settingsStore
+        // });
 
         this.settingsStore = new SettingsStore({
             keyValueStore: this.keyValueStore,
-            helpers: this.helpers,
-            logger: this.logger
+            helpers: this.helpers
         });
-
 
         this.api = new Api({
             settingsStore: this.settingsStore,
@@ -26,23 +22,13 @@ class App {
 
         this.activityLogStore = new ActivityLogStore({
             keyValueStore: this.keyValueStore,
-            helpers: this.helpers,
-            logger: this.logger
+            helpers: this.helpers
         });
 
         this.userStore = new UserStore({
             keyValueStore: this.keyValueStore,
             api: this.api,
-            helpers: this.helpers,
-            logger: this.logger
-        });
-
-        // Now UsersPopup gets injected dependencies
-        this.popups = new Popups({
-            app: this,
-            settingsStore: this.settingsStore,
-            helpers: this.helpers,
-            userStore: this.userStore
+            helpers: this.helpers
         });
 
         this.options = {};
@@ -183,36 +169,44 @@ class App {
     async init(options = {}) {
         this.options = options || {};
 
-        this.logger.init({
-            debugMode: this.settingsStore.getDebugMode(),
-            verboseMode: this.settingsStore.getVerboseMode()
-        })
-
-        this.popups.init();
-
-        this._removeSuperBotMethods();
         this.buildRawTree(this.sel, this.sel.raw);
+
+        const main_wrapper = document.createElement('div');
+        main_wrapper.id = 'main_wrapper';
+        document.body.prepend(main_wrapper);
+        main_wrapper.appendChild(this.helpers.qs('#global_chat'));
+
+        const userContainersWrapper = document.createElement(`div`);
+        userContainersWrapper.id = `ca-user-container`;
+        this.helpers.qs(`#chat_right`).appendChild(userContainersWrapper);
+        this.ui.userContainersWrapper = userContainersWrapper;
 
         this.shouldHideRepliedUsers = this.settingsStore.getHideReplied();
         this.shouldIncludeOtherUsers = this.settingsStore.getShouldIncludeOthers();
         this.shouldShowBroadcastCheckboxes = this.settingsStore.getShowBroadcastSelectionBoxes();
 
-        this.removeAds(document);
-        this.buildPanel();
+        this.createOtherUsersContainer();
+        this.createFemaleUsersContainer();
 
-        const main_wrapper = document.createElement('div');
-        main_wrapper.id = 'main_wrapper';
+        await this.syncUsersFromDom(document.querySelectorAll('.online_user .user_item'));
 
-        this.helpers.qs(this.sel.privateChat.privateInputBox).innerHTML =
-            '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
-        this.helpers.qs('#message_form').prepend(this.helpers.qs('#private_input_box'));
-
-        this.helpers.qs('#private_center').after(this.helpers.qs('#private_menu'));
+        if (this.isInitialLoad) {
+            this.isInitialLoad = false;
+        }
 
         main_wrapper.appendChild(this.helpers.qs('#chat_head'));
-        main_wrapper.appendChild(this.helpers.qs('#global_chat'));
         main_wrapper.appendChild(this.helpers.qs('#wrap_footer'));
-        document.body.prepend(main_wrapper);
+
+        this.buildPanel();
+        this.buildMenuLogPanel();
+
+        this.ui.sentMessagesBox = this.helpers.qs(this.sel.log.sentMessagesBox);
+        this.ui.messagesWrapper = this.helpers.qs(this.sel.log.messagesWrapper);
+        this.ui.repliedMessageBox = this.helpers.qs(this.sel.log.repliedMessagesBox);
+        this.ui.unrepliedMessageBox = this.helpers.qs(this.sel.log.unrepliedMessagesBox);
+        this.ui.presenceBox = this.helpers.qs(this.sel.log.presence);
+        this.ui.logClear = this.helpers.qs(this.sel.log.clear);
+        this.ui.loggingBox = this.helpers.qs(this.sel.log.general);
 
         if (!this.userStore.get('system')) {
             this.userStore.set({
@@ -227,19 +221,16 @@ class App {
             });
         }
 
-        this._installAudioAutoplayGate();
-        this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
-        this.buildMenuLogPanel();
-        const userContainersWrapper = document.createElement(`div`);
-        userContainersWrapper.id = `ca-user-container`;
-        this.helpers.qs(`#chat_right`).appendChild(userContainersWrapper);
-        this.ui.userContainersWrapper = userContainersWrapper;
-        this.createOtherUsersContainer();
-        this.createFemaleUsersContainer();
-        this.wireListOptionClicks();
-        this.wireUserContainerHeaders();
-        this._bindStaticRefs();
-        this._attachLogClickHandlers();
+        await this.restoreLog();
+        this.scrollToBottom(this.ui.repliedMessageBox);
+        this.scrollToBottom(this.ui.unrepliedMessageBox);
+        this.scrollToBottom(this.ui.sentMessagesBox);
+
+        this.helpers.qs(this.sel.privateChat.privateInputBox).innerHTML =
+            '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
+        this.helpers.qs('#message_form').prepend(this.helpers.qs('#private_input_box'));
+        this.helpers.qs('#private_center').after(this.helpers.qs('#private_menu'));
+
         this.helpers.installLogImageHoverPreview([
             this.ui.repliedMessageBox,
             this.ui.unrepliedMessageBox,
@@ -249,11 +240,29 @@ class App {
             this.ui.userContainersWrapper
         ]);
 
+        await this.restoreLastDmFromStore();
+        this.appendCustomActionsToBar();
+
+        this.hostGetProfileOriginal = window.getProfile.bind(window);
+        window.getProfile = async (uid) => {
+            // We don't await here; errors are handled inside openProfileOnHost
+            await this.openProfileOnHost(uid);
+        };
+
+        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+
+        this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
+
+        // Wiring
+        this._wireLogClear();
+        this._wireTextboxTrackers();
+        this.wireListOptionClicks();
+        this.wireUserContainerHeaders();
+        this._attachLogClickHandlers();
+
         if (this.shouldShowBroadcastCheckboxes) {
             this.helpers.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
         }
-
-        await this.restoreLastDmFromStore();
 
         const privateCloseButton = this.helpers.qs('#private_close');
         if (privateCloseButton) {
@@ -280,23 +289,26 @@ class App {
             }
         });
 
-        this._wireLogClear();
-        this._wireTextboxTrackers();
+        // Kept all these actions for the last to make the dom load an initial parsing of users as fast as possible.
+        this.removeAds(document);
+        // Now UsersPopup gets injected dependencies
+        this.popups = new Popups({
+            app: this,
+            settingsStore: this.settingsStore,
+            helpers: this.helpers,
+            userStore: this.userStore
+        });
+        this.popups.init();
 
+        this.helpers.init({
+            debugMode: this.settingsStore.getDebugMode(),
+            verboseMode: this.settingsStore.getVerboseMode()
+        })
+        this._removeSuperBotMethods();
+        this._installAudioAutoplayGate();
+        await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
         this.installNetworkTaps();
         this.installPrivateSendInterceptor();
-        this.appendCustomActionsToBar();
-        await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
-        this.scrollToBottom(this.ui.repliedMessageBox);
-        this.scrollToBottom(this.ui.unrepliedMessageBox);
-        this.scrollToBottom(this.ui.sentMessagesBox);
-
-        this.hostGetProfileOriginal = window.getProfile.bind(window);
-        window.getProfile = async (uid) => {
-            // We don't await here; errors are handled inside openProfileOnHost
-            await this.openProfileOnHost(uid);
-        };
-        this.logger.debug('[CA] Overridden window.getProfile with CA profile popup');
 
         return this;
     }
@@ -602,7 +614,7 @@ class App {
             this.ui.loggingBox.innerHTML = '';
 
             this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.helpers.timeHHMM()}`);
-            this.logger.verbose(`[AutoClear] Cleared ${removed} event log(s).`);
+            this.helpers.verbose(`[AutoClear] Cleared ${removed} event log(s).`);
         };
 
         if (runImmediately) clearEvents();
@@ -618,7 +630,7 @@ class App {
     }
 
     async refreshUserList() {
-        this.logger.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
+        this.helpers.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
         await this.processUserListResponse(await this.api.refreshUserList());
     }
 
@@ -676,7 +688,7 @@ class App {
         if (userEl) {
             this.updateProfileChip(dmSentToUser.uid, userEl);
         } else {
-            this.logger.debug(
+            this.helpers.debug(
                 '[PrivateSend] Skipping profile chip update; user element not found for uid:',
                 dmSentToUser.uid
             );
@@ -689,7 +701,7 @@ class App {
             );
 
         if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
-            this.logger.debug('[PrivateSend] No logs to update read status for user:', uid);
+            this.helpers.debug('[PrivateSend] No logs to update read status for user:', uid);
             return true;
         }
 
@@ -762,7 +774,7 @@ class App {
             out.push({uid: id, name, avatar: av, unread});
         }
         tmp.innerHTML = '';
-        this.logger.debug('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
+        this.helpers.debug('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
         return out;
     }
 
@@ -783,7 +795,7 @@ class App {
             curset: String(this.state.CHAT_CTX.curset)
         };
 
-        this.logger.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyObj);
+        this.helpers.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyObj);
         return await this.api.fetchChatLog(bodyObj);
     }
 
@@ -793,7 +805,7 @@ class App {
         }
 
         if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
-            this.logger.debug(
+            this.helpers.debug(
                 `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
                 `watermark=${this.settingsStore.getGlobalWatermark()}`
             );
@@ -854,7 +866,7 @@ class App {
         if (newMessages > 0) {
             if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                 updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                this.logger.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
+                this.helpers.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
                 shouldSave = true;
             }
 
@@ -884,7 +896,7 @@ class App {
         }
 
         if (skipped.length > 0) {
-            this.logger.debug(skipped);
+            this.helpers.debug(skipped);
         }
     }
 
@@ -897,14 +909,14 @@ class App {
             }
 
             const initialFetch = user.parsedDmInUpToLog === 0;
-            this.logger.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
-            this.logger.verbose(privateChatLog);
+            this.helpers.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
+            this.helpers.verbose(privateChatLog);
             const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
             if (res.accepted) {
-                this.logger.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                this.helpers.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
                 this.userStore.setParsedDmInUpToLog(user.uid, res.logId);
             } else {
-                this.logger.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
+                this.helpers.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
             }
         }
     }
@@ -928,7 +940,7 @@ class App {
             return;
         }
 
-        this.logger.debug('Private messages count (pico):', pico, '— checking for new messages');
+        this.helpers.debug('Private messages count (pico):', pico, '— checking for new messages');
         const privateConversations = this.caParsePrivateNotify(await this.api.fetchPrivateNotify());
 
         privateConversations.sort((a, b) => {
@@ -942,7 +954,7 @@ class App {
 
     async handlePrivateConversationsList(privateConversations, params) {
         privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-        this.logger.verbose('Private conversations returned:', privateConversations.length, privateConversations);
+        this.helpers.verbose('Private conversations returned:', privateConversations.length, privateConversations);
         const privateChatsToFetch = privateConversations
             .filter(pc => pc.unread > 0)
             .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
@@ -952,7 +964,7 @@ class App {
             return;
         }
 
-        this.logger.debug('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
+        this.helpers.debug('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
 
         for (const privateChat of privateChatsToFetch) {
             await this.handlePrivateChat(privateChat, params);
@@ -987,7 +999,7 @@ class App {
     }
 
     installNetworkTaps() {
-        this.logger.debug('Installing network taps (fetch/XHR interceptors)');
+        this.helpers.debug('Installing network taps (fetch/XHR interceptors)');
         if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
         if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
 
@@ -1110,7 +1122,7 @@ class App {
         const uid = entry.getAttribute('data-uid') || '';
         const isSystem = (uid === 'system');
 
-        this.logger.verbose('Log entry clicked:', {entry, uid, isSystem});
+        this.helpers.verbose('Log entry clicked:', {entry, uid, isSystem});
         const userLinkEl = e.target.closest?.(this.sel.raw.log.classes.ca_user_link);
         if (userLinkEl && uid && !isSystem) {
             e.preventDefault();
@@ -1163,7 +1175,7 @@ class App {
                 e.stopImmediatePropagation();
 
                 if (!uid || isSystem) {
-                    this.logger.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+                    this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
                     return;
                 }
 
@@ -1177,7 +1189,7 @@ class App {
                 e.stopImmediatePropagation();
 
                 if (!uid || isSystem) {
-                    this.logger.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
+                    this.helpers.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
                     return;
                 }
 
@@ -1236,7 +1248,7 @@ class App {
     }
 
     applyLegacyAndOpenDm({uid, name, avatar}) {
-        this.logger.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
+        this.helpers.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
 
         if (!uid || !name || !avatar) {
             console.error('[applyLegacyAndOpenDm] Invalid arguments:', {uid, name, avatar});
@@ -1276,7 +1288,7 @@ class App {
     }
 
     async openProfileOnHost(uid) {
-        this.logger.debug('openProfileOnHost called with uid:', uid);
+        this.helpers.debug('openProfileOnHost called with uid:', uid);
 
         const token = this.helpers.getToken();
 
@@ -1400,20 +1412,20 @@ class App {
 
         wrapper.appendChild(nameSpan);
 
-        wrapper.addEventListener('click', (e) => {
+        wrapper.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            this.openProfileOnHost(updatedUserJson.uid);
+            await this.openProfileOnHost(updatedUserJson.uid);
         });
 
         this.helpers.qs('.user_item_avatar img.avav', parsedUserItemEl).addEventListener(
             'click',
-            (e) => {
+            async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                this.openProfileOnHost(updatedUserJson.uid);
+                await this.openProfileOnHost(updatedUserJson.uid);
             },
             true
         );
@@ -1425,7 +1437,7 @@ class App {
             wrapper.appendChild(ageSpan);
         }
 
-        this.logger.verbose(
+        this.helpers.verbose(
             '[_updateOrCreateUserElement] Created new user element for',
             updatedUserJson.uid,
             updatedUserJson.name
@@ -1481,10 +1493,10 @@ class App {
         if (!targetUserContainer.contains(existingUserEl)) {
             console.log(`User ${fetchedUserJson.name} with uid ${fetchedUserJson.uid} switched gender and was in the other user container. Now moving it`);
             targetUserContainer.appendChild(existingUserEl);
-            this.logger.verbose('[updateUser] Moved user element to correct container for', fetchedUserJson.uid);
+            this.helpers.verbose('[updateUser] Moved user element to correct container for', fetchedUserJson.uid);
         }
 
-        this.logger.verbose('[updateUser] Updated user element for', fetchedUserJson.uid, attrMap);
+        this.helpers.verbose('[updateUser] Updated user element for', fetchedUserJson.uid, attrMap);
         return existingUserEl;
     }
 
@@ -1537,13 +1549,13 @@ class App {
         if (changedKeys.length > 0) {
             this._logStyled('[USER_UPDATE] ', segments);
 
-            this.logger.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
+            this.helpers.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
             hasUpdatedUser = true;
 
             if (existingUserEl) {
                 this._applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
             } else {
-                this.logger.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
+                this.helpers.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
             }
 
             if (changedKeys.includes('avatar')) {
@@ -1607,7 +1619,7 @@ class App {
                         `User ${updatedUserJson.name} (${updatedUserJson.uid}) switched gender → moving element.`
                     );
                     targetContainer.appendChild(existingUserEl);
-                    this.logger.verbose("[updateUser] Moved user element after gender change");
+                    this.helpers.verbose("[updateUser] Moved user element after gender change");
                 }
             }
         }
@@ -1744,23 +1756,6 @@ class App {
         this.updateFemaleUserCount(totalFemaleLoggedInCount);
         this.updateOtherUsersCount(totalOthersLoggedInCount);
 
-        // Logging (unchanged)
-        console.log('\n');
-        this._logSummaryDouble('Female online status changed:', femaleLoggedInCount, femaleLoggedOutCount);
-        this._logSummaryDouble('Others online status changed:', othersLoggedInCount, othersLoggedOutCount);
-        this._logSummarySingle('Total female online:', totalFemaleLoggedInCount);
-        this._logSummarySingle('Others online:', totalOthersLoggedInCount);
-        this._logSummarySingle('Total users online: ', currentOnlineUserEls.length);
-        console.log('\n');
-
-        if (updatedProfileCount > 0) {
-            this._logStyled('', [
-                {
-                    text: `Profiles updated: ${updatedProfileCount}`,
-                    style: 'color:#ffff55;font-weight:bold'
-                }
-            ]);
-        }
     }
 
 
@@ -1818,7 +1813,7 @@ class App {
             );
         }
 
-        this.logger.verbose(
+        this.helpers.verbose(
             "[processUserListResponse] Parsed online users from HTML:",
             currentOnlineUserEls.length
         );
@@ -1831,10 +1826,6 @@ class App {
             this.updateOtherUsersCount(otherUsersContent.children.length);
         }
 
-        if (this.isInitialLoad) {
-            await this.restoreLog();
-            this.isInitialLoad = false;
-        }
         this.userParsingInProgress = false;
     }
 
@@ -1860,11 +1851,14 @@ class App {
     }
 
     handleLoggedInStatus(user) {
+        if (this.isInitialLoad) {
+            return;
+        }
         if (!user) {
             console.error('[USER_LIST] Could not find user in store for uid', user.uid);
         }
 
-        this.logger.verbose('Handling logged in status for user: ', user);
+        this.helpers.verbose('Handling logged in status for user: ', user);
 
         if (!user.isLoggedIn) {
             this.helpers.qs(`.user_item[data-id="${user.uid}"]`, {
@@ -1877,7 +1871,7 @@ class App {
             this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
             this.logLine(user.isLoggedIn ? 'login' : 'logout', null, user);
         }
-        this.logger.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
+        this.helpers.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
     }
 
     setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
@@ -1914,7 +1908,7 @@ class App {
 
     caUpdateChatCtxFromBody(searchParams) {
         if (this.caUpdateChatCtxFromBody._initialized) {
-            this.logger.verbose(`CHAT_CTX already initialized`);
+            this.helpers.verbose(`CHAT_CTX already initialized`);
             return;
         }
 
@@ -1928,7 +1922,7 @@ class App {
         if (nf) this.state.CHAT_CTX.notify = String(nf);
         if (cs) this.state.CHAT_CTX.curset = String(cs);
 
-        this.logger.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
+        this.helpers.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
         this.caUpdateChatCtxFromBody._initialized = true;
     }
 
@@ -1952,7 +1946,7 @@ class App {
         const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
 
         if (pload.length || plogs.length) {
-            this.logger.verbose(`pload:`, pload, `plogs:`, plogs);
+            this.helpers.verbose(`pload:`, pload, `plogs:`, plogs);
         }
         return {
             last: typeof o.last === 'string' ? o.last : '',
@@ -1990,7 +1984,7 @@ class App {
 
         const msgNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(logDateStr));
         const wmNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(watermark));
-        this.logger.verbose('Date comparison:', {
+        this.helpers.verbose('Date comparison:', {
             logDate: logDateStr, logDateNum: msgNum,
             watermark, watermarkNum: wmNum
         });
@@ -1999,7 +1993,7 @@ class App {
         }
 
         const isNewer = msgNum >= wmNum;
-        this.logger.verbose('Date comparison:', {
+        this.helpers.verbose('Date comparison:', {
             logDate: logDateStr, logDateNum: msgNum,
             watermark, watermarkNum: wmNum, isNewer
         });
@@ -2032,10 +2026,10 @@ class App {
     updateProfileChip(uid, userEl) {
         const unreadReceivedMessagesCount = this.activityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
         const sentMessagesCount = this.activityLogStore.getAllSentMessagesCountByUserId(uid);
-        this.logger.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
+        this.helpers.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
         if (unreadReceivedMessagesCount > 0) {
-            this.logger.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
+            this.helpers.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
             const chip = this._createChipForUserItem(userEl);
 
             userEl.classList.remove(this.sel.raw.log.classes.ca_replied_messages);
@@ -2045,7 +2039,7 @@ class App {
             chip.textContent = `${unreadReceivedMessagesCount}`;
             userEl.style.display = '';
         } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-            this.logger.verbose(
+            this.helpers.verbose(
                 'Adding all read chip to user:',
                 uid,
                 ', unread received messages count: ',
@@ -2069,7 +2063,7 @@ class App {
                 root: userEl,
                 ignoreWarning: true
             })?.remove();
-            this.logger.verbose('Removing sent chip from user:', uid);
+            this.helpers.verbose('Removing sent chip from user:', uid);
         }
     }
 
@@ -2090,19 +2084,19 @@ class App {
 
         if (!userEl.classList.contains('chataddons-sent')) {
             userEl.classList.add('chataddons-sent');
-            this.logger.verbose('Adding sent chip to user:', userEl.getAttribute('data-id'));
+            this.helpers.verbose('Adding sent chip to user:', userEl.getAttribute('data-id'));
         }
 
         if (!chip) {
             chip = document.createElement('span');
             chip.classList.add(this.sel.raw.log.classes.ca_sent_chip);
             userEl.appendChild(chip);
-            this.logger.verbose('Created sent chip for user:', userEl);
+            this.helpers.verbose('Created sent chip for user:', userEl);
         }
         return chip;
     }
 
-    async ensureBroadcastCheckbox(userItemDataEl, user) {
+    ensureBroadcastCheckbox(userItemDataEl, user) {
         let include = false;
         include = !!(user.isIncludedForBroadcast);
 
@@ -2599,32 +2593,32 @@ class App {
 
             switch (action) {
                 case 'broadcast':
-                    this.logger.verbose('Nav: broadcast clicked');
+                    this.helpers.verbose('Nav: broadcast clicked');
                     this.popups.openBroadcastModal();
                     break;
 
                 case 'send-message':
-                    this.logger.verbose('Nav: send-specific clicked');
+                    this.helpers.verbose('Nav: send-specific clicked');
                     this.popups.openSendMessageModal();
                     break;
 
                 case 'clear-all-logs':
-                    this.logger.verbose('Nav: clear-all-logs clicked');
+                    this.helpers.verbose('Nav: clear-all-logs clicked');
                     this.handleLogClear();
                     break;
 
                 case 'storage-toggle':
-                    this.logger.verbose('Nav: storage-toggle clicked');
+                    this.helpers.verbose('Nav: storage-toggle clicked');
                     this.handleStorageToggleClick();
                     break;
 
                 case 'open-settings':
-                    this.logger.verbose('Nav: settings clicked');
+                    this.helpers.verbose('Nav: settings clicked');
                     this.popups.openSettingsPopup();
                     break;
 
                 case 'open-users':
-                    this.logger.verbose('Nav: users clicked');
+                    this.helpers.verbose('Nav: users clicked');
                     this.popups.open();
                     break;
 
@@ -2785,9 +2779,7 @@ class App {
             console.warn('[CA] createFemaleUsersContainer: subrow is missing, cannot render toggles');
         }
 
-        if (typeof this.logger.verbose === 'function') {
-            this.logger.verbose('Created female users container');
-        }
+        this.helpers.verbose('Created female users container');
     }
 
     renderAndWireIncludeOtherUsersInParsing(elToAppendTo) {
@@ -2807,7 +2799,7 @@ class App {
 
         checkbox.addEventListener("change",
             /** @param {Event} e */
-            (e) => {
+            async (e) => {
 
                 const target = e.target;
 
@@ -2820,15 +2812,14 @@ class App {
                 }
 
                 const checked = !!target.checked;
-                this.logger.debug("[CA] Include other users:", checked);
+                this.helpers.debug("[CA] Include other users:", checked);
                 this.shouldIncludeOtherUsers = checked;
                 this.settingsStore.setShouldIncludeOthers(checked);
                 this.applyHideRepliedUsers(checked);
                 this.helpers.qs(`.ca-user-list-content`, this.ui.otherUsersContainer).innerHTML = "";
-                this.refreshUserList();
+                await this.refreshUserList();
             }
         );
-
 
         elToAppendTo.appendChild(label);
     }
@@ -2863,15 +2854,13 @@ class App {
                 }
 
                 const checked = !!target.checked;
-
-                this.logger.debug("[CA] Hide replied users:", checked);
+                this.helpers.debug("[CA] Hide replied users:", checked);
                 this.shouldHideRepliedUsers = checked;
                 this.settingsStore.setHideReplied(checked);
                 targetContainer.classList.toggle("ca-hide-replied-ck-toggle", checked);
                 this.applyHideRepliedUsers(checked);
             }
         );
-
 
         elToAppendTo.appendChild(label);
     }
@@ -2895,7 +2884,7 @@ class App {
             this.shouldShowBroadcastCheckboxes = checked;
             this.settingsStore.setShowBroadcastSelectionBoxes(checked);
             targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
-            this.logger.debug(
+            this.helpers.debug(
                 '[CA] Female user checkbox visibility:',
                 checked ? 'shown' : 'hidden'
             );
@@ -2994,7 +2983,7 @@ class App {
     }
 
     updateFemaleUserCount(count) {
-        this.logger.verbose('Updating female user count:', count);
+        this.helpers.verbose('Updating female user count:', count);
         const headerCounter = this.helpers.qs(this.sel.users.femaleUserCount);
         headerCounter.textContent = `${count}`;
     }
@@ -3002,16 +2991,6 @@ class App {
     updateOtherUsersCount(count) {
         const headerCounter = this.helpers.qs(this.sel.users.otherUserCount);
         headerCounter.textContent = `${count}`;
-    }
-
-    _bindStaticRefs() {
-        this.ui.sentMessagesBox = this.helpers.qs(this.sel.log.sentMessagesBox);
-        this.ui.messagesWrapper = this.helpers.qs(this.sel.log.messagesWrapper);
-        this.ui.repliedMessageBox = this.helpers.qs(this.sel.log.repliedMessagesBox);
-        this.ui.unrepliedMessageBox = this.helpers.qs(this.sel.log.unrepliedMessagesBox);
-        this.ui.presenceBox = this.helpers.qs(this.sel.log.presence);
-        this.ui.logClear = this.helpers.qs(this.sel.log.clear);
-        this.ui.loggingBox = this.helpers.qs(this.sel.log.general);
     }
 
     _boxesForKinds(kinds) {
@@ -3191,7 +3170,7 @@ class App {
             return;
         }
 
-        this.logger.verbose(
+        this.helpers.verbose(
             `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
             user,
             'in target container',
@@ -3302,7 +3281,7 @@ class App {
         const logs = this.activityLogStore.list({order: 'asc'}) || [];
 
         for (const log of logs) {
-            this.logger.verbose('Restoring log', log);
+            this.helpers.verbose('Restoring log', log);
             const user = await this.userStore.getOrFetch(log.uid);
             this.renderLogEntry(log, user);
         }
@@ -3428,7 +3407,7 @@ class App {
     async restoreLastDmFromStore() {
         const uid = this.settingsStore.getLastDmUid();
         if (!uid) {
-            this.logger.debug('There was no uid for a last dm');
+            this.helpers.debug('There was no uid for a last dm');
             return;
         }
 
@@ -3441,7 +3420,7 @@ class App {
 
     processReadStatusForLogs(logs) {
         for (const log of logs) {
-            this.logger.debug(`Processing read status for log ${log.guid}`);
+            this.helpers.debug(`Processing read status for log ${log.guid}`);
             const el = this.helpers.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
             this.ui.repliedMessageBox.appendChild(el);
         }

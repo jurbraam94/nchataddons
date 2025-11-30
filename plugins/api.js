@@ -96,7 +96,7 @@ class Api {
         const token = this.helpers.getToken();
         if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
 
-        this.logger.debug('Sending private message to:', target, 'content length:', content.length);
+        this.helpers.debug('Sending private message to:', target, 'content length:', content.length);
 
         const body = new URLSearchParams({
             token,
