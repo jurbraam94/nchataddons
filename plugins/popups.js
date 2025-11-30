@@ -504,17 +504,11 @@ class Popups {
             const sendPrivateMessageUser = this.helpers.qs('#ca-specific-username').value;
             const sendPrivateMessageText = this.helpers.qs('#ca-specific-message').value;
             console.log(`[CA] Sending private message to ${sendPrivateMessageUser}:`, sendPrivateMessageText);
-            const result = await this.UserStore.getOrFetchByName(sendPrivateMessageUser);
-            console.log(result)
+            const user = await this.UserStore.getOrFetchByName(sendPrivateMessageUser);
 
-            if (Array.isArray(result) && result.length > 1) {
-                console.warn(`Invalid result:`, result);
-                return this.printModalErrorStatus(`Multiple users were found. Make a more specific search.`);
-            } else if ((Array.isArray(result) && result.length === 0) || !result[0]) {
+            if (!user) {
                 return this.printModalErrorStatus(`User ${sendPrivateMessageUser} not found`);
             }
-
-            const user = result[0];
 
             if (!user?.uid) {
                 console.warn(`Invalid user: `, user);
@@ -1415,23 +1409,7 @@ class Popups {
             return;
         }
 
-        const ok = window.confirm(`Delete
-        user with ID
-        ${uid}
-        from
-        local
-        store
-        ?
-        This
-        cannot
-        be
-        undone
-        .`);
-        if (!ok) {
-            return;
-        }
-
-        this.UserStore.delete(uid);
+        this.UserStore.remove(uid);
 
         this.renderUsersPopup(popup);
         this.helpers.installLogImageHoverPreview([popup]);

@@ -161,67 +161,6 @@ class Helpers {
         return null;
     }
 
-    async searchUserNameRemote(uid) {
-        const token = this.getToken();
-        if (!token || !uid) return null;
-
-        console.log(`Starting remote search for profile with uid ${uid}`);
-
-        const body = new URLSearchParams({
-            token,
-            get_profile: uid,
-            cp: "chat"
-        }).toString();
-
-        const response = await fetch('/system/box/profile.php', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': '*/*'
-            },
-            body
-        });
-
-        const html = await response.text();
-        const doc = this.createElementFromString(html);
-        return doc?.querySelector('.pro_name')?.textContent?.trim();
-    }
-
-    async searchUserRemoteByUsername(username) {
-        if (!username) {
-            console.error(`[RemoteSearch] No username provided`);
-            return null
-        }
-
-        const token = this.getToken();
-
-        console.log(`Starting remote search for profile with username ${username}`);
-
-        const body = new URLSearchParams({
-            token,
-            cp: 'chat',
-            query: String(username),
-            search_type: '1',
-            search_order: '0'
-        }).toString();
-
-        const res = await fetch('/system/action/action_search.php', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'Accept': '*/*',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body
-        });
-
-        const html = await res.text();
-        return this.parseUserSearchHTML(html);
-    }
-
     escapeHTML(s) {
         return String(s)
             .replace(/&/g, '&amp;')

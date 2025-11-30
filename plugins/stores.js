@@ -45,7 +45,7 @@
         }
 
         getShowBroadcastSelectionBoxes() {
-            return this.Store.get(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY) || '';
+            return this.Store.getBool(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY);
         }
 
         setShowBroadcastSelectionBoxes(showBroadcastSelectionBoxes) {
@@ -53,7 +53,7 @@
         }
 
         getShouldIncludeOthers() {
-            return this.Store.get(this.SHOULD_INCLUDE_OTHER_USERS_KEY) || '';
+            return this.Store.getBool(this.SHOULD_INCLUDE_OTHER_USERS_KEY);
         }
 
         setShouldIncludeOthers(shouldIncludeOthers) {
@@ -61,7 +61,7 @@
         }
 
         getHideReplied() {
-            return this.Store.get(this.SHOULD_HIDE_REPLIED_USERS_KEY) || '';
+            return this.Store.getBool(this.SHOULD_HIDE_REPLIED_USERS_KEY);
         }
 
         setHideReplied(hideReplied) {
@@ -161,6 +161,11 @@
 
         has(key) {
             return this.storage.getItem(key) !== null;
+        }
+
+        getBool(key, prefix = this.STORAGE_KEY_PREFIX) {
+            const storeValue = this.get(key, prefix);
+            return storeValue === true || storeValue === 'true';
         }
 
         get(key, prefix = this.STORAGE_KEY_PREFIX) {
@@ -402,6 +407,7 @@
             this.Store = new KeyValueStore();
             this.USERS_KEY = `users`;
             this.helpers = new Helpers(this);
+            this.Api = new Api();
         }
 
         _deleteUserByUid(uid) {
@@ -653,14 +659,10 @@
         async getOrFetch(id) {
             let user = this.get(id);
             if (!user) {
-                const fetchedUserName = await this.helpers.searchUserNameRemote(String(id));
-                const foundUsers = await this.getOrFetchByName(fetchedUserName);
+                const getProfileResponseHtml = await this.Api.searchUserNameRemote(String(id));
+                const doc = this.helpers.createElementFromString(getProfileResponseHtml);
+                const foundUser = await this.getOrFetchByName(doc?.querySelector('.pro_name')?.textContent?.trim());
 
-                if (foundUsers.length !== 1) {
-                    console.error(`[CA] searchUserRemote: Could not find user with name ${name}, there wasn't exactly one match (found ${foundUsers.length})`);
-                    return null;
-                }
-                const foundUser = foundUsers[0];
                 if (foundUser) {
                     user = this.set({...foundUser, uid: String(foundUser.uid ?? id)});
                 } else {
@@ -673,14 +675,22 @@
 
         async getOrFetchByName(name) {
             let user = this.getByName(name);
-            let users = [];
 
             if (!user) {
-                users = await this.helpers.searchUserRemoteByUsername(String(name));
-            } else {
-                users.push(user);
+                const result = this.helpers.parseUserSearchHTML(await this.Api.searchUserRemoteByUsername(String(name)));
+
+                if (Array.isArray(result) && result.length > 1) {
+                    console.warn(`Invalid result:`, result);
+                    return null;
+                } else if (Array.isArray(result) && result.length === 1) {
+                    console.log(`Found user ${name} by username, saving to store and returning it:`, result[0]);
+                    this.set(result[0]);
+                    return result[0];
+                }
+                return null;
             }
-            return users || null;
+
+            return user || null;
         }
 
         includeUserForBroadcast(uid, include) {
