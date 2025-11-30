@@ -259,7 +259,7 @@
     top: 18vh;
     left: 50%;
     transform: translateX(-50%);
-    width: 520px;
+    min-width: 520px;
     max-width: 96vw;
     background: #0b1220;
     border: 2px solid #2b90ff;
@@ -1145,4 +1145,91 @@ svg.svg-large {
     .ca-log-controls-header .ca-log-ctl {
         font-size: 11px;
     }
+}
+
+/* Users popup */
+
+.ca-users-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 520px;
+    max-width: 900px;
+    max-height: 500px;
+}
+
+.ca-users-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ca-users-search {
+    flex: 1 1 auto;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    background: #020617;
+    color: #e5e7eb;
+    font-size: 13px;
+}
+
+.ca-users-search:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.6);
+}
+
+.ca-users-summary {
+    font-size: 12px;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.ca-users-table-wrapper {
+    flex: 1 1 auto;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #020617;
+}
+
+.ca-users-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.ca-users-table thead {
+    position: sticky;
+    top: 0;
+    background: #020617;
+    z-index: 1;
+}
+
+.ca-users-table th,
+.ca-users-table td {
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid #1f2937;
+}
+
+.ca-users-table th {
+    font-weight: 600;
+    color: #e5e7eb;
+}
+
+.ca-users-table tr:nth-child(even) {
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.ca-users-table tr:hover {
+    background: rgba(30, 64, 175, 0.5);
+}
+
+.ca-users-pagination {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
 }

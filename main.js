@@ -1740,21 +1740,25 @@
             }
         }
 
-        buildLogHTML(kind, content, user) {
-            const text = String(content || '');
-
-            const escapeHTML = (s) => String(s)
+        escapeHTML(s) {
+            return String(s)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
+        }
 
-            const escapeAttr = (s) => String(s)
-                .replace(/&/g, '&amp;')
+        escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
+        }
+
+        buildLogHTML(kind, content, user) {
+            const text = String(content || '');
+
 
             if (kind === 'event') {
                 const m = text.match(/^\[USER_UPDATE]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
@@ -1762,8 +1766,8 @@
                 if (m) {
                     const userName = m[1] || '';
                     const newAvatar = (m[3] || '').trim();
-                    const safeName = escapeHTML(userName);
-                    const safeSrc = escapeAttr(newAvatar || '');
+                    const safeName = this.escapeHTML(userName);
+                    const safeSrc = this.escapeAttr(newAvatar || '');
                     return `
                 <span class="ca-log-text-main">
                     ${safeName} has changed ${user.isFemale ? `her` : `his`} avatar:
@@ -1774,10 +1778,10 @@
             `;
                 }
 
-                return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
+                return `<span class="ca-log-text-main">${this.escapeHTML(text)}</span>`;
             }
 
-            return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
+            return `<span class="ca-log-text-main">${this.escapeHTML(text)}</span>`;
         }
 
         _attachLogClickHandlers() {
@@ -1890,7 +1894,6 @@
                         return;
                     }
 
-                    console.log('[CA] Opening private (open-dm) with:', uid, user.name, user.avatar);
                     this.applyLegacyAndOpenDm(user);
                     return;
                 }
@@ -3323,6 +3326,21 @@
              data-action="storage-toggle"
              title="">
           </a>
+          
+                <a id="ca-nav-users"
+         href="#"
+         class="ca-dm-link ca-dm-right ca-log-action"
+         data-action="open-users"
+         title="Show all users">
+        ${this.buildSvgIconString(
+                "lucide lucide-user",
+                `
+              <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"></path>
+              <path d="M4 20a8 8 0 0 1 16 0"></path>
+            `
+            )}
+      </a>
+
 
           <a id="ca-nav-settings"
              href="#"
@@ -3633,6 +3651,11 @@
                         this.openSettingsPopup();
                         break;
 
+                    case 'open-users':
+                        this.verbose('Nav: users clicked');
+                        this.openUsersPopup();
+                        break;
+
                     default:
                         console.warn('[CA] _wirePanelNav: unhandled data-action:', action);
                         break;
@@ -3640,6 +3663,245 @@
 
             });
         }
+
+        createUsersPopup() {
+            const bodyHtml = `
+              <div class="ca-users-modal">
+                <div class="ca-users-controls">
+                  <input
+                    id="ca-users-search"
+                    class="ca-input ca-users-search"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Search by name, ID, country, rank…"
+                  />
+                  <span id="ca-users-summary" class="ca-users-summary"></span>
+                </div>
+
+                <div class="ca-users-table-wrapper">
+                  <table class="ca-users-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Age</th>
+                        <th>Country</th>
+                        <th>Rank</th>
+                        <th>Logged in</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ca-users-table-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="ca-users-pagination">
+                  <button
+                    type="button"
+                    id="ca-users-prev"
+                    class="ca-btn ca-btn-slim"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    id="ca-users-next"
+                    class="ca-btn ca-btn-slim"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            `;
+
+            return this.ensurePopup({
+                id: 'ca-users-popup',
+                title: 'Users',
+                bodyHtml
+            });
+        }
+
+
+        openUsersPopup() {
+            const popup = this.createUsersPopup();
+            if (!popup) {
+                console.error('[CA] openUsersPopup: popup not created');
+                return;
+            }
+
+            if (!this.userTableState) {
+                this.userTableState = {
+                    page: 1,
+                    pageSize: 50,
+                    query: ''
+                };
+            }
+
+            const searchInput = popup.querySelector('#ca-users-search');
+            const prevBtn = popup.querySelector('#ca-users-prev');
+            const nextBtn = popup.querySelector('#ca-users-next');
+
+            if (!searchInput || !prevBtn || !nextBtn) {
+                console.error('[CA] openUsersPopup: missing search or pagination elements');
+                return;
+            }
+
+            const applySearch = () => {
+                this.userTableState.query = (searchInput.value || '').trim();
+                this.userTableState.page = 1;
+                this.renderUsersTable(popup);
+            };
+
+            if (!searchInput.dataset.caWired) {
+                searchInput.dataset.caWired = '1';
+                searchInput.addEventListener('input', () => {
+                    applySearch();
+                });
+            }
+
+            if (!prevBtn.dataset.caWired) {
+                prevBtn.dataset.caWired = '1';
+                prevBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const state = this.userTableState || {};
+                    const currentPage = Number(state.page) || 1;
+                    if (currentPage > 1) {
+                        state.page = currentPage - 1;
+                        this.userTableState = state;
+                        this.renderUsersTable(popup);
+                    }
+                });
+            }
+
+            if (!nextBtn.dataset.caWired) {
+                nextBtn.dataset.caWired = '1';
+                nextBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const state = this.userTableState || {};
+                    const currentPage = Number(state.page) || 1;
+                    const users = this.UserStore.list();
+                    const filtered = this.filterUsersForTable(users, state.query);
+                    const maxPage = filtered.length > 0
+                        ? Math.ceil(filtered.length / (state.pageSize || 50))
+                        : 1;
+                    if (currentPage < maxPage) {
+                        state.page = currentPage + 1;
+                        this.userTableState = state;
+                        this.renderUsersTable(popup);
+                    }
+                });
+            }
+
+            this.renderUsersTable(popup);
+            this.togglePopup('ca-users-popup');
+        }
+
+        filterUsersForTable(allUsers, query) {
+            const list = Array.isArray(allUsers) ? allUsers : [];
+            const q = (query || '').toLowerCase().trim();
+
+            if (!q) {
+                return list;
+            }
+
+            return list.filter((u) => {
+                const name = String(u.name || '').toLowerCase();
+                const uid = String(u.uid || '').toLowerCase();
+                const country = String(u.country || '').toLowerCase();
+                const rank = String(u.rank || '').toLowerCase();
+                const mood = String(u.mood || '').toLowerCase();
+
+                return (
+                    name.includes(q) ||
+                    uid.includes(q) ||
+                    country.includes(q) ||
+                    rank.includes(q) ||
+                    mood.includes(q)
+                );
+            });
+        }
+
+        renderUsersTable(popup) {
+            if (!popup) {
+                console.error('[CA] renderUsersTable: popup not provided');
+                return;
+            }
+
+            const tbody = popup.querySelector('#ca-users-table-body');
+            const summaryEl = popup.querySelector('#ca-users-summary');
+            const prevBtn = popup.querySelector('#ca-users-prev');
+            const nextBtn = popup.querySelector('#ca-users-next');
+
+            if (!tbody) {
+                console.error('[CA] renderUsersTable: tbody not found');
+                return;
+            }
+
+            const state = this.userTableState || {
+                page: 1,
+                pageSize: 50,
+                query: ''
+            };
+
+            const allUsers = this.UserStore.list();
+            const filtered = this.filterUsersForTable(allUsers, state.query);
+
+            const total = filtered.length;
+            const pageSize = Number(state.pageSize) || 50;
+            let page = Number(state.page) || 1;
+
+            const maxPage = total > 0 ? Math.ceil(total / pageSize) : 1;
+            if (page < 1) page = 1;
+            if (page > maxPage) page = maxPage;
+
+            state.page = page;
+            this.userTableState = state;
+
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const pageItems = filtered.slice(startIndex, endIndex);
+
+            tbody.innerHTML = '';
+
+            pageItems.forEach((u) => {
+                const tr = document.createElement('tr');
+
+                const uid = this.escapeHTML(String(u.uid || ''));
+                const name = this.escapeHTML(String(u.name || ''));
+                const age = this.escapeHTML(String(u.age || ''));
+                const country = this.escapeHTML(String(u.country || ''));
+                const rank = this.escapeHTML(String(u.rank || ''));
+                const loggedIn = u.isLoggedIn ? '✔' : '';
+
+                tr.innerHTML = `
+                  <td>${uid}</td>
+                  <td>${name}</td>
+                  <td>${age}</td>
+                  <td>${country}</td>
+                  <td>${rank}</td>
+                  <td>${loggedIn}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            if (summaryEl) {
+                if (total === 0) {
+                    summaryEl.textContent = 'No users found';
+                } else {
+                    const from = startIndex + 1;
+                    const to = startIndex + pageItems.length;
+                    summaryEl.textContent = `Showing ${from}-${to} of ${total} user(s)`;
+                }
+            }
+
+            if (prevBtn) {
+                prevBtn.disabled = page <= 1 || total === 0;
+            }
+            if (nextBtn) {
+                nextBtn.disabled = page >= maxPage || total === 0;
+            }
+        }
+
 
         handleLogClear() {
             this.ui.sentMessagesBox.innerHTML = '';
