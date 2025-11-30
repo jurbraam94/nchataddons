@@ -28,6 +28,24 @@
             this.storage.setItem(this._key(key), toStore);
             return true;
         }
+
+        delete(key) {
+            const k = this._key(key);
+
+            if (!this.storage) {
+                console.error('[KeyValueStore] delete: storage is not available');
+                return false;
+            }
+
+            if (this.storage.getItem(k) === null) {
+                // nothing to delete
+                return false;
+            }
+
+            this.storage.removeItem(k);
+            return true;
+        }
+
     }
 
     class ActivityLogStore {
@@ -233,6 +251,35 @@
             this.app = app; // for app.searchUserRemote
         }
 
+        _deleteUserByUid(uid) {
+            if (uid == null) {
+                console.error('[UsersStore] _deleteUserByUid: uid is null/undefined');
+                return false;
+            }
+
+            const uidStr = String(uid);
+            const all = this._getAll();
+
+            if (!Array.isArray(all) || all.length === 0) {
+                return false;
+            }
+
+            const next = all.filter(u => String(u.uid) !== uidStr);
+            const changed = next.length !== all.length;
+
+            if (!changed) {
+                // user not found
+                return false;
+            }
+
+            this.kv.set(this.cacheKey, next);
+            return true;
+        }
+
+        remove(uid) {
+            return this._deleteUserByUid(uid);
+        }
+
         // ---- storage helpers (arrays only) ----
         _getAll() {
             const raw = this.kv.get(this.cacheKey);
@@ -307,8 +354,7 @@
                         ...newUser,
                         parsedDmInUpToLog: 0,
                         isIncludedForBroadcast: true,
-                        noNewPrivateDmTries: 0,
-                        stalePrivateDmBeforeDate: '' // empty string means "no stale cutoff"
+                        noNewPrivateDmTries: 0
                     };
 
                     updatedUsers.push(userWithDefaults);
@@ -353,8 +399,7 @@
                 ...newUser,
                 parsedDmInUpToLog: 0,
                 isIncludedForBroadcast: true,
-                noNewPrivateDmTries: 0,
-                stalePrivateDmBeforeDate: ''  // empty string means "no stale cutoff"
+                noNewPrivateDmTries: 0
             };
         }
 
@@ -501,8 +546,19 @@
         }
 
         clear() {
-            this.kv.set(this.cacheKey, []);
+            if (!this.kv || !this.cacheKey) {
+                console.error('[UsersStore] clear: kv or cacheKey missing');
+                return;
+            }
+
+            if (typeof this.kv.delete === 'function') {
+                this.kv.delete(this.cacheKey);
+            } else {
+                // Fallback: keep old behavior
+                this.kv.set(this.cacheKey, []);
+            }
         }
+
     }
 
     /** Storage shim that never persists anything (Block mode) */

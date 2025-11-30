@@ -1147,21 +1147,20 @@ svg.svg-large {
     }
 }
 
-/* Users popup */
 
+/* Users popup – extended controls, column toggles and sorting */
 .ca-users-modal {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    min-width: 520px;
-    max-width: 900px;
-    max-height: 500px;
+    max-height: 540px;
 }
 
 .ca-users-controls {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .ca-users-search {
@@ -1180,10 +1179,52 @@ svg.svg-large {
     box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.6);
 }
 
+.ca-users-filter-female {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #e5e7eb;
+    white-space: nowrap;
+}
+
 .ca-users-summary {
+    margin-left: auto;
     font-size: 12px;
     opacity: 0.8;
     white-space: nowrap;
+}
+
+.ca-users-columns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.ca-users-columns-label {
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.ca-users-column-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ca-users-column-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.9);
+    cursor: pointer;
+}
+
+.ca-users-column-toggle input[type="checkbox"] {
+    margin: 0;
 }
 
 .ca-users-table-wrapper {
@@ -1194,12 +1235,6 @@ svg.svg-large {
     background: #020617;
 }
 
-.ca-users-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-}
-
 .ca-users-table thead {
     position: sticky;
     top: 0;
@@ -1207,12 +1242,26 @@ svg.svg-large {
     z-index: 1;
 }
 
+.ca-users-table {
+    border-collapse: collapse;
+    table-layout: auto; /* key: auto layout, not fixed */
+    width: auto; /* let content decide overall width */
+    max-width: 100%; /* but don’t overflow the popup */
+}
+
 .ca-users-table th,
 .ca-users-table td {
     padding: 6px 8px;
     text-align: left;
     border-bottom: 1px solid #1f2937;
+
+    /* shrink to content; ellipsis if too long */
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
 
 .ca-users-table th {
     font-weight: 600;
@@ -1232,4 +1281,86 @@ svg.svg-large {
     justify-content: flex-end;
     gap: 8px;
     margin-top: 4px;
+}
+
+.ca-users-sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 14px;
+}
+
+.ca-users-sortable::after {
+    content: '↕';
+    position: absolute;
+    right: 4px;
+    font-size: 10px;
+    opacity: 0.5;
+}
+
+.ca-users-sortable.ca-users-sorted[data-sort-dir="asc"]::after {
+    content: '↑';
+    opacity: 0.9;
+}
+
+.ca-users-sortable.ca-users-sorted[data-sort-dir="desc"]::after {
+    content: '↓';
+    opacity: 0.9;
+}
+
+.ca-users-avatar {
+    display: block;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.ca-users-actions a {
+    margin-right: 4px;
+}
+
+#ca-users-popup {
+    min-width: 50%;
+    max-width: 90%;
+}
+
+.ca-users-online-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+    background-color: #4b5563; /* default grey fallback */
+}
+
+.ca-users-online-dot--online {
+    background-color: #22c55e; /* green */
+}
+
+.ca-users-online-dot--offline {
+    background-color: #ef4444; /* red */
+}
+
+/* Users table: username styling */
+.ca-users-table td a {
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.ca-users-table td a:hover {
+    text-decoration: none;
+}
+
+.ca-users-edit-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid #3b82f6;
+    background: #020617;
+    color: #e5e7eb;
+    font-size: 12px;
 }
