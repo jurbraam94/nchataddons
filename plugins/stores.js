@@ -1,8 +1,7 @@
-//(async function () {
+// (async function () {
 /** Key/Value store backed by localStorage */
 class SettingsStore {
-    constructor() {
-        this.Store = new KeyValueStore();
+    constructor({keyValueStore, helpers, logger}) {
         this.DEBUG_COOKIE = `debug`;
         this.VERBOSE_COOKIE = `verbose`;
         this.DEBUG_MODE_KEY = `debugMode`;
@@ -14,104 +13,108 @@ class SettingsStore {
         this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY = `shouldShowBroadcastCheckboxes`;
         this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY = `userManagerVisibleColumns`;
         this.LAST_DM_UID_KEY = `lastDmUid`;
-        this.Helpers = window.CAPlugins.Helpers;
+
+
+        this.store = keyValueStore;
+        this.Helpers = helpers;
+        this.logger = logger;
     }
 
     setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
-        if (userManagerVisibleColumnPrefs) this.Store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
+        if (userManagerVisibleColumnPrefs) this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
     }
 
     getUserManagerVisibleColumnPrefs() {
-        return this.Store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY) || '';
+        return this.store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY) || '';
     }
 
     getWriteStorageMode(mode) {
-        return this.Store._writeStorageMode(mode);
+        return this.store._writeStorageMode(mode);
     }
 
     setWriteStorageMode(mode) {
-        this.Store._writeStorageMode(mode);
+        this.store._writeStorageMode(mode);
     }
 
     getLastDmUid() {
-        return this.Store.get(this.LAST_DM_UID_KEY) || '';
+        return this.store.get(this.LAST_DM_UID_KEY) || '';
     }
 
     setLastDmUid(lastDmUid) {
-        if (lastDmUid) this.Store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
+        if (lastDmUid) this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
     }
 
     clearLastDmUid() {
-        this.Store.set(this.LAST_DM_UID_KEY, '');
+        this.store.set(this.LAST_DM_UID_KEY, '');
     }
 
     getShowBroadcastSelectionBoxes() {
-        return this.Store.getBool(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, {
+        return this.store.getBool(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, {
             default: false
         });
     }
 
     setShowBroadcastSelectionBoxes(showBroadcastSelectionBoxes) {
-        if (showBroadcastSelectionBoxes) this.Store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
+        if (showBroadcastSelectionBoxes) this.store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
     }
 
     getShouldIncludeOthers() {
-        return this.Store.getBool(this.SHOULD_INCLUDE_OTHER_USERS_KEY, {
+        return this.store.getBool(this.SHOULD_INCLUDE_OTHER_USERS_KEY, {
             default: true
         });
     }
 
     setShouldIncludeOthers(shouldIncludeOthers) {
-        if (shouldIncludeOthers) this.Store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
+        if (shouldIncludeOthers) this.store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
     }
 
     getHideReplied() {
-        return this.Store.getBool(this.SHOULD_HIDE_REPLIED_USERS_KEY, {
+        return this.store.getBool(this.SHOULD_HIDE_REPLIED_USERS_KEY, {
             default: false
         });
     }
 
     setHideReplied(hideReplied) {
-        if (hideReplied) this.Store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
+        if (hideReplied) this.store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
     }
 
     getGlobalWatermark() {
-        return this.Store.get(this.GLOBAL_WATERMARK_KEY, {
-            default: this.Helpers.getTimeStampInWebsiteFormat()
+        return this.store.get(this.GLOBAL_WATERMARK_KEY, {
+            default: this.helpers.getTimeStampInWebsiteFormat()
         });
     }
 
     getDebugMode() {
-        return this.Store._getCookie(this.DEBUG_COOKIE) === 'true' ||
-            this.Store.get(this.DEBUG_MODE_KEY) === 'true';
+        return this.store._getCookie(this.DEBUG_COOKIE) === 'true' ||
+            this.store.get(this.DEBUG_MODE_KEY) === 'true';
     }
 
     getVerboseMode() {
-        return this.Store._getCookie(this.VERBOSE_COOKIE) === 'true' ||
-            this.Store.get(this.VERBOSE_MODE_KEY) === 'true';
+        return this.store._getCookie(this.VERBOSE_COOKIE) === 'true' ||
+            this.store.get(this.VERBOSE_MODE_KEY) === 'true';
     }
 
     setDebugMode(isEnabled) {
-        this.Store._setCookie(this.DEBUG_COOKIE, String(isEnabled));
-        this.Store.set(this.DEBUG_MODE_KEY, isEnabled);
+        this.store._setCookie(this.DEBUG_COOKIE, String(isEnabled));
+        this.store.set(this.DEBUG_MODE_KEY, isEnabled);
     }
 
     setVerboseMode(isEnabled) {
-        this.Store._setCookie(this.VERBOSE_COOKIE, String(isEnabled));
-        this.Store.set(this.VERBOSE_MODE_KEY, isEnabled);
+        this.store._setCookie(this.VERBOSE_COOKIE, String(isEnabled));
+        this.store.set(this.VERBOSE_MODE_KEY, isEnabled);
     }
 
     savePredefinedMessages(list) {
         const arr = Array.isArray(list) ? list : [];
         this.predefinedMessages = arr;
-        this.Store.setPersisted(this.PREDEFINED_MESSAGES_KEY, arr);
+        this.store.setPersisted(this.PREDEFINED_MESSAGES_KEY, arr);
     }
 
     getPredefinedMessages() {
         if (Array.isArray(this.predefinedMessages) && this.predefinedMessages.length > 0) {
             return this.predefinedMessages;
         }
-        const raw = this.Store.getPersisted(this.PREDEFINED_MESSAGES_KEY);
+        const raw = this.store.getPersisted(this.PREDEFINED_MESSAGES_KEY);
         return Array.isArray(raw) ? raw : [];
     }
 }
@@ -121,6 +124,7 @@ class KeyValueStore {
         this.STORAGE_KEY_PREFIX = '321chataddons';
         this.PERSIST_STORAGE_KEY_PREFIX = `persist_${this.STORAGE_KEY_PREFIX}`;
         this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
+
         const StorageMode = this._readStorageMode();
         if (StorageMode === 'wipe') this._clearOwnLocalStorage();
         this.storage = this._chooseStorage(StorageMode) || localStorage;
@@ -260,10 +264,12 @@ class KeyValueStore {
 }
 
 class ActivityLogStore {
-    constructor() {
+    constructor({keyValueStore, helpers, logger} = {}) {
         this.ACTIVITY_LOG_KEY = `activityLog`;
-        this.Store = new KeyValueStore();
-        this.Helpers = window.CAPlugins.Helpers;
+
+        this.store = keyValueStore;
+        this.Helpers = helpers;
+        this.logger = logger;
     }
 
     getAllOnlineWomen() {
@@ -272,7 +278,7 @@ class ActivityLogStore {
 
     // ---- storage helpers (arrays only) ----
     _getAll() {
-        const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
+        const raw = this.store.get(this.ACTIVITY_LOG_KEY);
         return Array.isArray(raw) ? raw : [];
     }
 
@@ -297,7 +303,7 @@ class ActivityLogStore {
         // Append the new ones
         const next = filtered.concat(changedLogs);
 
-        this.Store.set(this.ACTIVITY_LOG_KEY, next);
+        this.store.set(this.ACTIVITY_LOG_KEY, next);
         return changedLogs;
     }
 
@@ -337,7 +343,7 @@ class ActivityLogStore {
                 && (!onlyUnread || log.unread)
                 && log.guid !== String(user_id)
         );
-        this.Helpers.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+        this.logger.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
         return result;
     }
 
@@ -422,7 +428,7 @@ class ActivityLogStore {
         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
             .filter(log => log.guid <= parsedDmInUpToLog)
             .map(log => ({...log, unread: false}))
-        this.Helpers.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
+        this.logger.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
         return this.setAll(allUnreadMessagesForUid);
     }
 
@@ -430,7 +436,7 @@ class ActivityLogStore {
         if (!guid) return false;
         const all = this._getAll();
         const next = all.filter(l => String(l.guid) !== String(guid));
-        this.Store.set(this.ACTIVITY_LOG_KEY, next);
+        this.store.set(this.ACTIVITY_LOG_KEY, next);
         return next.length !== all.length;
     }
 
@@ -438,7 +444,7 @@ class ActivityLogStore {
         if (!kind) return 0;
         const all = this._getAll();
         const next = all.filter(l => l?.kind !== kind);
-        this.Store.set(this.ACTIVITY_LOG_KEY, next);
+        this.store.set(this.ACTIVITY_LOG_KEY, next);
         return all.length - next.length;
     }
 
@@ -447,17 +453,19 @@ class ActivityLogStore {
     }
 
     clear() {
-        this.Store.set(this.ACTIVITY_LOG_KEY, []);
+        this.store.set(this.ACTIVITY_LOG_KEY, []);
     }
 }
 
 /** Users store (array-backed, like ActivityLogStore) */
 class UserStore {
-    constructor() {
-        this.Store = new KeyValueStore();
+    constructor({keyValueStore, api, helpers, logger} = {}) {
         this.USERS_KEY = `users`;
-        this.Helpers = window.CAPlugins.Helpers;
-        this.Api = window.CAPlugins.Api;
+
+        this.store = keyValueStore;
+        this.Api = api;
+        this.Helpers = helpers;
+        this.logger = logger;
     }
 
     _deleteUserByUid(uid) {
@@ -481,7 +489,7 @@ class UserStore {
             return false;
         }
 
-        this.Store.set(this.USERS_KEY, next);
+        this.store.set(this.USERS_KEY, next);
         return true;
     }
 
@@ -491,7 +499,7 @@ class UserStore {
 
     // ---- storage helpers (arrays only) ----
     _getAll() {
-        const raw = this.Store.get(this.USERS_KEY);
+        const raw = this.store.get(this.USERS_KEY);
         return Array.isArray(raw) ? raw : [];
     }
 
@@ -517,7 +525,7 @@ class UserStore {
                 ? users.map(u => (String(u.uid) === uid ? userToEdit : u))
                 : [...users, userToEdit];
 
-        this.Store.set(this.USERS_KEY, updated);
+        this.store.set(this.USERS_KEY, updated);
         return userToEdit;
     }
 
@@ -570,7 +578,7 @@ class UserStore {
             }
         }
 
-        this.Store.set(this.USERS_KEY, updatedUsers);
+        this.store.set(this.USERS_KEY, updatedUsers);
         return updatedUsers;
     }
 
@@ -618,7 +626,7 @@ class UserStore {
             throw new Error('set() requires user.uid')
         }
         const merged = this._mergeUser(user);
-        this.Helpers.verbose(`Saving merged user`, user);
+        this.logger.verbose(`Saving merged user`, user);
 
         return this._save(merged);
     }
@@ -629,7 +637,7 @@ class UserStore {
             console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
             return null;
         }
-        this.Helpers.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
+        this.logger.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
         const updated = {...u, parsedDmInUpToLog};
         return this.set(updated);
     }
@@ -710,7 +718,7 @@ class UserStore {
         let user = this.get(id);
         if (!user) {
             const getProfileResponseHtml = await this.Api.searchUserNameRemote(String(id));
-            const doc = this.Helpers.createElementFromString(getProfileResponseHtml);
+            const doc = this.helpers.createElementFromString(getProfileResponseHtml);
             const foundUser = await this.getOrFetchByName(doc?.querySelector('.pro_name')?.textContent?.trim());
 
             if (foundUser) {
@@ -727,7 +735,7 @@ class UserStore {
         let user = this.getByName(name);
 
         if (!user) {
-            const result = this.Helpers.parseUserSearchHTML(await this.Api.searchUserRemoteByUsername(String(name)));
+            const result = this.helpers.parseUserSearchHTML(await this.Api.searchUserRemoteByUsername(String(name)));
 
             if (Array.isArray(result) && result.length > 1) {
                 console.warn(`Invalid result:`, result);
@@ -766,16 +774,16 @@ class UserStore {
     }
 
     clear() {
-        if (!this.Store || !this.USERS_KEY) {
+        if (!this.store || !this.USERS_KEY) {
             console.error('[UserStore] clear: kv or cacheKey missing');
             return;
         }
 
-        if (typeof this.Store.delete === 'function') {
-            this.Store.delete(this.USERS_KEY);
+        if (typeof this.store.delete === 'function') {
+            this.store.delete(this.USERS_KEY);
         } else {
             // Fallback: keep old behavior
-            this.Store.set(this.USERS_KEY, []);
+            this.store.set(this.USERS_KEY, []);
         }
     }
 
@@ -804,12 +812,3 @@ class NullStorage {
         return 0;
     }
 }
-
-// // Expose the classes to the page
-//     window.CAPlugins = window.CAPlugins || {};
-//     window.CAPlugins.KeyValueStore = KeyValueStore;
-//     window.CAPlugins.ActivityLogStore = ActivityLogStore;
-//     window.CAPlugins.UserStore = UserStore;
-//     window.CAPlugins.NullStorage = NullStorage;
-//     window.CAPlugins.SettingsStore = SettingsStore;
-// })();

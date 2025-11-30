@@ -135,5 +135,3 @@ class ChatAddonTester {
         return userAfter;
     }
 }
-
-window.tester = ChatAddonTester;

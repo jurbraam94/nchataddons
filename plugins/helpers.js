@@ -1,10 +1,6 @@
-/** Key/Value store backed by localStorage */
 class Helpers {
     constructor() {
         this.FEMALE_CODE = '2';
-        this.SettingsStore = window.CAPlugins.SettingsStore;
-        this.verboseMode = null;
-        this.debugMode = null;
     }
 
     extractUserId(el) {
@@ -114,22 +110,6 @@ class Helpers {
 
         return el;
     }
-
-    debug(...args) {
-        this.verboseMode === null ? this.SettingsStore.getVerboseMode() : false;
-
-        if (this.debugMode) {
-            console.log('[DEBUG]', ...args);
-        }
-    };
-
-    verbose(...args) {
-        this.verboseMode === null ? this.SettingsStore.getVerboseMode() : false;
-
-        if (this.verboseMode) {
-            console.log('[VERBOSE]', ...args);
-        }
-    };
 
     timeHHMM() {
         const d = new Date();
@@ -377,6 +357,3 @@ class Helpers {
         filteredContainers.forEach((container) => attachHoverHandlers(container));
     }
 }
-
-// window.CAPlugins = window.CAPlugins || {};
-// window.CAPlugins.Helpers = Helpers;

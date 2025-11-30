@@ -1,31 +1,30 @@
 class Popups {
-    constructor(app) {
+    constructor({app, settingsStore, helpers, userStore}) {
         if (!app) {
-            throw new Error('[UsersPopup] constructor requires app instance');
+            throw new Error('[UsersPopup] requires app');
         }
 
         this.app = app;
-
-        this.SettingsStore = window.CAPlugins.SettingsStore;
-        this.Helpers = window.CAPlugins.Helpers;
+        this.settingsStore = settingsStore;
+        this.helpers = helpers;
+        this.userStore = userStore;
 
         this.state = {
             page: 1,
             pageSize: 50,
             query: '',
             onlyFemales: false,
-            onlyOnline: false, // NEW
+            onlyOnline: false,
             sortKey: 'name',
             sortDir: 'asc',
             visibleColumns: {}
         };
 
-        this.UserStore = window.CAPlugins.UserStore;
-
-        // z-index base for stacking multiple modals
         this._zBase = 10000;
         this._zCounter = this._zBase;
+    }
 
+    init() {
         this._loadColumnPrefs();
     }
 
@@ -535,12 +534,12 @@ class Popups {
             return;
         }
 
-        debugSettingsCheckbox.checked = !!this.debugMode;
-        verboseSettingsCheckbox.checked = !!this.verboseMode;
+        debugSettingsCheckbox.checked = !!this.settingsStore.getDebugMode();
+        verboseSettingsCheckbox.checked = !!this.settingsStore.getVerboseMode();
 
         const applyDebugChange = (enabled) => {
             const safeEnabled = !!enabled;
-            this.SettingsStore.setDebugMode(safeEnabled);
+            this.settingsStore.setDebugMode(safeEnabled);
 
             console.log(
                 safeEnabled
@@ -556,7 +555,7 @@ class Popups {
 
         const applyVerboseChange = (enabled) => {
             const safeEnabled = !!enabled;
-            this.SettingsStore.setVerboseMode(safeEnabled);
+            this.settingsStore.setVerboseMode(safeEnabled);
 
             console.log(
                 safeEnabled
@@ -843,7 +842,7 @@ class Popups {
                 return;
             }
 
-            const list = this.SettingsStore.getPredefinedMessages().slice();
+            const list = this.settingsStore.getPredefinedMessages().slice();
             const idx = Number(indexInput.value);
 
             if (!Number.isNaN(idx) && idx >= 0 && idx < list.length) {
@@ -852,7 +851,7 @@ class Popups {
                 list.push({subject, text});
             }
 
-            this.SettingsStore.savePredefinedMessages(list);
+            this.settingsStore.savePredefinedMessages(list);
             this.app._renderPredefinedList(popup);
             this.app._refreshAllPredefinedSelects();
 
@@ -963,7 +962,7 @@ class Popups {
                 const nextVisible = {...this.state.visibleColumns};
                 nextVisible[colKey] = !!cb.checked;
                 this.state.visibleColumns = nextVisible;
-                this.SettingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
+                this.settingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
                 this.renderUsersPopup(popup);
                 this.Helpers.installLogImageHoverPreview([popup]);
             });
@@ -1444,7 +1443,7 @@ class Popups {
     // ---------- column prefs ----------
 
     _loadColumnPrefs() {
-        const prefs = this.SettingsStore.getUserManagerVisibleColumnPrefs();
+        const prefs = this.settingsStore.getUserManagerVisibleColumnPrefs();
         if (prefs && typeof prefs === 'object') {
             this.state.visibleColumns = {...raw};
         } else {
@@ -1490,6 +1489,3 @@ class Popups {
         return String(v);
     }
 }
-
-// window.CAPlugins = window.CAPlugins || {};
-// window.CAPlugins.Popups = Popups;
