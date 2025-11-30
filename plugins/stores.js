@@ -1,20 +1,170 @@
 (async function () {
     /** Key/Value store backed by localStorage */
-    class KeyValueStore {
-        constructor({storage}) {
-            this.storage = storage || localStorage;
+    class SettingsStore {
+        constructor() {
+            this.Store = new KeyValueStore();
+            this.DEBUG_COOKIE = `debug`;
+            this.VERBOSE_COOKIE = `verbose`;
+            this.DEBUG_MODE_KEY = `debugMode`;
+            this.VERBOSE_MODE_KEY = `verboseMode`;
+            this.PREDEFINED_MESSAGES_KEY = `predefined_messages`;
+            this.GLOBAL_WATERMARK_KEY = `global.watermark`;
+            this.SHOULD_HIDE_REPLIED_USERS_KEY = `shouldHideRepliedUsers`;
+            this.SHOULD_INCLUDE_OTHER_USERS_KEY = `shouldIncludeOtherUsers`;
+            this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY = `shouldShowBroadcastCheckboxes`;
+            this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY = `userManagerVisibleColumns`;
+            this.LAST_DM_UID_KEY = `lastDmUid`;
         }
 
-        _key(k) {
-            return String(k ?? "");
+        setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
+            if (userManagerVisibleColumnPrefs) this.Store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
+        }
+
+        getUserManagerVisibleColumnPrefs() {
+            return this.Store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY) || '';
+        }
+
+        getWriteStorageMode(mode) {
+            return this.Store._writeStorageMode(mode);
+        }
+
+        setWriteStorageMode(mode) {
+            this.Store._writeStorageMode(mode);
+        }
+
+        getLastDmUid() {
+            return this.Store.get(this.LAST_DM_UID_KEY) || '';
+        }
+
+        setLastDmUid(lastDmUid) {
+            if (lastDmUid) this.Store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
+        }
+
+        clearLastDmUid() {
+            this.Store.set(this.LAST_DM_UID_KEY, '');
+        }
+
+        getShowBroadcastSelectionBoxes() {
+            return this.Store.get(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY) || '';
+        }
+
+        setShowBroadcastSelectionBoxes(showBroadcastSelectionBoxes) {
+            if (showBroadcastSelectionBoxes) this.Store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
+        }
+
+        getShouldIncludeOthers() {
+            return this.Store.get(this.SHOULD_INCLUDE_OTHER_USERS_KEY) || '';
+        }
+
+        setShouldIncludeOthers(shouldIncludeOthers) {
+            if (shouldIncludeOthers) this.Store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
+        }
+
+        getHideReplied() {
+            return this.Store.get(this.SHOULD_HIDE_REPLIED_USERS_KEY) || '';
+        }
+
+        setHideReplied(hideReplied) {
+            if (hideReplied) this.Store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
+        }
+
+        getGlobalWatermark() {
+            return this.Store.get(this.GLOBAL_WATERMARK_KEY) || '';
+        }
+
+        setGlobalWatermark(dateStr) {
+            if (dateStr) this.Store.set(this.GLOBAL_WATERMARK_KEY, String(dateStr));
+        }
+
+        getDebugMode() {
+            return this.Store._getCookie(this.DEBUG_COOKIE) === 'true' ||
+                this.Store.get(this.DEBUG_MODE_KEY) === 'true';
+        }
+
+        getVerboseMode() {
+            return this.Store._getCookie(this.VERBOSE_COOKIE) === 'true' ||
+                this.Store.get(this.VERBOSE_MODE_KEY) === 'true';
+        }
+
+        setDebugMode(isEnabled) {
+            this.Store._setCookie(this.DEBUG_COOKIE, String(isEnabled));
+            this.Store.set(this.DEBUG_MODE_KEY, isEnabled);
+        }
+
+        setVerboseMode(isEnabled) {
+            this.Store._setCookie(this.VERBOSE_COOKIE, String(isEnabled));
+            this.Store.set(this.VERBOSE_MODE_KEY, isEnabled);
+        }
+
+        savePredefinedMessages(list) {
+            const arr = Array.isArray(list) ? list : [];
+            this.predefinedMessages = arr;
+            this.Store.setPersisted(this.PREDEFINED_MESSAGES_KEY, arr);
+        }
+
+        getPredefinedMessages() {
+            if (Array.isArray(this.predefinedMessages) && this.predefinedMessages.length > 0) {
+                return this.predefinedMessages;
+            }
+            const raw = this.Store.getPersisted(this.PREDEFINED_MESSAGES_KEY);
+            return Array.isArray(raw) ? raw : [];
+        }
+    }
+
+    class KeyValueStore {
+        constructor() {
+            this.STORAGE_KEY_PREFIX = '321chataddons';
+            this.PERSIST_STORAGE_KEY_PREFIX = `persist_${this.STORAGE_KEY_PREFIX}`;
+            this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
+            const StorageMode = this._readStorageMode();
+            if (StorageMode === 'wipe') this._clearOwnLocalStorage();
+            this.storage = this._chooseStorage(StorageMode) || localStorage;
+        }
+
+        _clearOwnLocalStorage() {
+            console.warn(
+                'CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED'
+            );
+
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith(this.STORAGE_KEY_PREFIX)) {
+                    localStorage.removeItem(key);
+                }
+            });
+        }
+
+        _writeStorageMode(mode) {
+            this._setCookie(this.STORAGE_COOKIE, mode);
+            this.storage = this._chooseStorage(mode);
+        }
+
+        _chooseStorage(mode) {
+            if (mode === 'block') return new NullStorage();
+            return localStorage;
+        }
+
+        _setCookie(name, value, days = 400) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
+        }
+
+        _getCookie(name) {
+            const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
+            return m ? decodeURIComponent(m[1]) : null;
+        }
+
+        _readStorageMode() {
+            const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
+            return (v === 'wipe' || v === 'block') ? v : 'allow';
         }
 
         has(key) {
-            return this.storage.getItem(this._key(key)) !== null;
+            return this.storage.getItem(key) !== null;
         }
 
-        get(key) {
-            const raw = this.storage.getItem(this._key(key));
+        get(key, prefix = this.STORAGE_KEY_PREFIX) {
+            const raw = this.storage.getItem(`${prefix}.${key}`);
             if (raw == null) return null;
             const trimmed = String(raw).trim();
             if (/^[{\[]/.test(trimmed) || trimmed === "true" || trimmed === "false" || /^-?\d+(\.\d+)?$/.test(trimmed)) {
@@ -23,38 +173,42 @@
             return raw;
         }
 
-        set(key, value) {
+        getPersisted(key) {
+            return this.get(key, this.PERSIST_STORAGE_KEY_PREFIX);
+        }
+
+        set(key, value, prefix = this.STORAGE_KEY_PREFIX) {
             const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
-            this.storage.setItem(this._key(key), toStore);
+            this.storage.setItem(`${prefix}.${key}`, toStore);
             return true;
         }
 
-        delete(key) {
-            const k = this._key(key);
+        setPersisted(key, value) {
+            this.set(key, value, this.PERSIST_STORAGE_KEY_PREFIX);
+        }
 
+        delete(key) {
             if (!this.storage) {
                 console.error('[KeyValueStore] delete: storage is not available');
                 return false;
             }
 
-            if (this.storage.getItem(k) === null) {
+            if (this.storage.getItem(key) === null) {
                 // nothing to delete
                 return false;
             }
 
-            this.storage.removeItem(k);
+            this.storage.removeItem(key);
             return true;
         }
 
     }
 
     class ActivityLogStore {
-        constructor({kv, cacheKey, max = 200, app} = {}) {
-            if (!kv) throw new Error('ActivityLogStore requires a KeyValueStore');
-            this.kv = kv;
-            this.cacheKey = cacheKey;
-            this.max = max;
-            this.app = app;
+        constructor() {
+            this.ACTIVITY_LOG_KEY = `activityLog`;
+            this.Store = new KeyValueStore();
+            this.helpers = new Helpers(this);
         }
 
         getAllOnlineWomen() {
@@ -63,7 +217,7 @@
 
         // ---- storage helpers (arrays only) ----
         _getAll() {
-            const raw = this.kv.get(this.cacheKey);
+            const raw = this.Store.get(this.ACTIVITY_LOG_KEY);
             return Array.isArray(raw) ? raw : [];
         }
 
@@ -88,7 +242,7 @@
             // Append the new ones
             const next = filtered.concat(changedLogs);
 
-            this.kv.set(this.cacheKey, next);
+            this.Store.set(this.ACTIVITY_LOG_KEY, next);
             return changedLogs;
         }
 
@@ -128,7 +282,7 @@
                     && (!onlyUnread || log.unread)
                     && log.guid !== String(user_id)
             );
-            this.app.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+            this.helpers.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
             return result;
         }
 
@@ -213,7 +367,7 @@
             const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
                 .filter(log => log.guid <= parsedDmInUpToLog)
                 .map(log => ({...log, unread: false}))
-            this.app.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
+            this.helpers.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
             return this.setAll(allUnreadMessagesForUid);
         }
 
@@ -221,7 +375,7 @@
             if (!guid) return false;
             const all = this._getAll();
             const next = all.filter(l => String(l.guid) !== String(guid));
-            this.kv.set(this.cacheKey, next);
+            this.Store.set(this.ACTIVITY_LOG_KEY, next);
             return next.length !== all.length;
         }
 
@@ -229,7 +383,7 @@
             if (!kind) return 0;
             const all = this._getAll();
             const next = all.filter(l => l?.kind !== kind);
-            this.kv.set(this.cacheKey, next);
+            this.Store.set(this.ACTIVITY_LOG_KEY, next);
             return all.length - next.length;
         }
 
@@ -238,17 +392,16 @@
         }
 
         clear() {
-            this.kv.set(this.cacheKey, []);
+            this.Store.set(this.ACTIVITY_LOG_KEY, []);
         }
     }
 
     /** Users store (array-backed, like ActivityLogStore) */
     class UserStore {
-        constructor({kv, cacheKey, app} = {}) {
-            if (!kv) throw new Error('UserStore requires a KeyValueStore');
-            this.kv = kv;
-            this.cacheKey = cacheKey;
-            this.app = app; // for app.searchUserRemote
+        constructor() {
+            this.Store = new KeyValueStore();
+            this.USERS_KEY = `users`;
+            this.helpers = new Helpers(this);
         }
 
         _deleteUserByUid(uid) {
@@ -272,7 +425,7 @@
                 return false;
             }
 
-            this.kv.set(this.cacheKey, next);
+            this.Store.set(this.USERS_KEY, next);
             return true;
         }
 
@@ -282,7 +435,7 @@
 
         // ---- storage helpers (arrays only) ----
         _getAll() {
-            const raw = this.kv.get(this.cacheKey);
+            const raw = this.Store.get(this.USERS_KEY);
             return Array.isArray(raw) ? raw : [];
         }
 
@@ -308,7 +461,7 @@
                     ? users.map(u => (String(u.uid) === uid ? userToEdit : u))
                     : [...users, userToEdit];
 
-            this.kv.set(this.cacheKey, updated);
+            this.Store.set(this.USERS_KEY, updated);
             return userToEdit;
         }
 
@@ -361,7 +514,7 @@
                 }
             }
 
-            this.kv.set(this.cacheKey, updatedUsers);
+            this.Store.set(this.USERS_KEY, updatedUsers);
             return updatedUsers;
         }
 
@@ -409,7 +562,7 @@
                 throw new Error('set() requires user.uid')
             }
             const merged = this._mergeUser(user);
-            this.app.verbose(`Saving merged user`, user);
+            this.helpers.verbose(`Saving merged user`, user);
 
             return this._save(merged);
         }
@@ -420,7 +573,7 @@
                 console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
                 return null;
             }
-            this.app.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
+            this.helpers.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
             const updated = {...u, parsedDmInUpToLog};
             return this.set(updated);
         }
@@ -500,9 +653,16 @@
         async getOrFetch(id) {
             let user = this.get(id);
             if (!user) {
-                const fetched = await this.app.searchUserRemote(String(id));
-                if (fetched) {
-                    user = this.set({...fetched, uid: String(fetched.uid ?? id)});
+                const fetchedUserName = await this.helpers.searchUserNameRemote(String(id));
+                const foundUsers = await this.getOrFetchByName(fetchedUserName);
+
+                if (foundUsers.length !== 1) {
+                    console.error(`[CA] searchUserRemote: Could not find user with name ${name}, there wasn't exactly one match (found ${foundUsers.length})`);
+                    return null;
+                }
+                const foundUser = foundUsers[0];
+                if (foundUser) {
+                    user = this.set({...foundUser, uid: String(foundUser.uid ?? id)});
                 } else {
                     console.error(`User ${id} not found, cannot fetch`);
                 }
@@ -516,7 +676,7 @@
             let users = [];
 
             if (!user) {
-                users = await this.app.searchUserRemoteByUsername(String(name));
+                users = await this.helpers.searchUserRemoteByUsername(String(name));
             } else {
                 users.push(user);
             }
@@ -546,16 +706,16 @@
         }
 
         clear() {
-            if (!this.kv || !this.cacheKey) {
+            if (!this.Store || !this.USERS_KEY) {
                 console.error('[UserStore] clear: kv or cacheKey missing');
                 return;
             }
 
-            if (typeof this.kv.delete === 'function') {
-                this.kv.delete(this.cacheKey);
+            if (typeof this.Store.delete === 'function') {
+                this.Store.delete(this.USERS_KEY);
             } else {
                 // Fallback: keep old behavior
-                this.kv.set(this.cacheKey, []);
+                this.Store.set(this.USERS_KEY, []);
             }
         }
 
@@ -586,9 +746,10 @@
     }
 
 // Expose the classes to the page
-    window.CAPlugins = {};
+    window.CAPlugins = window.CAPlugins || {};
     window.CAPlugins.KeyValueStore = KeyValueStore;
     window.CAPlugins.ActivityLogStore = ActivityLogStore;
     window.CAPlugins.UserStore = UserStore;
     window.CAPlugins.NullStorage = NullStorage;
+    window.CAPlugins.SettingsStore = SettingsStore;
 })();

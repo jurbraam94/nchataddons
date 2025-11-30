@@ -4,7 +4,9 @@
         ActivityLogStore,
         UserStore,
         NullStorage,
-        Popups
+        SettingsStore,
+        Popups,
+        Helpers
     } = window.CAPlugins;
 
     if (!KeyValueStore || !ActivityLogStore || !UserStore || !NullStorage) {
@@ -15,47 +17,18 @@
     class App {
         constructor() {
             this.FEMALE_CODE = '2';
-            this.STORAGE_KEY_PREFIX = '321chataddons';
-            this.PERSIST_STORAGE_KEY_PREFIX = `persist_${this.STORAGE_KEY_PREFIX}`;
-            this.STORAGE_COOKIE = `${this.STORAGE_KEY_PREFIX}.storageMode`;
-            this.DEBUG_COOKIE = `${this.STORAGE_KEY_PREFIX}.debug`;
-            this.VERBOSE_COOKIE = `${this.STORAGE_KEY_PREFIX}.verbose`;
-            this.DEBUG_MODE_KEY = `${this.STORAGE_KEY_PREFIX}.debugMode`;
-            this.VERBOSE_MODE_KEY = `${this.STORAGE_KEY_PREFIX}.verboseMode`;
-            this.GLOBAL_WATERMARK_KEY = `${this.STORAGE_KEY_PREFIX}.global.watermark`;
-            this.ACTIVITY_LOG_KEY = `${this.STORAGE_KEY_PREFIX}.activityLog`;
-            this.HIDE_REPLIED_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.hideRepliedUsers`;
-            this.INCLUDE_OTHER_USERS_KEY = `${this.STORAGE_KEY_PREFIX}.includeOtherUsers`;
-            this.SHOW_BROADCAST_SELECTION_BOXES_KEY = `${this.STORAGE_KEY_PREFIX}.shouldShowBroadcastCheckboxes`;
-            this.LAST_DM_UID_KEY = `${this.STORAGE_KEY_PREFIX}.lastDmUid`;
-            this.PREDEFINED_MESSAGES_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.predefined_messages`;
-            this.USERS_KEY = `${this.PERSIST_STORAGE_KEY_PREFIX}.users`;
             this.activeTextInput = null;
-            const mode = this._readStorageMode() || "local";
-            const storageBackend = this._chooseStorage
-                ? this._chooseStorage(mode)
-                : window.localStorage;
 
-            this.Store = new KeyValueStore({
-                storage: storageBackend
-            });
+            this.SettingsStore = new SettingsStore();
 
-            this.ActivityLogStore = new ActivityLogStore({
-                kv: this.Store,
-                cacheKey: this.ACTIVITY_LOG_KEY,
-                max: 200,
-                app: this
-            });
+            this.ActivityLogStore = new ActivityLogStore();
 
-            this.UserStore = new UserStore({
-                kv: this.Store,
-                cacheKey: this.USERS_KEY,
-                app: this
-            });
+            this.UserStore = new UserStore();
 
-            this.popups = new Popups(this);   // ⬅ NEW
+            this.popups = new Popups(this);
 
             this.tester = new ChatAddonTester(this);
+            this.helpers = new Helpers(this);
 
             this.options = {};
             this.state = {
@@ -99,17 +72,6 @@
                 installed: false
             };
 
-            this.debug = (...args) => {
-                if (this.debugMode) {
-                    console.log('[DEBUG]', ...args);
-                }
-            };
-
-            this.verbose = (...args) => {
-                if (this.verboseMode) {
-                    console.log('[VERBOSE]', ...args);
-                }
-            };
 
             this.colors = {
                 SOFT_GREEN: 'color:#8bdf8b',
@@ -210,37 +172,33 @@
             this._removeSuperBotMethods();
             this.buildRawTree(this.sel, this.sel.raw);
 
-            this.debugMode = this._getCookie(this.DEBUG_COOKIE) === 'true' ||
-                localStorage.getItem(this.DEBUG_MODE_KEY) === 'true';
-            this.verboseMode = this._getCookie(this.VERBOSE_COOKIE) === 'true' ||
-                localStorage.getItem(this.VERBOSE_MODE_KEY) === 'true';
+            this.debugMode = this.SettingsStore.getDebugMode();
+            this.verboseMode = this.SettingsStore.getVerboseMode();
 
-            const storedHide = localStorage.getItem(this.HIDE_REPLIED_USERS_KEY) || false;
+            const storedHide = this.SettingsStore.getHideReplied() || false;
             this.shouldHideRepliedUsers = storedHide === true || storedHide === 'true';
 
-            const storedShouldIncludeOtherUsers = localStorage.getItem(this.INCLUDE_OTHER_USERS_KEY) || false;
+            const storedShouldIncludeOtherUsers = this.SettingsStore.getShouldIncludeOthers() || false;
             this.shouldIncludeOtherUsers = storedShouldIncludeOtherUsers === true || storedShouldIncludeOtherUsers === 'true';
 
-            const showBroadcastCheckboxes = localStorage.getItem(this.SHOW_BROADCAST_SELECTION_BOXES_KEY) || false;
+            const showBroadcastCheckboxes = this.SettingsStore.getShowBroadcastSelectionBoxes() || false;
             this.shouldShowBroadcastCheckboxes = showBroadcastCheckboxes === true || showBroadcastCheckboxes === 'true';
 
-            this.NO_LS_MODE = this._readStorageMode();
-            if (this.NO_LS_MODE === 'wipe') this._clearOwnLocalStorage();
             this.removeAds(document);
             this.buildPanel();
 
             const main_wrapper = document.createElement('div');
             main_wrapper.id = 'main_wrapper';
 
-            this.qs(this.sel.privateChat.privateInputBox).innerHTML =
+            this.helpers.qs(this.sel.privateChat.privateInputBox).innerHTML =
                 '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
-            this.qs('#message_form').prepend(this.qs('#private_input_box'));
+            this.helpers.qs('#message_form').prepend(this.helpers.qs('#private_input_box'));
 
-            this.qs('#private_center').after(this.qs('#private_menu'));
+            this.helpers.qs('#private_center').after(this.helpers.qs('#private_menu'));
 
-            main_wrapper.appendChild(this.qs('#chat_head'));
-            main_wrapper.appendChild(this.qs('#global_chat'));
-            main_wrapper.appendChild(this.qs('#wrap_footer'));
+            main_wrapper.appendChild(this.helpers.qs('#chat_head'));
+            main_wrapper.appendChild(this.helpers.qs('#global_chat'));
+            main_wrapper.appendChild(this.helpers.qs('#wrap_footer'));
             document.body.prepend(main_wrapper);
 
             if (!this.UserStore.get('system')) {
@@ -258,11 +216,11 @@
 
             this._installAudioAutoplayGate();
             this.initializeGlobalWatermark();
-            this._updateStorageToggleUi();
+            this._updateStorageToggleUi(this.SettingsStore.getWriteStorageMode());
             this.buildMenuLogPanel();
             const userContainersWrapper = document.createElement(`div`);
             userContainersWrapper.id = `ca-user-container`;
-            this.qs(`#chat_right`).appendChild(userContainersWrapper);
+            this.helpers.qs(`#chat_right`).appendChild(userContainersWrapper);
             this.ui.userContainersWrapper = userContainersWrapper;
             this.createOtherUsersContainer();
             this.createFemaleUsersContainer();
@@ -270,23 +228,30 @@
             this.wireUserContainerHeaders();
             this._bindStaticRefs();
             this._attachLogClickHandlers();
-            this.installLogImageHoverPreview();
+            this.helpers.installLogImageHoverPreview([
+                this.ui.repliedMessageBox,
+                this.ui.unrepliedMessageBox,
+                this.ui.sentMessagesBox,
+                this.ui.presenceBox,
+                this.ui.loggingBox,
+                this.ui.userContainersWrapper
+            ]);
 
             if (this.shouldShowBroadcastCheckboxes) {
-                this.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
+                this.helpers.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
             }
 
             await this.restoreLastDmFromStore();
 
-            const privateCloseButton = this.qs('#private_close');
+            const privateCloseButton = this.helpers.qs('#private_close');
             if (privateCloseButton) {
                 privateCloseButton.addEventListener('click', () => {
-                    this.clearLastDmUid();
+                    this.SettingsStore.clearLastDmUid();
                 });
             }
 
-            const dmTextarea = this.qsTextarea("#message_content");
-            const dmSendBtn = this.qs("#private_send");
+            const dmTextarea = this.helpers.qsTextarea("#message_content");
+            const dmSendBtn = this.helpers.qs("#private_send");
 
             if (!dmTextarea || !dmSendBtn) {
                 console.error('Dmtextarea or dmsendbtn not found');
@@ -325,7 +290,7 @@
                     // We don't await here; errors are handled inside openProfileOnHost
                     await this.openProfileOnHost(uid);
                 };
-                this.debug('[CA] Overridden window.getProfile with CA profile popup');
+                this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
             } else {
                 console.warn('[CA] Host window.getProfile function not found; cannot override profile modal');
             }
@@ -420,7 +385,7 @@
                 return;
             }
 
-            const list = this._getPredefinedMessages();
+            const list = this.SettingsStore.getPredefinedMessages();
             listEl.innerHTML = '';
 
             list.forEach((item, index) => {
@@ -442,7 +407,7 @@
                 insertLink.title = "Paste into active text field";
 
                 insertLink.appendChild(
-                    this.renderSvgIconWithClass(
+                    this.helpers.renderSvgIconWithClass(
                         "lucide lucide-corner-down-left",
                         `<polyline points="9 10 4 15 9 20"></polyline>
      <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
@@ -459,7 +424,7 @@
                 editLink.className = 'ca-log-action ca-edit-link';
                 editLink.title = "Edit template";
                 editLink.appendChild(
-                    this.renderSvgIconWithClass(
+                    this.helpers.renderSvgIconWithClass(
                         "lucide lucide-lucide-pencil",
                         `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
                     )
@@ -490,7 +455,7 @@
                 deleteLink.className = 'ca-log-action ca-del-link';
                 deleteLink.title = "Delete template";
                 deleteLink.appendChild(
-                    this.renderSvgIconWithClass(
+                    this.helpers.renderSvgIconWithClass(
                         "lucide lucide-x",
                         `<line x1="18" y1="6" x2="6" y2="18"></line>
      <line x1="6" y1="6" x2="18" y2="18"></line>`
@@ -499,9 +464,9 @@
 
                 deleteLink.addEventListener('click', (ev) => {
                     ev.preventDefault();
-                    const current = this._getPredefinedMessages().slice();
+                    const current = this.SettingsStore.getPredefinedMessages().slice();
                     current.splice(index, 1);
-                    this._savePredefinedMessages(current);
+                    this.SettingsStore.savePredefinedMessages(current);
                     this._renderPredefinedList(popup);
                     this._refreshAllPredefinedSelects();
                 });
@@ -527,7 +492,7 @@
                 return;
             }
 
-            const list = this._getPredefinedMessages();
+            const list = this.SettingsStore.getPredefinedMessages();
             selectEl.innerHTML = '';
             const def = document.createElement('option');
             def.value = '';
@@ -542,7 +507,7 @@
         }
 
         _refreshAllPredefinedSelects() {
-            const selects = this.qsa('.ca-predefined-messages-select');
+            const selects = this.helpers.qsa('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
         }
 
@@ -591,7 +556,7 @@
             }
 
             const idx = Number(idxStr);
-            const list = this._getPredefinedMessages();
+            const list = this.SettingsStore.getPredefinedMessages();
             if (Number.isNaN(idx) || idx < 0 || idx >= list.length) {
                 console.warn('[CA] _applyPredefinedFromSelect: invalid index', idxStr);
                 return false;
@@ -604,7 +569,7 @@
                 return false;
             }
 
-            const box = this.qs(targetSelector);
+            const box = this.helpers.qs(targetSelector);
             if (!box) {
                 console.error('[CA] _applyPredefinedFromSelect: target not found for selector:', targetSelector);
                 return false;
@@ -613,98 +578,6 @@
             this._appendPredefinedToBox(template, box);
             return true;
         }
-
-        wirePredefinedMessagesBar(barEl) {
-            if (!barEl) {
-                console.error('[CA] wirePredefinedMessagesBar: barEl missing');
-                return;
-            }
-
-            const predefinedMessagesDropdown = barEl.querySelector('.ca-predefined-messages-select');
-            const resendEl = barEl.querySelector('.ca-predefined-messages-resend');
-            const addPredefinedMessageEl = barEl.querySelector('.ca-predefined-messages-add');
-            const manageEl = barEl.querySelector('.ca-predefined-messages-manage');
-
-            if (!predefinedMessagesDropdown) {
-                console.error('[CA] wirePredefinedMessagesBar: select not found');
-                return;
-            }
-
-            this._fillPredefinedSelect(predefinedMessagesDropdown);
-            predefinedMessagesDropdown.addEventListener('change', (e) => {
-                this._applyPredefinedFromSelect(e.target);
-            });
-
-            if (resendEl) {
-                resendEl.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const ok = this._applyPredefinedFromSelect(predefinedMessagesDropdown);
-                    if (!ok) {
-                        console.warn('[CA] Predefined resend: nothing to resend (no selection?)');
-                    }
-                });
-            }
-
-            if (addPredefinedMessageEl) {
-                addPredefinedMessageEl.addEventListener('click', (e) => {
-                    e.preventDefault();
-
-                    const targetSel = predefinedMessagesDropdown.dataset.predefinedMessagesTarget;
-                    if (!targetSel) {
-                        console.error('[CA] add-from-chat: missing data-predefined-messages-target');
-                        return;
-                    }
-
-                    const box = this.qs(targetSel);
-
-                    if (!box) {
-                        console.error('[CA] add-from-chat: target input not found for selector:', targetSel);
-                        return;
-                    }
-
-                    const currentText = (box.value || '').trim();
-                    if (!currentText) {
-                        console.warn('[CA] No text in chatbox to save as template');
-                        return;
-                    }
-
-                    this.popups.openPredefinedPopup(barEl, currentText);
-                });
-            }
-
-            if (manageEl) {
-                manageEl.addEventListener('click', (e) => {
-                    e.preventDefault();
-
-                    console.log('[CA] Predefined Manage clicked:', manageEl.id || '(no id)');
-                    this.popups.openPredefinedPopup(barEl);
-                });
-            }
-        }
-
-        _getPredefinedMessages() {
-            if (!this.Store) {
-                console.error('[CA] _getPredefinedMessages: Store is not initialized');
-                return [];
-            }
-            if (Array.isArray(this.predefinedMessages) && this.predefinedMessages.length > 0) {
-                return this.predefinedMessages;
-            }
-            const raw = this.Store.get(this.PREDEFINED_MESSAGES_KEY);
-            this.predefinedMessages = Array.isArray(raw) ? raw : [];
-            return this.predefinedMessages;
-        }
-
-        _savePredefinedMessages(list) {
-            if (!this.Store) {
-                console.error('[CA] _savePredefinedMessages: Store is not initialized');
-                return;
-            }
-            const arr = Array.isArray(list) ? list : [];
-            this.predefinedMessages = arr;
-            this.Store.set(this.PREDEFINED_MESSAGES_KEY, arr);
-        }
-
 
         appendCustomActionsToBar() {
             const bar = document.getElementById('right_panel_bar');
@@ -747,42 +620,6 @@
             }
         }
 
-        _getCookie(name) {
-            const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + "=([^;]*)"));
-            return m ? decodeURIComponent(m[1]) : null;
-        }
-
-        _setCookie(name, value, days = 400) {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
-        }
-
-        _readStorageMode() {
-            const v = (this._getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
-            return (v === 'wipe' || v === 'block') ? v : 'allow';
-        }
-
-        _writeStorageMode(mode) {
-            this._setCookie(this.STORAGE_COOKIE, mode);
-        }
-
-        _chooseStorage(mode) {
-            if (mode === 'block') return new NullStorage();
-            return localStorage;
-        }
-
-        _clearOwnLocalStorage() {
-            console.warn(
-                'CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED'
-            );
-
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith(this.STORAGE_KEY_PREFIX)) {
-                    localStorage.removeItem(key);
-                }
-            });
-        }
 
         async startRefreshUsersLoop({
                                         intervalMs = this.userRefreshInterval,
@@ -835,7 +672,7 @@
         }
 
         async refreshUserList() {
-            this.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
+            this.helpers.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
             const formData = new URLSearchParams();
             formData.append('token', utk);
 
@@ -859,75 +696,6 @@
             }
         }
 
-        qs(
-            selector,
-            options = {}
-        ) {
-            let root = document;
-            let elementType = HTMLElement;
-            let ignoreWarning = false;
-
-            if (options instanceof HTMLElement || options instanceof Document) {
-                root = options;
-            } else if (options && typeof options === "object") {
-                root = options.root || document;
-                elementType = options.elementType || HTMLElement;
-                ignoreWarning = options.ignoreWarning || false;
-            }
-
-            const el = root.querySelector(selector);
-
-            if (!el || !(el instanceof elementType) || !(el instanceof HTMLElement)) {
-                if (!ignoreWarning) {
-                    console.warn("[CA] qs: element not found or wrong type:", selector);
-                }
-                return null;
-            }
-
-            return el;
-        }
-
-        qsInput(selector, options) {
-            const opts = (options instanceof HTMLElement || options instanceof Document)
-                ? {root: options}
-                : (options || {});
-
-            return this.qs(selector, {
-                ...opts,
-                elementType: HTMLInputElement
-            });
-        }
-
-        qsTextarea(selector, options) {
-            const opts = (options instanceof HTMLElement || options instanceof Document)
-                ? {root: options}
-                : (options || {});
-
-            return this.qs(selector, {
-                ...opts,
-                elementType: HTMLTextAreaElement
-            });
-        }
-
-        qsForm(selector, options) {
-            const opts = (options instanceof HTMLElement || options instanceof Document)
-                ? {root: options}
-                : (options || {});
-
-            return this.qs(selector, {
-                ...opts,
-                elementType: HTMLFormElement
-            });
-        }
-
-
-        qsa(s, r) {
-            return Array.prototype.slice.call((r || document).querySelectorAll(s));
-        }
-
-        trim(s) {
-            return String(s || '').replace(/^\s+|\s+$/g, '');
-        }
 
         sleep(ms) {
             return new Promise(r => setTimeout(r, ms));
@@ -935,10 +703,6 @@
 
         randBetween(minMs, maxMs) {
             return Math.floor(minMs + Math.random() * (maxMs - minMs));
-        }
-
-        safeQuery(n, sel) {
-            return n && n.querySelector ? n.querySelector(sel) : null;
         }
 
         decodeHTMLEntities(s) {
@@ -986,7 +750,7 @@
             if (userEl) {
                 this.updateProfileChip(dmSentToUser.uid, userEl);
             } else {
-                this.debug(
+                this.helpers.debug(
                     '[PrivateSend] Skipping profile chip update; user element not found for uid:',
                     dmSentToUser.uid
                 );
@@ -999,7 +763,7 @@
                 );
 
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
-                this.debug('[PrivateSend] No logs to update read status for user:', targetUid);
+                this.helpers.debug('[PrivateSend] No logs to update read status for user:', targetUid);
                 return true;
             }
 
@@ -1071,53 +835,13 @@
                 out.push({uid: id, name, avatar: av, unread});
             }
             tmp.innerHTML = '';
-            this.verbose('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
+            this.helpers.verbose('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
             return out;
         }
 
-        async searchUserRemote(uid) {
-            const existingUserInUserContainer = this.searchUserInUserContainer(`.user_item[data-id="${uid}"]`);
-            if (existingUserInUserContainer) {
-                console.log(`[searchUserRemoteByUsername] User ${existingUserInUserContainer.name} found in user container`, existingUserInUserContainer);
-                return existingUserInUserContainer;
-            }
-
-            const token = this.getToken();
-            if (!token || !uid) return null;
-
-            console.log(`Starting remote search for profile with uid ${uid}`);
-
-            const body = new URLSearchParams({
-                token,
-                get_profile: uid,
-                cp: "chat"
-            }).toString();
-
-            const response = await fetch('/system/box/profile.php', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': '*/*'
-                },
-                body
-            });
-
-            const html = await response.text();
-            const doc = this.createElementFromString(html);
-            const name = doc?.querySelector('.pro_name')?.textContent?.trim();
-            const foundUsers = await this.UserStore.getOrFetchByName(name);
-
-            if (foundUsers.length !== 1) {
-                console.error(`[CA] searchUserRemote: Could not find user with name ${name}, there wasn't exactly one match (found ${foundUsers.length})`);
-                return null;
-            }
-            return foundUsers[0];
-        }
 
         caFetchPrivateNotify() {
-            const token = this.getToken();
+            const token = this.helpers.getToken();
             const body = new URLSearchParams({token, cp: 'chat'}).toString();
             return fetch('/system/float/private_notify.php', {
                 method: 'POST', credentials: 'include',
@@ -1142,7 +866,7 @@
         caUpdatePrivateConversationsList() {
             return this.caFetchPrivateNotify().then((privateConversations) => {
                 privateConversations = privateConversations || [];
-                this.verbose('Private conversations:', privateConversations.length);
+                this.helpers.verbose('Private conversations:', privateConversations.length);
                 privateConversations.sort((a, b) => {
                     const au = a.unread || 0, bu = b.unread || 0;
                     if (bu !== au) return bu - au;
@@ -1154,7 +878,7 @@
         }
 
         fetchPrivateMessagesForUid(user, params) {
-            const token = this.getToken();
+            const token = this.helpers.getToken();
             if (!token || !user.uid) {
                 console.error(`.caFetchChatLogFor() called with invalid arguments:`, user.uid, params);
                 return Promise.resolve('');
@@ -1175,9 +899,9 @@
                 curset: String(this.state.CHAT_CTX.curset)
             };
 
-            this.verbose(`Fetch chatlog body: `, bodyObj);
+            this.helpers.verbose(`Fetch chatlog body: `, bodyObj);
             const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
-            this.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyLog);
+            this.helpers.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyLog);
 
             const body = new URLSearchParams(bodyObj).toString();
 
@@ -1191,15 +915,15 @@
                 body
             })
                 .then((res) => {
-                    this.verbose('caFetchChatLogFor: Response status:', res.status, res.statusText);
+                    this.helpers.verbose('caFetchChatLogFor: Response status:', res.status, res.statusText);
                     return res.text();
                 })
                 .then((txt) => {
-                    this.verbose('caFetchChatLogFor received a response successfully');
+                    this.helpers.verbose('caFetchChatLogFor received a response successfully');
                     return txt;
                 })
                 .catch((err) => {
-                    this.verbose('Fetch chat log error:', err);
+                    this.helpers.verbose('Fetch chat log error:', err);
                     return null;
                 });
         }
@@ -1210,9 +934,9 @@
             }
 
             if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
-                this.debug(
+                this.helpers.debug(
                     `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
-                    `watermark=${this.getGlobalWatermark()}`
+                    `watermark=${this.SettingsStore.getGlobalWatermark()}`
                 );
                 return {accepted: false, logId: privateChatLog.log_id, reason: 'too old'};
             }
@@ -1229,129 +953,6 @@
             );
             this.updateProfileChipByUid(user.uid);
             return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
-        }
-
-        installLogImageHoverPreview(extraContainer) {
-            const containers = [
-                this.ui.repliedMessageBox,
-                this.ui.unrepliedMessageBox,
-                this.ui.sentMessagesBox,
-                this.ui.presenceBox,
-                this.ui.loggingBox,
-                this.ui.userContainersWrapper
-            ];
-
-            const publicChatContainer = document.getElementById('chat_logs_container');
-            if (publicChatContainer) {
-                containers.push(publicChatContainer);
-            }
-
-            // 🔹 allow wiring arbitrary new containers (like the users popup)
-            if (extraContainer instanceof HTMLElement) {
-                containers.push(extraContainer);
-            }
-
-            const filteredContainers = containers.filter(Boolean);
-            if (!filteredContainers.length) {
-                console.warn('[CA] installLogImageHoverPreview: no containers found to wire');
-            }
-
-            // ---- ensure preview element exists (idempotent) ----
-            let preview = document.getElementById('ca-log-image-preview');
-            let previewImg;
-
-            if (preview) {
-                previewImg = preview.querySelector('img');
-            }
-
-            if (!preview) {
-                preview = document.createElement('div');
-                preview.id = 'ca-log-image-preview';
-                preview.className = 'ca-log-image-preview';
-                previewImg = document.createElement('img');
-                preview.appendChild(previewImg);
-                document.body.appendChild(preview);
-            } else if (!previewImg) {
-                previewImg = document.createElement('img');
-                preview.appendChild(previewImg);
-            }
-
-            const hidePreview = () => {
-                preview.classList.remove('ca-visible');
-            };
-
-            const positionPreview = (evt) => {
-                const margin = 16;
-                const vw = window.innerWidth;
-                const vh = window.innerHeight;
-
-                const mouseX = evt.clientX;
-                const mouseY = evt.clientY;
-
-                let x = mouseX + margin;
-                let y = mouseY + margin;
-
-                const rect = preview.getBoundingClientRect();
-                const w = rect.width || 200;
-                const h = rect.height || 200;
-
-                if (x + w > vw) {
-                    x = mouseX - w - margin;
-                }
-                if (y + h > vh) {
-                    y = mouseY - h - margin;
-                }
-
-                if (x < margin) x = margin;
-                if (y < margin) y = margin;
-
-                preview.style.left = `${x}px`;
-                preview.style.top = `${y}px`;
-            };
-
-            const HOVER_SELECTOR = 'img.chat_image, img.avav';
-
-            const attachHoverHandlers = (container) => {
-                if (!container) return;
-
-                // avoid wiring twice
-                if (container.dataset.caHoverWired === '1') {
-                    return;
-                }
-                container.dataset.caHoverWired = '1';
-
-                container.addEventListener('mouseover', (evt) => {
-                    const imgEl = evt.target.closest(HOVER_SELECTOR);
-                    if (!imgEl || !(imgEl instanceof HTMLImageElement)) {
-                        return;
-                    }
-
-                    const src = imgEl.dataset.previewSrc || imgEl.src;
-                    if (!src) {
-                        return;
-                    }
-
-                    previewImg.src = src;
-                    preview.classList.add('ca-visible');
-                    positionPreview(evt);
-                });
-
-                container.addEventListener('mousemove', (evt) => {
-                    if (!preview.classList.contains('ca-visible')) return;
-                    positionPreview(evt);
-                });
-
-                container.addEventListener('mouseout', (evt) => {
-                    const imgEl = evt.target.closest(HOVER_SELECTOR);
-                    if (!imgEl) return;
-
-                    if (!container.contains(evt.relatedTarget)) {
-                        hidePreview();
-                    }
-                });
-            };
-
-            filteredContainers.forEach((container) => attachHoverHandlers(container));
         }
 
 
@@ -1394,7 +995,7 @@
             if (newMessages > 0) {
                 if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                     updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                    this.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
+                    this.helpers.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
                     shouldSave = true;
                 }
 
@@ -1424,7 +1025,7 @@
             }
 
             if (skipped.length > 0) {
-                this.debug(skipped);
+                this.helpers.debug(skipped);
             }
         }
 
@@ -1437,14 +1038,14 @@
                 }
 
                 const initialFetch = user.parsedDmInUpToLog === 0;
-                this.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
-                this.verbose(privateChatLog);
+                this.helpers.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
+                this.helpers.verbose(privateChatLog);
                 const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
                 if (res.accepted) {
-                    this.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                    this.helpers.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
                     this.UserStore.setParsedDmInUpToLog(user.uid, res.logId);
                 } else {
-                    this.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
+                    this.helpers.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
                 }
             }
         }
@@ -1468,14 +1069,14 @@
                 return;
             }
 
-            this.debug('Private messages count (pico):', pico, '— checking for new messages');
+            this.helpers.debug('Private messages count (pico):', pico, '— checking for new messages');
             const privateConversations = await this.caUpdatePrivateConversationsList(false);
             await this.handlePrivateConversationsList(privateConversations, params);
         }
 
         async handlePrivateConversationsList(privateConversations, params) {
             privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-            this.verbose('Private conversations returned:', privateConversations.length, privateConversations);
+            this.helpers.verbose('Private conversations returned:', privateConversations.length, privateConversations);
             const privateChatsToFetch = privateConversations
                 .filter(pc => pc.unread > 0)
                 .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
@@ -1485,7 +1086,7 @@
                 return;
             }
 
-            this.verbose('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
+            this.helpers.verbose('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
 
             for (const privateChat of privateChatsToFetch) {
                 await this.handlePrivateChat(privateChat, params);
@@ -1520,7 +1121,7 @@
         }
 
         installNetworkTaps() {
-            this.debug('Installing network taps (fetch/XHR interceptors)');
+            this.helpers.debug('Installing network taps (fetch/XHR interceptors)');
             if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
             if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
 
@@ -1591,22 +1192,6 @@
             }
         }
 
-        escapeHTML(s) {
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        escapeAttr(s) {
-            return String(s).replace(/&/g, '&amp;')
-                .replace(/"/g, '&quot;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-        }
-
         buildLogHTML(kind, content, user) {
             const text = String(content || '');
 
@@ -1617,8 +1202,8 @@
                 if (m) {
                     const userName = m[1] || '';
                     const newAvatar = (m[3] || '').trim();
-                    const safeName = this.escapeHTML(userName);
-                    const safeSrc = this.escapeAttr(newAvatar || '');
+                    const safeName = this.helpers.escapeHTML(userName);
+                    const safeSrc = this.helpers.escapeAttr(newAvatar || '');
                     return `
                 <span class="ca-log-text-main">
                     ${safeName} has changed ${user.isFemale ? `her` : `his`} avatar:
@@ -1629,10 +1214,10 @@
             `;
                 }
 
-                return `<span class="ca-log-text-main">${this.escapeHTML(text)}</span>`;
+                return `<span class="ca-log-text-main">${this.helpers.escapeHTML(text)}</span>`;
             }
 
-            return `<span class="ca-log-text-main">${this.escapeHTML(text)}</span>`;
+            return `<span class="ca-log-text-main">${this.helpers.escapeHTML(text)}</span>`;
         }
 
         _attachLogClickHandlers() {
@@ -1666,7 +1251,7 @@
             const uid = entry.getAttribute('data-uid') || '';
             const isSystem = (uid === 'system');
 
-            this.verbose('Log entry clicked:', {entry, uid, isSystem});
+            this.helpers.verbose('Log entry clicked:', {entry, uid, isSystem});
             const userLinkEl = target.closest?.(this.sel.raw.log.classes.ca_user_link);
             if (userLinkEl && uid && !isSystem) {
                 e.preventDefault();
@@ -1716,7 +1301,7 @@
                     e.stopImmediatePropagation();
 
                     if (!uid || isSystem) {
-                        this.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+                        this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
                         return;
                     }
 
@@ -1730,7 +1315,7 @@
                     e.stopImmediatePropagation();
 
                     if (!uid || isSystem) {
-                        this.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
+                        this.helpers.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
                         return;
                     }
 
@@ -1789,7 +1374,7 @@
         }
 
         applyLegacyAndOpenDm({uid, name, avatar}) {
-            this.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
+            this.helpers.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
 
             if (!uid || !name || !avatar) {
                 console.error('[applyLegacyAndOpenDm] Invalid arguments:', {uid, name, avatar});
@@ -1797,7 +1382,7 @@
             }
 
             if (uid) {
-                this.setLastDmUid(uid);
+                this.SettingsStore.setLastDmUid(uid);
             }
 
             if (!this.safeSet(window, 'morePriv', 0)) return false;
@@ -1829,9 +1414,9 @@
         }
 
         async openProfileOnHost(uid) {
-            this.debug('openProfileOnHost called with uid:', uid);
+            this.helpers.debug('openProfileOnHost called with uid:', uid);
 
-            const token = this.getToken();
+            const token = this.helpers.getToken();
 
             const body = new URLSearchParams({
                 token,
@@ -1941,7 +1526,7 @@
         }
 
         cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson) {
-            const containerContent = this.qs(
+            const containerContent = this.helpers.qs(
                 `.ca-user-list-content`,
                 updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer
             );
@@ -1961,7 +1546,7 @@
                 this.openProfileOnHost(updatedUserJson.uid);
             });
 
-            this.qs('.user_item_avatar img.avav', parsedUserItemEl).addEventListener(
+            this.helpers.qs('.user_item_avatar img.avav', parsedUserItemEl).addEventListener(
                 'click',
                 (e) => {
                     e.preventDefault();
@@ -1979,7 +1564,7 @@
                 wrapper.appendChild(ageSpan);
             }
 
-            this.verbose(
+            this.helpers.verbose(
                 '[_updateOrCreateUserElement] Created new user element for',
                 updatedUserJson.uid,
                 updatedUserJson.name
@@ -1987,11 +1572,11 @@
 
             const iconRow = document.createElement('div');
             iconRow.className = 'ca-user-icon-row';
-            this.qs('.user_item_data', parsedUserItemEl).appendChild(iconRow);
+            this.helpers.qs('.user_item_data', parsedUserItemEl).appendChild(iconRow);
             this.ensureDmLink(iconRow, updatedUserJson);
             this.ensureBroadcastCheckbox(iconRow, updatedUserJson);
             this.updateProfileChip(updatedUserJson.uid, parsedUserItemEl);
-            this.qs('.username', parsedUserItemEl).replaceWith(wrapper);
+            this.helpers.qs('.username', parsedUserItemEl).replaceWith(wrapper);
             containerContent.appendChild(parsedUserItemEl);
         }
 
@@ -2035,10 +1620,10 @@
             if (!targetUserContainer.contains(existingUserEl)) {
                 console.log(`User ${fetchedUserJson.name} with uid ${fetchedUserJson.uid} switched gender and was in the other user container. Now moving it`);
                 targetUserContainer.appendChild(existingUserEl);
-                this.verbose('[updateUser] Moved user element to correct container for', fetchedUserJson.uid);
+                this.helpers.verbose('[updateUser] Moved user element to correct container for', fetchedUserJson.uid);
             }
 
-            this.verbose('[updateUser] Updated user element for', fetchedUserJson.uid, attrMap);
+            this.helpers.verbose('[updateUser] Updated user element for', fetchedUserJson.uid, attrMap);
             return existingUserEl;
         }
 
@@ -2049,23 +1634,6 @@
             return s.indexOf('system/panel/user_list.php') !== -1;
         }
 
-        extractUserInfoFromEl(userEl) {
-            if (!userEl) {
-                throw new Error(`no element is passed`);
-            }
-            return {
-                uid: this.extractUserId(userEl),
-                name: this.extractUsername(userEl),
-                avatar: this.extractAvatar(userEl),
-                gender: this.extractGender(userEl),
-                isFemale: this.extractIsFemale(userEl),
-                rank: this.extractRank(userEl),
-                age: this.extractAge(userEl),
-                country: this.extractCountry(userEl),
-                mood: this.extractMood(userEl),
-                isLoggedIn: !!(userEl && !userEl.classList.contains('offline'))
-            }
-        }
 
         _updateExistingUserMetadata(existingUserJsonFromStore, parsedUserJson, existingUserEl) {
             const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
@@ -2108,13 +1676,13 @@
             if (changedKeys.length > 0) {
                 this._logStyled('[USER_UPDATE] ', segments);
 
-                this.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
+                this.helpers.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
                 hasUpdatedUser = true;
 
                 if (existingUserEl) {
                     this._applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
                 } else {
-                    this.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
+                    this.helpers.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
                 }
 
                 if (changedKeys.includes('avatar')) {
@@ -2178,7 +1746,7 @@
                             `User ${updatedUserJson.name} (${updatedUserJson.uid}) switched gender → moving element.`
                         );
                         targetContainer.appendChild(existingUserEl);
-                        this.verbose("[updateUser] Moved user element after gender change");
+                        this.helpers.verbose("[updateUser] Moved user element after gender change");
                     }
                 }
             }
@@ -2206,7 +1774,7 @@
             // Main pass over the current online users
             for (let i = 0; i < currentOnlineUserEls.length; i++) {
                 const parsedUserItemEl = currentOnlineUserEls[i];
-                const parsedUserJson = this.extractUserInfoFromEl(parsedUserItemEl);
+                const parsedUserJson = this.helpers.extractUserInfoFromEl(parsedUserItemEl);
 
                 // Find the existing DOM element for this user (if any)
                 let existingUserEl = null;
@@ -2220,7 +1788,7 @@
                 const existingUserJsonFromStore = this.UserStore.get(parsedUserJson.uid);
                 if (existingUserJsonFromStore) {
                     if (!this.isInitialLoad) {
-                        existingUserEl = this.qs(`.user_item[data-id="${parsedUserJson.uid}"]`, {
+                        existingUserEl = this.helpers.qs(`.user_item[data-id="${parsedUserJson.uid}"]`, {
                             root: this.ui.userContainersWrapper,
                             ignoreWarning: true
                         });
@@ -2378,7 +1946,7 @@
             tempContainer.innerHTML = html;
 
             const currentOnlineUserEls = Array.from(
-                this.qsa(this.shouldIncludeOtherUsers ? `.user_item` : `.user_item[data-gender="${this.FEMALE_CODE}"]`, tempContainer)
+                this.helpers.qsa(this.shouldIncludeOtherUsers ? `.user_item` : `.user_item[data-gender="${this.FEMALE_CODE}"]`, tempContainer)
             );
 
             console.log(`\n==== Retrieved ${currentOnlineUserEls.length} users from the online list in this room. Starting to parse, process and render them.`);
@@ -2389,7 +1957,7 @@
                 );
             }
 
-            this.verbose(
+            this.helpers.verbose(
                 "[processUserListResponse] Parsed online users from HTML:",
                 currentOnlineUserEls.length
             );
@@ -2397,8 +1965,8 @@
             await this.syncUsersFromDom(currentOnlineUserEls);
 
             if (!this.shouldIncludeOtherUsers) {
-                const otherUsersContent = this.qs(`.ca-user-list-content`, this.ui.otherUsersContainer);
-                otherUsersContent.innerHTML = this.qs(".online_user", tempContainer).innerHTML;
+                const otherUsersContent = this.helpers.qs(`.ca-user-list-content`, this.ui.otherUsersContainer);
+                otherUsersContent.innerHTML = this.helpers.qs(".online_user", tempContainer).innerHTML;
                 this.updateOtherUsersCount(otherUsersContent.children.length);
             }
 
@@ -2439,10 +2007,10 @@
                 console.error('[USER_LIST] Could not find user in store for uid', user.uid);
             }
 
-            this.verbose('Handling logged in status for user: ', user);
+            this.helpers.verbose('Handling logged in status for user: ', user);
 
             if (!user.isLoggedIn) {
-                this.qs(`.user_item[data-id="${user.uid}"]`, {
+                this.helpers.qs(`.user_item[data-id="${user.uid}"]`, {
                     root: this.ui.userContainersWrapper,
                     ignoreWarning: true
                 })?.remove();
@@ -2452,12 +2020,12 @@
                 this.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
                 this.logLine(user.isLoggedIn ? 'login' : 'logout', null, user);
             }
-            this.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
+            this.helpers.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
         }
 
         setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
             const selector = `.ca-log-entry[data-uid="${uid}"] ${this.sel.log.classes.ca_log_dot}`;
-            const logDots = this.qsa(selector);
+            const logDots = this.helpers.qsa(selector);
 
             logDots.forEach(dotEL => {
                 this.setLogDotLoggedInStatusForElement(dotEL, isLoggedIn);
@@ -2489,7 +2057,7 @@
 
         caUpdateChatCtxFromBody(searchParams) {
             if (this.caUpdateChatCtxFromBody._initialized) {
-                this.verbose(`CHAT_CTX already initialized`);
+                this.helpers.verbose(`CHAT_CTX already initialized`);
                 return;
             }
 
@@ -2503,7 +2071,7 @@
             if (nf) this.state.CHAT_CTX.notify = String(nf);
             if (cs) this.state.CHAT_CTX.curset = String(cs);
 
-            this.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
+            this.helpers.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
             this.caUpdateChatCtxFromBody._initialized = true;
         }
 
@@ -2527,7 +2095,7 @@
             const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
 
             if (pload.length || plogs.length) {
-                this.verbose(`pload:`, pload, `plogs:`, plogs);
+                this.helpers.verbose(`pload:`, pload, `plogs:`, plogs);
             }
             return {
                 last: typeof o.last === 'string' ? o.last : '',
@@ -2567,7 +2135,7 @@
         }
 
         isMessageNewer(logDateStr) {
-            const watermark = this.getGlobalWatermark();
+            const watermark = this.SettingsStore.getGlobalWatermark();
             if (!watermark) {
                 console.warn(`.isMessageNewer() - watermark not found`);
                 return true;
@@ -2575,7 +2143,7 @@
 
             const msgNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(logDateStr));
             const wmNum = this.parseLogDateToNumber(this.ToHourMinuteSecondFormat(watermark));
-            this.verbose('Date comparison:', {
+            this.helpers.verbose('Date comparison:', {
                 logDate: logDateStr, logDateNum: msgNum,
                 watermark, watermarkNum: wmNum
             });
@@ -2584,7 +2152,7 @@
             }
 
             const isNewer = msgNum >= wmNum;
-            this.verbose('Date comparison:', {
+            this.helpers.verbose('Date comparison:', {
                 logDate: logDateStr, logDateNum: msgNum,
                 watermark, watermarkNum: wmNum, isNewer
             });
@@ -2606,56 +2174,6 @@
             return '';
         }
 
-        extractUserId(el) {
-            return el.getAttribute('data-id') || null;
-        }
-
-        extractUsername(el) {
-            const v = el.getAttribute('data-name');
-            if (v) {
-                return v.trim();
-            }
-            let n = this.qs('.user_name,.username,.name', el);
-            if (n?.textContent) {
-                return n.textContent.trim();
-            }
-            let t = el.getAttribute('title');
-            if (t) {
-                return t.trim();
-            }
-            const text = (el.textContent || '').trim();
-            const parts = text.split(/\s+/).filter(Boolean);
-            parts.sort((a, b) => a.length - b.length);
-            return parts[0];
-        }
-
-        extractAvatar(el) {
-            const img = this.safeQuery(el, 'img[src*="avatar"]') || this.safeQuery(el, '.avatar img') || this.safeQuery(el, 'img');
-            const src = img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '';
-            return src ? src.trim() : '';
-        }
-
-        extractGender(el) {
-            return el.getAttribute('data-gender') || null;
-        }
-
-        extractIsFemale(el) {
-            return el.getAttribute('data-gender') === this.FEMALE_CODE
-        }
-
-        getToken() {
-            if (typeof utk !== 'undefined' && utk) return utk;
-            const inp = this.qs('input[name="token"]');
-            if (inp?.value) return inp.value;
-            const sc = this.qsa('script');
-            for (let i = 0; i < sc.length; i++) {
-                const t = sc[i].textContent || '';
-                const m = t.match(/\butk\s*=\s*['"]([a-f0-9]{16,64})['"]/i);
-                if (m) return m[1];
-            }
-            return null;
-        }
-
         _withTimeout(startFetchFn, ms = this.userRefreshInterval) {
             const ac = new AbortController();
             const t = setTimeout(() => ac.abort(), ms);
@@ -2665,10 +2183,10 @@
         }
 
         sendPrivateMessage(target, content) {
-            const token = this.getToken();
+            const token = this.helpers.getToken();
             if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
 
-            this.debug('Sending private message to:', target, 'content length:', content.length);
+            this.helpers.debug('Sending private message to:', target, 'content length:', content.length);
 
             const body = new URLSearchParams({
                 token,
@@ -2695,83 +2213,21 @@
             }, 10000);
         }
 
-        searchUserInUserContainer(query) {
-            const userEl = this.qs(query, this.ui.userContainersWrapper);
-            if (userEl) {
-                console.log(userEl);
-                return this.extractUserInfoFromEl(userEl);
-            }
-            return null;
-        }
-
-        async searchUserRemoteByUsername(username) {
-            if (!username) {
-                console.error(`[RemoteSearch] No username provided`);
-                return null
-            }
-
-            const existingUserInUserContainer = this.searchUserInUserContainer(`.user_item[data-name="${username}"]`);
-            if (existingUserInUserContainer) {
-                console.log(`[searchUserRemoteByUsername] User ${username} found in user container`, existingUserInUserContainer);
-                return existingUserInUserContainer;
-            }
-
-            const token = this.getToken();
-
-            console.log(`Starting remote search for profile with username ${username}`);
-
-            const body = new URLSearchParams({
-                token,
-                cp: 'chat',
-                query: String(username),
-                search_type: '1',
-                search_order: '0'
-            }).toString();
-
-            const res = await fetch('/system/action/action_search.php', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'Accept': '*/*',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body
-            });
-
-            const html = await res.text();
-            return this.parseUserSearchHTML(html);
-        }
-
-        parseUserSearchHTML(html) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            const nodes = tmp.querySelectorAll('.user_item[data-id]');
-            const out = [];
-            for (const node of nodes) {
-                const user = this.extractUserInfoFromEl(node);
-                if (user?.uid) {
-                    out.push(user);
-                }
-            }
-            return out;
-        }
-
         findUserById(uid) {
             if (!uid) {
                 console.error(`.findUserElementById: id is empty`);
                 return null;
             }
-            return this.qs(`.user_item[data-id="${uid}"]`, this.ui.userContainersWrapper);
+            return this.helpers.qs(`.user_item[data-id="${uid}"]`, this.ui.userContainersWrapper);
         }
 
         updateProfileChip(uid, userEl) {
             const unreadReceivedMessagesCount = this.ActivityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
             const sentMessagesCount = this.ActivityLogStore.getAllSentMessagesCountByUserId(uid);
-            this.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
+            this.helpers.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
 
             if (unreadReceivedMessagesCount > 0) {
-                this.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
+                this.helpers.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
                 const chip = this._createChipForUserItem(userEl);
 
                 userEl.classList.remove(this.sel.raw.log.classes.ca_replied_messages);
@@ -2781,7 +2237,7 @@
                 chip.textContent = `${unreadReceivedMessagesCount}`;
                 userEl.style.display = '';
             } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
-                this.verbose(
+                this.helpers.verbose(
                     'Adding all read chip to user:',
                     uid,
                     ', unread received messages count: ',
@@ -2801,11 +2257,11 @@
                 userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
-                this.qs(this.sel.raw.log.classes.ca_sent_chip, {
+                this.helpers.qs(this.sel.raw.log.classes.ca_sent_chip, {
                     root: userEl,
                     ignoreWarning: true
                 })?.remove();
-                this.verbose('Removing sent chip from user:', uid);
+                this.helpers.verbose('Removing sent chip from user:', uid);
             }
         }
 
@@ -2826,32 +2282,16 @@
 
             if (!userEl.classList.contains('chataddons-sent')) {
                 userEl.classList.add('chataddons-sent');
-                this.verbose('Adding sent chip to user:', userEl.getAttribute('data-id'));
+                this.helpers.verbose('Adding sent chip to user:', userEl.getAttribute('data-id'));
             }
 
             if (!chip) {
                 chip = document.createElement('span');
                 chip.classList.add(this.sel.raw.log.classes.ca_sent_chip);
                 userEl.appendChild(chip);
-                this.verbose('Created sent chip for user:', userEl);
+                this.helpers.verbose('Created sent chip for user:', userEl);
             }
             return chip;
-        }
-
-        extractRank(el) {
-            return el.getAttribute('data-rank') || '';
-        }
-
-        extractAge(el) {
-            return el.getAttribute('data-age') || '';
-        }
-
-        extractCountry(el) {
-            return el.getAttribute('data-country') || '';
-        }
-
-        extractMood(el) {
-            return this.qs(`.list_mood`, el).innerHTML;
         }
 
         async ensureBroadcastCheckbox(userItemDataEl, user) {
@@ -2869,14 +2309,14 @@
             toggle.setAttribute('aria-pressed', include ? 'true' : 'false');
 
             // Unchecked SVG (square)
-            const uncheckedSvg = this.renderSvgIconWithClass(
+            const uncheckedSvg = this.helpers.renderSvgIconWithClass(
                 'lucide lucide-square',
                 `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>`
             );
             uncheckedSvg.classList.add('ca-bc-icon-unchecked');
 
             // Checked SVG (square + check mark)
-            const checkedSvg = this.renderSvgIconWithClass(
+            const checkedSvg = this.helpers.renderSvgIconWithClass(
                 'lucide lucide-check-square',
                 `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>
                                 <polyline points="7 12 10 15 16 9"></polyline>`
@@ -2926,7 +2366,7 @@
             dmLink.title = 'Open direct message';
             dmLink.setAttribute('data-action', 'open-dm');
 
-            dmLink.appendChild(this.renderSvgIconWithClass(
+            dmLink.appendChild(this.helpers.renderSvgIconWithClass(
                 'lucide lucide-mail',
                 `<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
          <polyline points="3 7,12 13,21 7"></polyline>`
@@ -2943,7 +2383,7 @@
         }
 
         buildMenuLogPanel() {
-            const mount = this.qs('#my_menu .bcell_mid');
+            const mount = this.helpers.qs('#my_menu .bcell_mid');
             mount.innerHTML = "";
             if (!mount) {
                 console.error('[CA] #my_menu .bcell_mid not found — cannot create menu panel');
@@ -2991,43 +2431,13 @@
   `;
 
             mount.appendChild(panel);
-            const rListEl = this.qs('#rlist_open');
-            const logDualEl = this.qs('.ca-log-dual');
+            const rListEl = this.helpers.qs('#rlist_open');
+            const logDualEl = this.helpers.qs('.ca-log-dual');
             logDualEl.appendChild(rListEl);
 
             this._attachLogClickHandlers();
         }
 
-        buildSvgIconString(className, svgInnerHTML, small = true) {
-            return `<svg class="${className} ${small ? 'svg-small' : 'svg-large'}"
-                 viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        ${svgInnerHTML}
-    </svg>`;
-        }
-
-        /**
-         * @param {string} className
-         * @param {string} svgInnerHTML
-         * @param {boolean} [small]
-         * @returns {SVGElement | null}
-         */
-        renderSvgIconWithClass(className, svgInnerHTML, small = true) {
-            const el = this.createElementFromString(
-                this.buildSvgIconString(className, svgInnerHTML, small)
-            );
-
-            if (!el) {
-                console.error("[CA] renderSvgIconWithClass: no element created");
-                return null;
-            }
-
-            if (!(el instanceof SVGElement)) {
-                console.error("[CA] renderSvgIconWithClass: created element is not an <svg>", el);
-                return null;
-            }
-
-            return el;
-        }
 
         buildPanel() {
             const panelEl = document.createElement('section');
@@ -3041,7 +2451,7 @@
              href="#"
              class="ca-dm-link ca-dm-right ca-log-action"
              title="Broadcast message">
-            ${this.buildSvgIconString(
+            ${this.helpers.buildSvgIconString(
                 "lucide lucide-triangle-right",
                 `<path d="M3 10v4c0 .55.45 1 1 1h1l4 5v-16l-4 5h-1c-.55 0-1 .45-1 1zm13-5l-8 5v4l8 5v-14zm2 4h3v6h-3v-6z"/>`,
                 false
@@ -3053,7 +2463,7 @@
              data-action="send-message"
              class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
              title="Send specific message">
-            ${this.buildSvgIconString(
+            ${this.helpers.buildSvgIconString(
                 "lucide lucide-triangle-right",
                 `<path d="M8 4l12 8-12 8V4z"></path>`,
                 false
@@ -3065,7 +2475,7 @@
              data-action="clear-all-logs"
              class="ca-dm-link ca-dm-right ca-log-action"
              title="Clear logs">
-            ${this.buildSvgIconString(
+            ${this.helpers.buildSvgIconString(
                 "lucide lucide-triangle-right",
                 `<g transform="translate(0,-1)">
                  <polyline points="3 6 5 6 21 6"></polyline>
@@ -3089,7 +2499,7 @@
          class="ca-dm-link ca-dm-right ca-log-action"
          data-action="open-users"
          title="Show all users">
-        ${this.buildSvgIconString(
+        ${this.helpers.buildSvgIconString(
                 "lucide lucide-user",
                 `
               <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"></path>
@@ -3104,7 +2514,7 @@
              class="ca-dm-link ca-dm-right ca-log-action"
              data-action="open-settings"
              title="Settings (debug &amp; verbose)">
-            ${this.buildSvgIconString(
+            ${this.helpers.buildSvgIconString(
                 "lucide lucide-settings",
                 `<circle cx="12" cy="12" r="3"></circle>
                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.7 0 1.31-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.02A1.65 1.65 0 0 0 11 3.09V3a2 2 0 1 1 4 0v.09c0 .7.4 1.31 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.02c.2.6.81 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.31.4-1.51 1z"/>`,
@@ -3157,7 +2567,7 @@
          </div>
       </div>
     `;
-            this.qs('#global_chat').appendChild(panelEl);
+            this.helpers.qs('#global_chat').appendChild(panelEl);
             this.ui.panel = panelEl;
             this.ui.panelNav = panelEl.querySelector('.ca-nav');
             this._wirePanelNav();
@@ -3305,21 +2715,20 @@
         }
 
 
-        _updateStorageToggleUi() {
+        _updateStorageToggleUi(mode = 'allow') {
             const el = document.getElementById('ca-nav-storage-toggle');
             if (!el) {
                 console.error('[CA] _updateStorageToggleUi: #ca-nav-storage-toggle not found');
                 return;
             }
 
-            const mode = this.NO_LS_MODE || 'allow';
             el.dataset.storageMode = mode;
             let title;
             let svgEl;
 
             if (mode === 'block') {
                 title = 'Storage disabled (click to cycle: allow / wipe)';
-                svgEl = this.renderSvgIconWithClass("lucide lucide-database",
+                svgEl = this.helpers.renderSvgIconWithClass("lucide lucide-database",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
             <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
@@ -3328,7 +2737,7 @@
 
             } else if (mode === 'wipe') {
                 title = 'Storage wipe on load (click to cycle: block / allow)';
-                svgEl = this.renderSvgIconWithClass("lucide lucide-database-trash",
+                svgEl = this.helpers.renderSvgIconWithClass("lucide lucide-database-trash",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
             <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
@@ -3340,7 +2749,7 @@
             <line x1="15" y1="13" x2="15" y2="17"></line>`, false);
             } else {
                 title = 'Storage enabled (click to cycle: wipe / block)';
-                svgEl = this.renderSvgIconWithClass("lucide lucide-database",
+                svgEl = this.helpers.renderSvgIconWithClass("lucide lucide-database",
                     `<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
             <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>`, false);
@@ -3351,7 +2760,7 @@
         }
 
         handleStorageToggleClick() {
-            const prevMode = this.NO_LS_MODE || 'allow';
+            const prevMode = this.SettingsStore.getWriteStorageMode() || 'allow';
             let nextMode;
 
             if (prevMode === 'allow') {
@@ -3362,14 +2771,10 @@
                 nextMode = 'allow';
             }
 
-            this.NO_LS_MODE = nextMode;
-            this._writeStorageMode(this.NO_LS_MODE);
-            this.Store = new KeyValueStore({
-                storage: this._chooseStorage(this.NO_LS_MODE)
-            });
+            this.SettingsStore.setWriteStorageMode(nextMode);
 
-            this._updateStorageToggleUi();
-            this.logEventLine(`Storage mode set to ${this.NO_LS_MODE} at ${this.timeHHMM()}`);
+            this._updateStorageToggleUi(nextMode);
+            this.logEventLine(`Storage mode set to ${nextMode} at ${this.timeHHMM()}`);
         }
 
         _wirePanelNav() {
@@ -3384,32 +2789,32 @@
 
                 switch (action) {
                     case 'broadcast':
-                        this.verbose('Nav: broadcast clicked');
+                        this.helpers.verbose('Nav: broadcast clicked');
                         this.popups.openBroadcastModal();
                         break;
 
                     case 'send-message':
-                        this.verbose('Nav: send-specific clicked');
+                        this.helpers.verbose('Nav: send-specific clicked');
                         this.popups.openSendMessageModal();
                         break;
 
                     case 'clear-all-logs':
-                        this.verbose('Nav: clear-all-logs clicked');
+                        this.helpers.verbose('Nav: clear-all-logs clicked');
                         this.handleLogClear();
                         break;
 
                     case 'storage-toggle':
-                        this.verbose('Nav: storage-toggle clicked');
+                        this.helpers.verbose('Nav: storage-toggle clicked');
                         this.handleStorageToggleClick();
                         break;
 
                     case 'open-settings':
-                        this.verbose('Nav: settings clicked');
+                        this.helpers.verbose('Nav: settings clicked');
                         this.popups.openSettingsPopup();
                         break;
 
                     case 'open-users':
-                        this.verbose('Nav: users clicked');
+                        this.helpers.verbose('Nav: users clicked');
                         this.popups.open();
                         break;
 
@@ -3581,7 +2986,7 @@
             }
 
             if (typeof this.verbose === 'function') {
-                this.verbose('Created female users container');
+                this.helpers.verbose('Created female users container');
             }
         }
 
@@ -3615,11 +3020,11 @@
                     }
 
                     const checked = !!target.checked;
-                    this.debug("[CA] Include other users:", checked);
+                    this.helpers.debug("[CA] Include other users:", checked);
                     this.shouldIncludeOtherUsers = checked;
-                    this.Store.set(this.INCLUDE_OTHER_USERS_KEY, checked);
+                    this.SettingsStore.setShouldIncludeOthers(checked);
                     this.applyHideRepliedUsers(checked);
-                    this.qs(`.ca-user-list-content`, this.ui.otherUsersContainer).innerHTML = "";
+                    this.helpers.qs(`.ca-user-list-content`, this.ui.otherUsersContainer).innerHTML = "";
                     this.refreshUserList();
                 }
             );
@@ -3659,9 +3064,9 @@
 
                     const checked = !!target.checked;
 
-                    this.debug("[CA] Hide replied users:", checked);
+                    this.helpers.debug("[CA] Hide replied users:", checked);
                     this.shouldHideRepliedUsers = checked;
-                    this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
+                    this.SettingsStore.setHideReplied(checked);
                     targetContainer.classList.toggle("ca-hide-replied-ck-toggle", checked);
                     this.applyHideRepliedUsers(checked);
                 }
@@ -3688,9 +3093,9 @@
             checkbox.addEventListener('change', (e) => {
                 const checked = !!e.target.checked;
                 this.shouldShowBroadcastCheckboxes = checked;
-                this.Store.set(this.SHOW_BROADCAST_SELECTION_BOXES_KEY, checked);
+                this.SettingsStore.setShowBroadcastSelectionBoxes(checked);
                 targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
-                this.debug(
+                this.helpers.debug(
                     '[CA] Female user checkbox visibility:',
                     checked ? 'shown' : 'hidden'
                 );
@@ -3700,7 +3105,7 @@
         }
 
         applyHideRepliedUsers(hide) {
-            const repliedEls = this.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
+            const repliedEls = this.helpers.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
             repliedEls.forEach((el) => {
                 el.style.display = hide ? 'none' : '';
             });
@@ -3717,29 +3122,29 @@
 
         _isStaffListView() {
             const titleEl =
-                this.qs('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
+                this.helpers.qs('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
                 null;
             const txt = String((titleEl && titleEl.textContent) || document.title || '').trim().toLowerCase();
             return txt.includes('staff list');
         }
 
         _setHeadersVisible(visible) {
-            const headers = this.qsa('.ca-user-list-header');
+            const headers = this.helpers.qsa('.ca-user-list-header');
             headers.forEach(h => {
                 h["style"].display = visible ? '' : 'none';
             });
         }
 
         toggleOriginalUserList(visible) {
-            this.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
-            this.qs(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
-            this.qs(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
+            this.helpers.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
+            this.helpers.qs(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
+            this.helpers.qs(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
         }
 
         wireListOptionClicks() {
-            const friendsBtn = this.qs('#friends_option');
-            const usersBtn = this.qs('#users_option');
-            const searchBtn = this.qs('#search_option');
+            const friendsBtn = this.helpers.qs('#friends_option');
+            const usersBtn = this.helpers.qs('#users_option');
+            const searchBtn = this.helpers.qs('#search_option');
 
             [friendsBtn, searchBtn].forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -3766,7 +3171,7 @@
             }
 
             for (const userListContainerGroup of containerGroups) {
-                const headerEl = this.qs('.ca-user-list-header', userListContainerGroup);
+                const headerEl = this.helpers.qs('.ca-user-list-header', userListContainerGroup);
                 if (!headerEl) {
                     console.warn('[CA] wireUserContainerHeaders: header not found in group', userListContainerGroup);
                     continue;
@@ -3798,25 +3203,25 @@
         }
 
         updateFemaleUserCount(count) {
-            this.verbose('Updating female user count:', count);
-            const headerCounter = this.qs(this.sel.users.femaleUserCount);
+            this.helpers.verbose('Updating female user count:', count);
+            const headerCounter = this.helpers.qs(this.sel.users.femaleUserCount);
             headerCounter.textContent = `${count}`;
         }
 
         updateOtherUsersCount(count) {
-            const headerCounter = this.qs(this.sel.users.otherUserCount);
+            const headerCounter = this.helpers.qs(this.sel.users.otherUserCount);
             headerCounter.textContent = `${count}`;
         }
 
 
         _bindStaticRefs() {
-            this.ui.sentMessagesBox = this.qs(this.sel.log.sentMessagesBox);
-            this.ui.messagesWrapper = this.qs(this.sel.log.messagesWrapper);
-            this.ui.repliedMessageBox = this.qs(this.sel.log.repliedMessagesBox);
-            this.ui.unrepliedMessageBox = this.qs(this.sel.log.unrepliedMessagesBox);
-            this.ui.presenceBox = this.qs(this.sel.log.presence);
-            this.ui.logClear = this.qs(this.sel.log.clear);
-            this.ui.loggingBox = this.qs(this.sel.log.general);
+            this.ui.sentMessagesBox = this.helpers.qs(this.sel.log.sentMessagesBox);
+            this.ui.messagesWrapper = this.helpers.qs(this.sel.log.messagesWrapper);
+            this.ui.repliedMessageBox = this.helpers.qs(this.sel.log.repliedMessagesBox);
+            this.ui.unrepliedMessageBox = this.helpers.qs(this.sel.log.unrepliedMessagesBox);
+            this.ui.presenceBox = this.helpers.qs(this.sel.log.presence);
+            this.ui.logClear = this.helpers.qs(this.sel.log.clear);
+            this.ui.loggingBox = this.helpers.qs(this.sel.log.general);
         }
 
         _boxesForKinds(kinds) {
@@ -3847,7 +3252,7 @@
         }
 
         _wireLogClear() {
-            const buttons = this.qsa('.ca-section-title .clear-logs', document);
+            const buttons = this.helpers.qsa('.ca-section-title .clear-logs', document);
 
             if (!buttons || buttons.length === 0) {
                 console.warn('[LOG] No per-section clear buttons found (.clear-logs)');
@@ -4044,7 +3449,7 @@
                 return;
             }
 
-            this.verbose(
+            this.helpers.verbose(
                 `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
                 user,
                 'in target container',
@@ -4076,7 +3481,7 @@
                class="${C.ca_dm_link} ${C.ca_dm_right} ${C.ca_log_action}"
                data-action="open-dm"
                title="Direct message">
-               ${this.buildSvgIconString(
+               ${this.helpers.buildSvgIconString(
                     'lucide lucide-mail',
                     `
                                 <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
@@ -4088,7 +3493,7 @@
                    class="${C.ca_del_link} ${C.ca_log_action}"
                    data-action="delete-log"
                    title="Delete this log entry">
-                   ${this.buildSvgIconString(
+                   ${this.helpers.buildSvgIconString(
                 'lucide lucide-x',
                 `
                             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -4125,10 +3530,10 @@
                 </div>
             `;
 
-            const el = this.createElementFromString(entryHTML);
+            const el = this.helpers.createElementFromString(entryHTML);
 
             if (kind !== 'event') {
-                this.setLogDotLoggedInStatusForElement(this.qs(`${this.sel.log.classes.ca_log_dot}`, el), user.isLoggedIn);
+                this.setLogDotLoggedInStatusForElement(this.helpers.qs(`${this.sel.log.classes.ca_log_dot}`, el), user.isLoggedIn);
             }
 
             if (!el) {
@@ -4157,12 +3562,6 @@
             this.scrollToBottom(targetContainer);
         }
 
-        createElementFromString(htmlString) {
-            const template = document.createElement("template");
-            template.innerHTML = htmlString.trim();
-
-            return template.content.firstElementChild;
-        }
 
         scrollToBottom(targetContainer) {
             requestAnimationFrame(() => {
@@ -4183,7 +3582,7 @@
             const logs = this.ActivityLogStore.list({order: 'asc'}) || [];
 
             for (const log of logs) {
-                this.verbose('Restoring log', log);
+                this.helpers.verbose('Restoring log', log);
                 const user = await this.UserStore.getOrFetch(log.uid);
                 this.renderLogEntry(log, user);
             }
@@ -4305,7 +3704,7 @@
 
         removeAds(root) {
             const scope = root && root.querySelectorAll ? root : document;
-            this.qsa('.coo-widget').forEach(e => e.remove());
+            this.helpers.qsa('.coo-widget').forEach(e => e.remove());
             const links = scope.querySelectorAll('a[href*="bit.ly"]');
             if (!links || !links.length) return;
             links.forEach(a => {
@@ -4315,59 +3714,25 @@
             });
         }
 
-        getGlobalWatermark() {
-            return this.Store?.get(this.GLOBAL_WATERMARK_KEY) || '';
-        }
-
-        setGlobalWatermark(dateStr) {
-            if (dateStr) this.Store?.set(this.GLOBAL_WATERMARK_KEY, String(dateStr));
-        }
 
         initializeGlobalWatermark() {
-            const current = this.getGlobalWatermark();
-            this.verbose('Checking watermark... current value:', current || '(not set)');
+            const current = this.SettingsStore.getGlobalWatermark();
+            this.helpers.verbose('Checking watermark... current value:', current || '(not set)');
 
             if (current && current.length > 0) {
-                this.verbose('Watermark already set:', current);
+                this.helpers.verbose('Watermark already set:', current);
                 return;
             }
 
             const timestamp = this.getTimeStampInWebsiteFormat();
-            this.verbose('Setting initial watermark to:', timestamp);
-            this.setGlobalWatermark(timestamp);
-            const verify = this.getGlobalWatermark();
-            if (verify === timestamp) {
-                this.verbose('Watermark successfully initialized:', timestamp);
-            } else {
-                console.warn('Watermark set but verification failed. Expected:', timestamp, 'Got:', verify);
-            }
-        }
-
-        getLastDmUid() {
-            if (!this.Store) return '';
-            const raw = this.Store.get(this.LAST_DM_UID_KEY);
-            if (!raw) return '';
-            return String(raw);
-        }
-
-        setLastDmUid(uid) {
-            if (!this.Store) return;
-            if (!uid) {
-                this.Store.set(this.LAST_DM_UID_KEY, '');
-                return;
-            }
-            this.Store.set(this.LAST_DM_UID_KEY, String(uid));
-        }
-
-        clearLastDmUid() {
-            if (!this.Store) return;
-            this.Store.set(this.LAST_DM_UID_KEY, '');
+            this.helpers.verbose('Setting initial watermark to:', timestamp);
+            this.SettingsStore.setGlobalWatermark(timestamp);
         }
 
         async restoreLastDmFromStore() {
-            const uid = this.getLastDmUid();
+            const uid = this.SettingsStore.getLastDmUid();
             if (!uid) {
-                this.debug('There was no uid for a last dm');
+                this.helpers.debug('There was no uid for a last dm');
                 return;
             }
 
@@ -4402,8 +3767,8 @@
 
         processReadStatusForLogs(logs) {
             for (const log of logs) {
-                this.debug(`Processing read status for log ${log.guid}`);
-                const el = this.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
+                this.helpers.debug(`Processing read status for log ${log.guid}`);
+                const el = this.helpers.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
                 this.ui.repliedMessageBox.appendChild(el);
             }
 
