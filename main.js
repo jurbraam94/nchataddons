@@ -2958,7 +2958,7 @@
                 return null;
             }
 
-            this.qs(`#${id}`)?.remove();
+            this.qs(`#${id}`, {ignoreWarning: true})?.remove();
 
             const popup = document.createElement('div');
             popup.id = id;
