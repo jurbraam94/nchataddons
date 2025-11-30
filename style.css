@@ -253,26 +253,40 @@
     display: none;
 }
 
-/* Popup */
 .ca-popup {
     position: fixed;
     top: 18vh;
     left: 50%;
     transform: translateX(-50%);
-    min-width: 520px;
+
+    /* width: let content decide (but clamp it) */
+    width: auto;
+    min-width: 320px;
     max-width: 96vw;
+
+    /* 🔹 clamp height */
+    max-height: 80vh;
+
     background: #0b1220;
     border: 2px solid #2b90ff;
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(8, 30, 70, .6);
-    display: none;
+    overflow: hidden !important;
+    /* 🔹 treat popup as flex column */
+    display: flex;
+    flex-direction: column;
+}
+
+#ca-profile-popup {
+    max-width: 50vw;
 }
 
 .ca-popup.ca-popup-open {
-    display: block;
+    display: flex; /* was block */
     position: fixed;
     z-index: 1000;
 }
+
 
 .ca-popup-header {
     display: flex;
@@ -287,6 +301,37 @@
     border-top-left-radius: 10px;
     border-top-right-radius: 10px;
 }
+
+/* Actual popup container positioning + sizing */
+.ca-popup {
+    position: fixed;
+    top: 18vh;
+    left: 50%;
+    transform: translateX(-50%);
+
+    /* let content decide width, but clamp it */
+    width: auto;
+    min-width: 360px;
+    max-width: 90vw;
+
+    /* 🔹 height cap */
+    max-height: 80vh;
+
+    background: #0b1220;
+    border: 2px solid #2b90ff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+
+    display: none; /* default hidden */
+    flex-direction: column; /* header + body stack vertically */
+    z-index: 9999;
+}
+
+/* When JS toggles the popup */
+.ca-popup.ca-popup-open {
+    display: flex;
+}
+
 
 .ca-popup-close {
     appearance: none;
@@ -304,7 +349,12 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+
+    /* 🔹 fill the popup, but allow shrinking */
+    flex: 1 1 auto;
+    min-height: 0;
 }
+
 
 .ca-popup-actions {
     margin-top: 6px;
@@ -688,6 +738,106 @@
     margin-top: 4px;
     vertical-align: top;
 }
+
+#ca-users-popup .chat_image {
+    height: 40px;
+}
+
+/* Users popup layout – body fills popup, table area scrolls */
+#ca-users-popup .ca-popup-body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#ca-users-popup .ca-users-popup-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#ca-users-popup .ca-users-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    flex: 1 1 auto;
+    min-height: 0;
+
+    /* 🔹 key: children size to their own width, not stretched */
+    align-items: flex-start;
+
+    /* 🔹 popup width driven by widest child (usually the table) */
+    width: max-content;
+    max-width: 100%;
+}
+
+
+.ca-users-table-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #020617;
+    width: 100%;
+    height: 100%;
+}
+
+
+/* Pagination stays at bottom (no scroll) */
+#ca-users-popup .ca-users-pagination {
+    flex: 0 0 auto;
+}
+
+/* Let the users modal size itself to its contents, up to popup max width */
+#ca-users-popup .ca-users-modal {
+    width: max-content;
+    max-width: 100%;
+}
+
+/* rows follow content width, not full popup */
+#ca-users-popup .ca-users-controls,
+#ca-users-popup .ca-users-columns,
+#ca-users-popup .ca-users-pagination {
+    width: auto;
+    align-self: flex-start;
+}
+
+/* table wrapper can stretch within modal, but still respects content width */
+#ca-users-popup .ca-users-table-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #020617;
+
+    width: auto;
+    max-width: 100%;
+}
+
+
+/* Table width based on content instead of forced full width */
+#ca-users-popup .ca-users-table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+}
+
+/* Optional: keep cells compact and truncate long values */
+#ca-users-popup .ca-users-table th,
+#ca-users-popup .ca-users-table td {
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 
 .ca-log-cell {
     align-self: flex-start;
@@ -1147,14 +1297,13 @@ svg.svg-large {
     }
 }
 
-
-/* Users popup – extended controls, column toggles and sorting */
 .ca-users-modal {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 540px;
+    max-height: none; /* or just remove the line entirely */
 }
+
 
 .ca-users-controls {
     display: flex;
@@ -1233,6 +1382,7 @@ svg.svg-large {
     border-radius: 8px;
     border: 1px solid #334155;
     background: #020617;
+    width: 100%;
 }
 
 .ca-users-table thead {
@@ -1243,23 +1393,18 @@ svg.svg-large {
 }
 
 .ca-users-table {
+    width: max-content; /* table takes width of content, not full popup */
+    max-width: 100%;
     border-collapse: collapse;
-    table-layout: auto; /* key: auto layout, not fixed */
-    width: auto; /* let content decide overall width */
-    max-width: 100%; /* but don’t overflow the popup */
 }
 
 .ca-users-table th,
 .ca-users-table td {
-    padding: 6px 8px;
-    text-align: left;
-    border-bottom: 1px solid #1f2937;
-
-    /* shrink to content; ellipsis if too long */
     white-space: nowrap;
-    max-width: 260px;
-    overflow: hidden;
+    padding: 4px 8px;
+    max-width: 240px;
     text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 
@@ -1278,9 +1423,37 @@ svg.svg-large {
 
 .ca-users-pagination {
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 4px;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center; /* or flex-end if you prefer right aligned */
+    margin-top: 8px;
+}
+
+.ca-users-pagination a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    padding: 2px 6px;
+    text-decoration: none;
+}
+
+/* if you mark the current page with a class in JS */
+.ca-users-pagination a.ca-users-page-current {
+    font-weight: 700;
+    border-bottom: 1px solid #60a5fa;
+}
+
+
+/* If you render a UL/OL for pages */
+.ca-users-pagination ul,
+.ca-users-pagination ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
 }
 
 .ca-users-sortable {
@@ -1321,8 +1494,9 @@ svg.svg-large {
 }
 
 #ca-users-popup {
-    min-width: 50%;
-    max-width: 90%;
+    min-width: 0;
+    max-width: 60%;
+    height: 100%;
 }
 
 .ca-users-online-dot {

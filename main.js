@@ -1,5 +1,11 @@
 (async function () {
-    const {KeyValueStore, ActivityLogStore, UsersStore, NullStorage} = window.CAPlugins;
+    const {
+        KeyValueStore,
+        ActivityLogStore,
+        UsersStore,
+        NullStorage,
+        UsersPopup
+    } = window.CAPlugins;
 
     if (!KeyValueStore || !ActivityLogStore || !UsersStore || !NullStorage) {
         console.error('[CA] Store plugin classes missing. Got:', window.CAPlugins);
@@ -46,6 +52,8 @@
                 cacheKey: this.USERS_KEY,
                 app: this
             });
+
+            this.usersPopup = new UsersPopup(this);
 
             this.tester = new ChatAddonTester(this);
 
@@ -310,6 +318,18 @@
             this.scrollToBottom(this.ui.repliedMessageBox);
             this.scrollToBottom(this.ui.unrepliedMessageBox);
             this.scrollToBottom(this.ui.sentMessagesBox);
+
+            if (typeof window.getProfile === 'function') {
+                this.hostGetProfileOriginal = window.getProfile.bind(window);
+                window.getProfile = (uid) => {
+                    // We don't await here; errors are handled inside openProfileOnHost
+                    this.openProfileOnHost(uid);
+                };
+                this.debug('[CA] Overridden window.getProfile with CA profile popup');
+            } else {
+                console.warn('[CA] Host window.getProfile function not found; cannot override profile modal');
+            }
+
 
             return this;
         }
@@ -1962,16 +1982,86 @@
             return true;
         }
 
-        openProfileOnHost(uid) {
+        async openProfileOnHost(uid) {
             this.debug('openProfileOnHost called with uid:', uid);
 
-            if (window.getProfile) {
-                const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
-                window.getProfile(uidNum);
-            } else {
-                console.error('[openProfileOnHost] window.getProfile not available');
+            const token = this.getToken();
+            if (!token || !uid) {
+                console.error('[openProfileOnHost] Missing token or uid', {token, uid});
+
+                // Fallback to host profile if we have it
+                if (this.hostGetProfileOriginal) {
+                    this.hostGetProfileOriginal(uid);
+                }
+                return;
+            }
+
+            try {
+                const body = new URLSearchParams({
+                    token,
+                    get_profile: String(uid),
+                    cp: 'chat'
+                }).toString();
+
+                const res = await fetch('/system/box/profile.php', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': '*/*'
+                    },
+                    body
+                });
+
+                const html = await res.text();
+
+                // Parse the returned HTML and grab the profile content
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+
+                const modalContent = tmp;
+
+                if (!modalContent) {
+                    console.warn('[openProfileOnHost] Could not find #large_modal_content in profile HTML, falling back to host modal.');
+                    if (this.hostGetProfileOriginal) {
+                        this.hostGetProfileOriginal(uid);
+                    }
+                    return;
+                }
+
+                const name =
+                    modalContent.querySelector('.pro_name')?.textContent?.trim() ||
+                    'Profile';
+
+                // Build our own draggable CA popup
+                const popup = this.ensurePopup({
+                    id: 'ca-profile-popup',
+                    title: name,
+                    bodyHtml: modalContent.innerHTML   // just the inside of large_modal_content
+                });
+
+                if (!popup) {
+                    console.error('[openProfileOnHost] ensurePopup failed, falling back to host modal.');
+                    if (this.hostGetProfileOriginal) {
+                        this.hostGetProfileOriginal(uid);
+                    }
+                    return;
+                }
+
+                this.togglePopup('ca-profile-popup');
+
+                // Reuse image hover preview inside the profile popup as well
+                this.installLogImageHoverPreview(popup);
+
+            } catch (err) {
+                console.error('[openProfileOnHost] Error loading profile HTML, falling back to host modal', err);
+                if (this.hostGetProfileOriginal) {
+                    this.hostGetProfileOriginal(uid);
+                }
             }
         }
+
 
         buildBroadcastList() {
             const out = [];
@@ -3638,7 +3728,7 @@
 
                     case 'open-users':
                         this.verbose('Nav: users clicked');
-                        this.openUsersPopup();
+                        this.usersPopup.open();
                         break;
 
                     default:
@@ -3647,1003 +3737,6 @@
                 }
 
             });
-        }
-
-        getUsersColumnsStorageKey() {
-            return `${this.PERSIST_STORAGE_KEY_PREFIX}.usersTableColumns`;
-        }
-
-        loadUsersColumnPrefs() {
-            try {
-                const key = this.getUsersColumnsStorageKey();
-                const raw = window.localStorage.getItem(key);
-                if (!raw) return null;
-
-                const parsed = JSON.parse(raw);
-                if (!parsed || typeof parsed !== 'object') {
-                    return null;
-                }
-                return parsed;
-            } catch (err) {
-                console.error('[CA] loadUsersColumnPrefs: failed to parse stored columns', err);
-                return null;
-            }
-        }
-
-        saveUsersColumnPrefs(visibleColumns) {
-            if (!visibleColumns || typeof visibleColumns !== 'object') {
-                console.warn('[CA] saveUsersColumnPrefs: visibleColumns is not an object', visibleColumns);
-                return;
-            }
-
-            try {
-                const key = this.getUsersColumnsStorageKey();
-                window.localStorage.setItem(key, JSON.stringify(visibleColumns));
-            } catch (err) {
-                console.error('[CA] saveUsersColumnPrefs: failed to save', err);
-            }
-        }
-
-
-        createUsersPopup() {
-            const bodyHtml = `
-              <div class="ca-users-modal">
-                <div class="ca-users-controls">
-                  <input
-                    id="ca-users-search"
-                    class="ca-input ca-users-search"
-                    type="text"
-                    autocomplete="off"
-                    placeholder="Search in all user fields…"
-                  />
-                  <label class="ca-users-filter-female">
-                    <input
-                      id="ca-users-only-female"
-                      type="checkbox"
-                    />
-                    Only females
-                  </label>
-                  <span id="ca-users-summary" class="ca-users-summary"></span>
-                </div>
-
-                <div class="ca-users-columns">
-                  <span class="ca-users-columns-label">Columns:</span>
-                  <div id="ca-users-column-list" class="ca-users-column-list"></div>
-                </div>
-
-                <div class="ca-users-table-wrapper">
-                  <table class="ca-users-table">
-                    <thead>
-                      <tr id="ca-users-head-row"></tr>
-                    </thead>
-                    <tbody id="ca-users-table-body"></tbody>
-                  </table>
-                </div>
-
-                <div class="ca-users-pagination">
-                  <button
-                    type="button"
-                    id="ca-users-prev"
-                    class="ca-btn ca-btn-slim"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    id="ca-users-next"
-                    class="ca-btn ca-btn-slim"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            `;
-
-            return this.ensurePopup({
-                id: 'ca-users-popup',
-                title: 'Users',
-                bodyHtml
-            });
-        }
-
-        openUsersPopup() {
-            const popup = this.createUsersPopup();
-            if (!popup) {
-                console.error('[CA] openUsersPopup: popup not created');
-                return;
-            }
-
-            if (!this.userTableState) {
-                this.userTableState = {
-                    page: 1,
-                    pageSize: 50,
-                    query: '',
-                    onlyFemales: false,
-                    sortKey: null,
-                    sortDir: null,
-                    visibleColumns: {}
-                };
-            }
-
-            const state = this.userTableState;
-
-            // 🔹 Try to restore column prefs from localStorage
-            const storedCols = this.loadUsersColumnPrefs();
-            if (storedCols && typeof storedCols === 'object') {
-                state.visibleColumns = {...storedCols};
-            }
-
-            const searchInput = popup.querySelector('#ca-users-search');
-            const tbody = popup.querySelector('#ca-users-table-body');
-            if (!tbody) {
-                console.error('[CA] openUsersPopup: users tbody not found');
-                return;
-            }
-
-            const prevBtn = popup.querySelector('#ca-users-prev');
-            const nextBtn = popup.querySelector('#ca-users-next');
-            const femaleCheckbox = popup.querySelector('#ca-users-only-female');
-            const columnList = popup.querySelector('#ca-users-column-list');
-            const headRow = popup.querySelector('#ca-users-head-row');
-
-            if (!searchInput || !prevBtn || !nextBtn || !femaleCheckbox || !columnList || !headRow) {
-                console.error('[CA] openUsersPopup: missing search, pagination or filter elements', {
-                    searchInput,
-                    prevBtn,
-                    nextBtn,
-                    femaleCheckbox,
-                    columnList,
-                    headRow
-                });
-                return;
-            }
-
-            searchInput.value = state.query || '';
-            femaleCheckbox.checked = !!state.onlyFemales;
-
-            // Live search
-            if (!searchInput.dataset.caWired) {
-                searchInput.dataset.caWired = '1';
-                searchInput.addEventListener('input', () => {
-                    const value = (searchInput.value || '').trim();
-                    this.userTableState.query = value;
-                    this.userTableState.page = 1;
-                    this.renderUsersTable(popup);
-                });
-            }
-
-            // Only females filter
-            if (!femaleCheckbox.dataset.caWired) {
-                femaleCheckbox.dataset.caWired = '1';
-                femaleCheckbox.addEventListener('change', () => {
-                    this.userTableState.onlyFemales = !!femaleCheckbox.checked;
-                    this.userTableState.page = 1;
-                    this.renderUsersTable(popup);
-                });
-            }
-
-            // Pagination: previous
-            if (!prevBtn.dataset.caWired) {
-                prevBtn.dataset.caWired = '1';
-                prevBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const s = this.userTableState || {};
-                    const currentPage = Number(s.page) || 1;
-                    if (currentPage > 1) {
-                        s.page = currentPage - 1;
-                        this.userTableState = s;
-                        this.renderUsersTable(popup);
-                    }
-                });
-            }
-
-            // Pagination: next
-            if (!nextBtn.dataset.caWired) {
-                nextBtn.dataset.caWired = '1';
-                nextBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const s = this.userTableState || {};
-                    const currentPage = Number(s.page) || 1;
-                    const allUsers = this.UserStore.list() || [];
-                    const filtered = this.filterUsersForTable(allUsers, s.query || '');
-                    const total = filtered.length;
-                    const pageSize = Number(s.pageSize) || 50;
-                    const maxPage = total > 0 ? Math.ceil(total / pageSize) : 1;
-                    if (currentPage < maxPage) {
-                        s.page = currentPage + 1;
-                        this.userTableState = s;
-                        this.renderUsersTable(popup);
-                    }
-                });
-            }
-
-            if (!columnList.dataset.caWired) {
-                columnList.dataset.caWired = '1';
-                columnList.addEventListener('change', (e) => {
-                    const target = e.target;
-                    if (!(target instanceof HTMLInputElement)) {
-                        return;
-                    }
-                    const colKey = target.dataset.colKey;
-                    if (!colKey) {
-                        return;
-                    }
-                    if (!this.userTableState.visibleColumns) {
-                        this.userTableState.visibleColumns = {};
-                    }
-                    this.userTableState.visibleColumns[colKey] = !!target.checked;
-
-                    // 🔹 Persist new visibility prefs
-                    this.saveUsersColumnPrefs(this.userTableState.visibleColumns);
-
-                    this.renderUsersTable(popup);
-                });
-            }
-
-            // Header click for sorting (name, age, country)
-            if (!headRow.dataset.caWired) {
-                headRow.dataset.caWired = '1';
-                headRow.addEventListener('click', (e) => {
-                    const th = e.target.closest('th');
-                    if (!th || !th.dataset.colKey) {
-                        return;
-                    }
-
-                    const key = th.dataset.colKey;
-                    if (key !== 'name' && key !== 'age' && key !== 'country') {
-                        return;
-                    }
-
-                    const currentKey = this.userTableState.sortKey;
-                    const currentDir = this.userTableState.sortDir || 'asc';
-
-                    if (currentKey === key) {
-                        this.userTableState.sortDir = currentDir === 'asc' ? 'desc' : 'asc';
-                    } else {
-                        this.userTableState.sortKey = key;
-                        this.userTableState.sortDir = 'asc';
-                    }
-
-                    this.userTableState.page = 1;
-                    this.renderUsersTable(popup);
-                });
-            }
-
-            // Inline cell editing (single field, save on Enter)
-            if (!tbody.dataset.caInlineEditWired) {
-                tbody.dataset.caInlineEditWired = '1';
-
-                tbody.addEventListener('click', (e) => {
-                    const target = e.target;
-                    if (!(target instanceof HTMLElement)) {
-                        return;
-                    }
-
-                    // Don't start editing when clicking links or buttons (profile, DM, edit/delete icons)
-                    if (target.closest('a') || target.closest('button') || target.closest('svg')) {
-                        return;
-                    }
-
-                    const td = target.closest('td');
-                    if (!td) return;
-
-                    if (td.dataset.editable === '0') {
-                        return; // explicitly not editable
-                    }
-
-                    const colKey = td.dataset.colKey;
-                    const uid = td.dataset.uid;
-                    if (!colKey || !uid) {
-                        return;
-                    }
-
-                    this.startInlineUserCellEdit(td, uid, colKey, popup);
-                });
-            }
-
-
-            // Row-level actions: open profile / edit / delete (DM is handled by ensureDmLink)
-            if (!popup.dataset.caUsersClickWired) {
-                popup.dataset.caUsersClickWired = '1';
-
-                popup.addEventListener('click', (e) => {
-                    const target = e.target instanceof HTMLElement ? e.target : null;
-                    if (!target) return;
-
-                    const link = target.closest('a');
-                    if (!(link instanceof HTMLAnchorElement)) {
-                        return;
-                    }
-
-                    const actionAttr = (link.getAttribute('data-action') || '').toLowerCase();
-                    const uid = link.dataset.uid || link.getAttribute('data-uid') || '';
-
-                    // Open profile (ID / name click)
-                    if (actionAttr === 'open-profile') {
-                        e.preventDefault();
-                        if (!uid) {
-                            console.warn('[CA] openUsersPopup: open-profile clicked without uid', link);
-                            return;
-                        }
-                        this.openProfileOnHost(uid);
-                        return;
-                    }
-
-                    // Delete user
-                    if (link.classList.contains('ca-del-user')) {
-                        e.preventDefault();
-                        if (!uid) {
-                            console.warn('[CA] openUsersPopup: delete-user clicked without uid', link);
-                            return;
-                        }
-
-                        let removed = false;
-
-                        if (this.UserStore && typeof this.UserStore.remove === 'function') {
-                            this.UserStore.remove(uid);
-                            removed = true;
-                        } else if (this.UserStore && typeof this.UserStore.delete === 'function') {
-                            this.UserStore.delete(uid);
-                            removed = true;
-                        } else if (this.UserStore && typeof this.UserStore.unset === 'function') {
-                            this.UserStore.unset(uid);
-                            removed = true;
-                        } else {
-                            console.warn(
-                                '[CA] delete-user: no remove/delete/unset method available on UserStore',
-                                this.UserStore
-                            );
-                        }
-
-                        if (removed) {
-                            this.logEventLine(`User ${uid} deleted from user store`, 'system');
-                        }
-
-                        this.renderUsersTable(popup);
-                        return;
-                    }
-
-                    // Edit user (JSON prompt editor)
-                    if (link.classList.contains('ca-edit-user')) {
-                        e.preventDefault();
-                        if (!uid) {
-                            console.warn('[CA] openUsersPopup: edit-user clicked without uid', link);
-                            return;
-                        }
-
-                        if (!this.UserStore || typeof this.UserStore.get !== 'function' || typeof this.UserStore.set !== 'function') {
-                            console.error(
-                                '[CA] edit-user: UserStore.get/set not available, cannot edit user',
-                                this.UserStore
-                            );
-                            return;
-                        }
-
-                        const existingUser = this.UserStore.get(uid);
-                        if (!existingUser) {
-                            console.error('[CA] edit-user: user not found for uid', uid);
-                            return;
-                        }
-
-                        let currentJson;
-                        try {
-                            currentJson = JSON.stringify(existingUser, null, 2);
-                        } catch (err) {
-                            console.error('[CA] edit-user: could not stringify existing user', {
-                                uid,
-                                existingUser,
-                                err
-                            });
-                            return;
-                        }
-
-                        const nextJson = window.prompt(`Edit user ${uid} (JSON):`, currentJson);
-                        if (!nextJson || nextJson === currentJson) {
-                            return;
-                        }
-
-                        let updatedUser;
-                        try {
-                            updatedUser = JSON.parse(nextJson);
-                        } catch (err) {
-                            console.error('[CA] edit-user: invalid JSON entered', err);
-                            window.alert('Invalid JSON – user not updated.');
-                            return;
-                        }
-
-                        if (!updatedUser || typeof updatedUser !== 'object') {
-                            console.error('[CA] edit-user: parsed JSON is not an object', updatedUser);
-                            window.alert('Parsed JSON is not a valid user object.');
-                            return;
-                        }
-
-                        if (!updatedUser.uid) {
-                            updatedUser.uid = uid;
-                        }
-
-                        this.UserStore.set(updatedUser);
-                        this.logEventLine(`User ${uid} updated in user store`, 'system');
-
-                        this.renderUsersTable(popup);
-                        return;
-                    }
-                });
-            }
-
-            this.renderUsersTable(popup);
-
-            // 🔹 Wire hover-preview for avatars inside this popup
-            if (typeof this.installLogImageHoverPreview === 'function') {
-                this.installLogImageHoverPreview(popup);
-            }
-            this.togglePopup('ca-users-popup');
-        }
-
-        startInlineUserCellEdit(td, uid, colKey, popup) {
-            if (!td || !uid || !colKey) {
-                console.error('[CA] startInlineUserCellEdit: missing td/uid/colKey', {td, uid, colKey});
-                return;
-            }
-
-            if (td.dataset.editing === '1') {
-                return; // already editing
-            }
-
-            if (!this.UserStore || typeof this.UserStore.get !== 'function' || typeof this.UserStore.set !== 'function') {
-                console.error('[CA] startInlineUserCellEdit: UserStore.get/set not available', this.UserStore);
-                return;
-            }
-
-            const user = this.UserStore.get(uid);
-            if (!user) {
-                console.error('[CA] startInlineUserCellEdit: user not found for uid', uid);
-                return;
-            }
-
-            const currentRaw = user[colKey];
-            const currentValue = currentRaw == null ? '' : String(currentRaw);
-
-            td.dataset.editing = '1';
-            td.innerHTML = '';
-
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'ca-users-edit-input';
-            input.value = currentValue;
-
-            td.appendChild(input);
-            input.focus();
-            input.select();
-
-            const finish = (save) => {
-                td.dataset.editing = '0';
-
-                if (!save) {
-                    // just re-render row/table to restore original content
-                    this.renderUsersTable(popup);
-                    return;
-                }
-
-                const newVal = input.value;
-
-                const updatedUser = {...user};
-
-                if (colKey === 'age') {
-                    const num = parseInt(newVal, 10);
-                    updatedUser[colKey] = Number.isNaN(num) ? null : num;
-                } else if (colKey === 'isFemale' || colKey === 'isLoggedIn') {
-                    const lowered = newVal.trim().toLowerCase();
-                    updatedUser[colKey] = lowered === '1' || lowered === 'true' || lowered === 'yes';
-                } else {
-                    updatedUser[colKey] = newVal;
-                }
-
-                this.UserStore.set(updatedUser);
-                this.renderUsersTable(popup);
-            };
-
-            input.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    finish(true);
-                } else if (ev.key === 'Escape') {
-                    ev.preventDefault();
-                    finish(false);
-                }
-            });
-
-            input.addEventListener('blur', () => {
-                // no silent save on blur; revert to original
-                finish(false);
-            });
-        }
-
-
-        /**
-         * Filter users based on free-text query and current state (e.g. females only).
-         * The query is matched against ALL enumerable properties of the user object.
-         */
-        filterUsersForTable(allUsers, query) {
-            const list = Array.isArray(allUsers) ? allUsers : [];
-            const q = String(query || '').toLowerCase().trim();
-
-            const onlyFemales = !!(this.userTableState && this.userTableState.onlyFemales);
-
-            return list.filter((user) => {
-                if (!user || typeof user !== 'object') {
-                    return false;
-                }
-
-                if (onlyFemales && !user.isFemale) {
-                    return false;
-                }
-
-                if (!q) {
-                    return true;
-                }
-
-                for (const [key, value] of Object.entries(user)) {
-                    if (!Object.prototype.hasOwnProperty.call(user, key)) {
-                        continue;
-                    }
-
-                    // Skip noisy/internal if needed
-                    if (key === 'raw') {
-                        continue;
-                    }
-
-                    if (value === null || typeof value === 'undefined') {
-                        continue;
-                    }
-
-                    let text;
-                    if (typeof value === 'object') {
-                        try {
-                            text = JSON.stringify(value);
-                        } catch (err) {
-                            console.error('[CA] filterUsersForTable: could not stringify value for key', key, err);
-                            continue;
-                        }
-                    } else {
-                        text = String(value);
-                    }
-
-                    if (text.toLowerCase().includes(q)) {
-                        return true;
-                    }
-                }
-
-                return false;
-            });
-        }
-
-        /**
-         * Sort users for the table based on current sort column.
-         * Supports age (numeric) and other fields as strings.
-         */
-        sortUsersForTable(users, sortKey, sortDir) {
-            const list = Array.isArray(users) ? users.slice() : [];
-
-            if (!sortKey || !sortDir) {
-                return list;
-            }
-
-            const key = String(sortKey);
-            const dir = sortDir === 'desc' ? -1 : 1;
-
-            const getValue = (user) => {
-                if (!user || typeof user !== 'object') {
-                    return null;
-                }
-
-                const raw = user[key];
-
-                if (key === 'age') {
-                    const num = Number.parseInt(raw, 10);
-                    return Number.isNaN(num) ? -Infinity : num;
-                }
-
-                if (raw === null || typeof raw === 'undefined') {
-                    return '';
-                }
-
-                return String(raw).toLowerCase();
-            };
-
-            list.sort((a, b) => {
-                const va = getValue(a);
-                const vb = getValue(b);
-
-                if (va === vb) return 0;
-                if (va < vb) return -1 * dir;
-                return 1 * dir;
-            });
-
-            return list;
-        }
-
-        /**
-         * Render the column selector checkboxes above the table.
-         */
-        updateUsersColumnSelector(popup, orderedKeys, state) {
-            const container = popup.querySelector('#ca-users-column-list');
-            if (!container) {
-                console.error('[CA] updateUsersColumnSelector: #ca-users-column-list not found');
-                return;
-            }
-
-            container.innerHTML = '';
-
-            const visible = state.visibleColumns || {};
-
-            orderedKeys.forEach((key) => {
-                const label = document.createElement('label');
-                label.className = 'ca-users-column-toggle';
-
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.dataset.colKey = key;
-                cb.checked = visible[key] !== false; // default: visible
-
-                const span = document.createElement('span');
-                span.textContent = key;
-
-                label.appendChild(cb);
-                label.appendChild(span);
-
-                container.appendChild(label);
-            });
-        }
-
-        renderUsersTable(popup) {
-            if (!popup) {
-                console.error('[CA] renderUsersTable: popup not provided');
-                return;
-            }
-
-            const tbody = popup.querySelector('#ca-users-table-body');
-            const summaryEl = popup.querySelector('#ca-users-summary');
-            const prevBtn = popup.querySelector('#ca-users-prev');
-            const nextBtn = popup.querySelector('#ca-users-next');
-            const headRow = popup.querySelector('#ca-users-head-row');
-
-            if (!tbody || !headRow) {
-                console.error('[CA] renderUsersTable: tbody or head row not found', {tbody, headRow});
-                return;
-            }
-
-            const state = this.userTableState || {
-                page: 1,
-                pageSize: 50,
-                query: '',
-                onlyFemales: false,
-                sortKey: null,
-                sortDir: null,
-                visibleColumns: {}
-            };
-
-            if (typeof state.pageSize !== 'number' || state.pageSize <= 0) {
-                state.pageSize = 50;
-            }
-
-            this.userTableState = state;
-
-            const allUsers = this.UserStore.list() || [];
-            const filtered = this.filterUsersForTable(allUsers, state.query);
-
-            const sorted = this.sortUsersForTable(filtered, state.sortKey || null, state.sortDir || null);
-
-            const total = sorted.length;
-            const pageSize = Number(state.pageSize) || 50;
-            let page = Number(state.page) || 1;
-
-            const maxPage = total > 0 ? Math.ceil(total / pageSize) : 1;
-            if (page < 1) page = 1;
-            if (page > maxPage) page = maxPage;
-
-            state.page = page;
-            this.userTableState = state;
-
-            const startIndex = (page - 1) * pageSize;
-            const endIndex = Math.min(startIndex + pageSize, total);
-            const pageItems = sorted.slice(startIndex, endIndex);
-
-            tbody.innerHTML = '';
-
-            const keySet = new Set();
-            for (const user of filtered) {
-                if (!user || typeof user !== 'object') continue;
-                Object.keys(user).forEach((k) => {
-                    if (!k) return;
-                    if (k === 'raw') return;
-                    if (k === 'isLoggedIn') return; // 🔹 do NOT make this its own column
-                    keySet.add(k);
-                });
-            }
-
-            const baseOrder = ['uid', 'name', 'avatar'];
-            const allKeys = Array.from(keySet);
-            const orderedKeys = [];
-
-            baseOrder.forEach((k) => {
-                if (allKeys.includes(k)) {
-                    orderedKeys.push(k);
-                }
-            });
-
-            allKeys
-                .filter((k) => !baseOrder.includes(k))
-                .sort((a, b) => a.localeCompare(b))
-                .forEach((k) => orderedKeys.push(k));
-
-            if (!state.visibleColumns) {
-                state.visibleColumns = {};
-            }
-
-            orderedKeys.forEach((key) => {
-                if (typeof state.visibleColumns[key] === 'undefined') {
-                    state.visibleColumns[key] = true; // default visible
-                }
-            });
-
-            // 🔹 Whenever the key set changes, keep prefs in sync
-            this.saveUsersColumnPrefs(state.visibleColumns);
-
-            // Column selector
-            this.updateUsersColumnSelector(popup, orderedKeys, state);
-
-            const visibleKeys = orderedKeys.filter((key) => state.visibleColumns[key] !== false);
-
-            // Header
-            headRow.innerHTML = '';
-
-            visibleKeys.forEach((key) => {
-                const th = document.createElement('th');
-                th.textContent = key;
-                th.dataset.colKey = key;
-
-                if (key === 'name' || key === 'age' || key === 'country') {
-                    th.classList.add('ca-users-sortable');
-                    if (state.sortKey === key) {
-                        th.classList.add('ca-users-sorted');
-                        th.dataset.sortDir = state.sortDir || 'asc';
-                    }
-                }
-
-                headRow.appendChild(th);
-            });
-
-            // DM + Actions columns
-            const dmTh = document.createElement('th');
-            dmTh.textContent = 'DM';
-            headRow.appendChild(dmTh);
-
-            const actionsTh = document.createElement('th');
-            actionsTh.textContent = 'Actions';
-            headRow.appendChild(actionsTh);
-
-            const formatCellValue = (value) => {
-                if (value === null || typeof value === 'undefined') {
-                    return '';
-                }
-                if (typeof value === 'boolean') {
-                    return value ? 'Yes' : 'No';
-                }
-                if (typeof value === 'object') {
-                    try {
-                        return JSON.stringify(value);
-                    } catch (err) {
-                        console.error('[CA] renderUsersTable: could not stringify cell value', err);
-                        return '[object]';
-                    }
-                }
-                return String(value);
-            };
-
-            pageItems.forEach((user) => {
-                const tr = document.createElement('tr');
-
-                visibleKeys.forEach((key) => {
-                    const td = document.createElement('td');
-                    const rawValue = user ? user[key] : undefined;
-                    const uid = user && user.uid ? String(user.uid) : '';
-
-                    td.dataset.colKey = key;
-                    td.dataset.uid = uid;
-
-                    // For avatar, we treat as non-editable
-                    if (key === 'avatar') {
-                        td.dataset.editable = '0';
-                    }
-
-                    if (key === 'uid' && user && user.uid) {
-                        const link = document.createElement('a');
-                        link.href = '#';
-                        link.textContent = String(user.uid);
-                        link.className = this.sel.raw.log.classes.ca_user_link.replace('.', '');
-                        link.dataset.uid = String(user.uid);
-                        link.dataset.action = 'open-profile';
-                        link.title = 'Open profile';
-                        td.appendChild(link);
-                    } else if (key === 'name' && user) {
-                        // logged-in dot + existing link HTML
-                        const dot = document.createElement('span');
-                        dot.className = 'ca-users-online-dot ' + (user.isLoggedIn ? 'ca-users-online-dot--online' : 'ca-users-online-dot--offline');
-                        td.appendChild(dot);
-
-                        const wrapper = document.createElement('span');
-                        wrapper.innerHTML = this.userLinkHTML(user);
-                        td.appendChild(wrapper);
-                    } else if (key === 'avatar' && user && user.avatar) {
-                        const safeAvatar = this.escapeHTML(String(user.avatar));
-                        const safeName = this.escapeHTML(String(user.name || 'User'));
-                        td.innerHTML = `
-                          <a href="${safeAvatar}" target="_blank" rel="noopener noreferrer">
-                            <img
-                              src="${safeAvatar}"
-                              class="avav ca-log-avatar-preview ca-users-avatar"
-                              alt="Avatar of ${safeName}">
-                          </a>
-                        `;
-                    } else {
-                        td.textContent = formatCellValue(rawValue);
-                    }
-
-                    tr.appendChild(td);
-                });
-
-
-                // DM column
-                const dmTd = document.createElement('td');
-                dmTd.dataset.editable = '0'; // not inline-editable
-                this.ensureDmLink(dmTd, user);
-                tr.appendChild(dmTd);
-
-                // Actions column
-                const actionsTd = document.createElement('td');
-                actionsTd.className = 'ca-users-actions';
-                actionsTd.dataset.editable = '0'; // not inline-editable
-
-                const uid = user && user.uid ? String(user.uid) : '';
-
-// EDIT
-                const editLink = document.createElement('a');
-                editLink.href = '#';
-                editLink.className = 'ca-log-action ca-edit-user';
-                editLink.title = 'Edit user';
-                editLink.appendChild(
-                    this.renderSvgIconWithClass(
-                        'lucide lucide-pencil',
-                        `
-        <path d="M15.232 5.232 18.768 8.768"></path>
-        <path d="M4 20h4l9-9-4-4-9 9z"></path>
-        `
-                    )
-                );
-                editLink.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    this._handleEditUser(uid, popup);
-                });
-
-// DELETE
-                const deleteLink = document.createElement('a');
-                deleteLink.href = '#';
-                deleteLink.className = this.sel.raw.log.classes.ca_del_link.replace('.', '') + ' ca-log-action ca-del-user';
-                deleteLink.title = 'Delete user';
-                deleteLink.appendChild(
-                    this.renderSvgIconWithClass(
-                        'lucide lucide-x',
-                        `
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-        `
-                    )
-                );
-                deleteLink.addEventListener('click', (ev) => {
-                    ev.preventDefault();
-                    this._handleDeleteUser(uid, popup);
-                });
-
-                actionsTd.appendChild(editLink);
-                actionsTd.appendChild(deleteLink);
-                tr.appendChild(actionsTd);
-
-                tbody.appendChild(tr);
-            });
-
-            if (summaryEl) {
-                if (total === 0) {
-                    summaryEl.textContent = 'No users found';
-                } else {
-                    const from = total ? startIndex + 1 : 0;
-                    summaryEl.textContent = `Showing ${from}-${endIndex} of ${total} user(s)`;
-                }
-            }
-
-            if (prevBtn) {
-                prevBtn.disabled = page <= 1 || total === 0;
-            }
-            if (nextBtn) {
-                nextBtn.disabled = page >= maxPage || total === 0;
-            }
-        }
-
-        _handleEditUser(uid, popup) {
-            if (!uid) {
-                console.warn('[CA] _handleEditUser: missing uid');
-                return;
-            }
-
-            if (!this.UserStore || typeof this.UserStore.get !== 'function' || typeof this.UserStore.set !== 'function') {
-                console.error('[CA] _handleEditUser: UserStore.get/set not available', this.UserStore);
-                return;
-            }
-
-            const existingUser = this.UserStore.get(uid);
-            if (!existingUser) {
-                console.error('[CA] _handleEditUser: user not found for uid', uid);
-                return;
-            }
-
-            let currentJson;
-            try {
-                currentJson = JSON.stringify(existingUser, null, 2);
-            } catch (err) {
-                console.error('[CA] _handleEditUser: could not stringify existing user', {uid, existingUser, err});
-                return;
-            }
-
-            const nextJson = window.prompt(`Edit user ${uid} (JSON):`, currentJson);
-            if (!nextJson || nextJson === currentJson) {
-                return; // cancelled / unchanged
-            }
-
-            let updatedUser;
-            try {
-                updatedUser = JSON.parse(nextJson);
-            } catch (err) {
-                console.error('[CA] _handleEditUser: invalid JSON entered', err);
-                window.alert('Invalid JSON – user not updated.');
-                return;
-            }
-
-            if (!updatedUser || typeof updatedUser !== 'object') {
-                console.error('[CA] _handleEditUser: parsed JSON is not an object', updatedUser);
-                window.alert('Parsed JSON is not a valid user object.');
-                return;
-            }
-
-            if (!updatedUser.uid) {
-                updatedUser.uid = uid;
-            }
-
-            try {
-                this.UserStore.set(updatedUser);
-                this.logEventLine(`User ${uid} updated in user store`, 'system');
-            } catch (err) {
-                console.error('[CA] _handleEditUser: error while saving user to store', {uid, updatedUser, err});
-                window.alert('Could not save user – see console for details.');
-                return;
-            }
-
-            this.renderUsersTable(popup);
-        }
-
-        _handleDeleteUser(uid, popup) {
-            if (!uid) {
-                console.warn('[CA] _handleDeleteUser: missing uid');
-                return;
-            }
-
-            if (!this.UserStore) {
-                console.error('[CA] _handleDeleteUser: UserStore not available');
-                return;
-            }
-
-
-            this.UserStore.remove(uid);
-
-            this.renderUsersTable(popup);
         }
 
         handleLogClear() {
