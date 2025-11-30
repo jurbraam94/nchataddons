@@ -64,8 +64,6 @@
                 logClear: null,
                 repliedMessageBox: null,
                 unrepliedMessageBox: null,
-                debugCheckbox: null,
-                verboseCheckbox: null,
                 loggingBox: null,
                 userContainersWrapper: null,
                 femaleUserContainerGroup: null,
@@ -264,12 +262,12 @@
             this.installLogImageHoverPreview();
 
             if (this.shouldShowBroadcastCheckboxes) {
-                document.querySelector('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
+                this.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
             }
 
             await this.restoreLastDmFromStore();
 
-            const privateCloseButton = document.querySelector('#private_close');
+            const privateCloseButton = this.qs('#private_close');
             if (privateCloseButton) {
                 privateCloseButton.addEventListener('click', () => {
                     this.clearLastDmUid();
@@ -299,8 +297,6 @@
                 }
             });
 
-            this._wireDebugCheckbox();
-            this._wireVerboseCheckbox();
             this._wireLogClear();
             this._wireTextboxTrackers();
 
@@ -523,7 +519,7 @@
         }
 
         _refreshAllPredefinedSelects() {
-            const selects = document.querySelectorAll('.ca-predefined-messages-select');
+            const selects = this.qsa('.ca-predefined-messages-select');
             selects.forEach((sel) => this._fillPredefinedSelect(sel));
         }
 
@@ -585,7 +581,7 @@
                 return false;
             }
 
-            const box = this.qs(targetSelector) || document.querySelector(targetSelector);
+            const box = this.qs(targetSelector) || this.qs(targetSelector);
             if (!box) {
                 console.error('[CA] _applyPredefinedFromSelect: target not found for selector:', targetSelector);
                 return false;
@@ -994,17 +990,15 @@
             }
         }
 
-        qs(selector, root) {
+        qs(selector, root = document, elementType = HTMLElement, ignoreWarning = false) {
             const base = root instanceof HTMLElement || root instanceof Document ? root : document;
             const el = base.querySelector(selector);
 
-            if (!el) {
-                //console.warn(`[CA] qs: selector "${selector}" returned null`);
-                return null;
-            }
+            if (!el || !el instanceof elementType) {
+                if (!ignoreWarning) {
+                    console.warn('[CA] qs: element not found:', selector);
+                }
 
-            if (!(el instanceof HTMLElement)) {
-                //console.error(`[CA] qs: selector "${selector}" matched a non-HTMLElement`);
                 return null;
             }
 
@@ -1012,39 +1006,15 @@
         }
 
         qsInput(selector, root) {
-            const el = this.qs(selector, root);
-            if (!el) return null;
-
-            if (!(el instanceof HTMLInputElement)) {
-                console.error(`[CA] qsInput: "${selector}" is not <input>`);
-                return null;
-            }
-
-            return el;
+            return this.qs(selector, root, HTMLInputElement);
         }
 
         qsTextarea(selector, root) {
-            const el = this.qs(selector, root);
-            if (!el) return null;
-
-            if (!(el instanceof HTMLTextAreaElement)) {
-                console.error(`[CA] qsTextarea: "${selector}" is not <textarea>`);
-                return null;
-            }
-
-            return el;
+            return this.qs(selector, root, HTMLTextAreaElement);
         }
 
         qsForm(selector, root) {
-            const el = this.qs(selector, root);
-            if (!el) return null;
-
-            if (!(el instanceof HTMLFormElement)) {
-                console.error(`[CA] qsForm: "${selector}" is not <form>`);
-                return null;
-            }
-
-            return el;
+            return this.qs(selector, root, HTMLFormElement);
         }
 
         qsa(s, r) {
@@ -1225,8 +1195,7 @@
             });
 
             const html = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            const doc = this.createElementFromString(html);
             const name = doc?.querySelector('.pro_name')?.textContent?.trim();
             const foundUsers = await this.UserStore.getOrFetchByName(name);
 
@@ -1638,7 +1607,7 @@
 
             const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(user, params);
 
-            if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse === '') {
+            if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string') {
                 console.warn('Empty response for conversation', user.uid);
             }
 
@@ -1667,17 +1636,31 @@
             };
 
             XMLHttpRequest.prototype.send = function (...sendArgs) {
+                /** @type {URLSearchParams | null} */
                 let qs = null;
 
-                if (self.isChatLogUrl(this._ca_url) && sendArgs && sendArgs[0].length) {
-                    if (sendArgs[0].indexOf('priv=1') !== -1) return;
+                const body = sendArgs[0];
 
-                    qs = new URLSearchParams(sendArgs[0]);
-                    self.caUpdateChatCtxFromBody(qs);
+                if (self.isChatLogUrl(this._ca_url) && body != null) {
+                    // Only handle string bodies here (x-www-form-urlencoded style)
+                    if (typeof body === "string") {
+
+                        if (body.indexOf("priv=1") !== -1) {
+                            return;
+                        }
+
+                        if (body.length > 0) {
+                            qs = new URLSearchParams(body);
+                            self.caUpdateChatCtxFromBody(qs);
+                        }
+                    } else {
+                        console.warn("[PrivateSend] Unexpected body type for chat log request", body);
+                    }
                 }
 
-                this.addEventListener('readystatechange', async function () {
-                    const responseUrl = this.responseURL || this._ca_url || '';
+                this.addEventListener("readystatechange", async function () {
+                    const responseUrl = this.responseURL || this._ca_url || "";
+
                     if (this.readyState === 4 && this.status === 200 && this.responseText) {
                         if (self.isChatLogUrl(responseUrl)) {
                             await self.caProcessChatPayload(this.responseText, qs);
@@ -1687,8 +1670,8 @@
                         }
                     } else if (this.status === 403) {
                         console.error(
-                            `[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare.\n
-                            Uninstalling the network taps to prevent any more calls being done until the browser is manually refreshed.`,
+                            "[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare.\n" +
+                            "Uninstalling the network taps to prevent any more calls being done until the browser is manually refreshed.",
                             responseUrl
                         );
                         self.openCloudflarePopup(responseUrl);
@@ -1698,6 +1681,7 @@
 
                 return self._xhrSend.apply(this, sendArgs);
             };
+
         }
 
         uninstallNetworkTaps() {
@@ -2314,7 +2298,9 @@
                 const wasLoggedInBefore = !!(existingUserFromStore?.isLoggedIn);
                 let existingUserEl = this.qs(
                     `.user_item[data-id="${uid}"]`,
-                    this.ui.userContainersWrapper
+                    this.ui.userContainersWrapper,
+                    HTMLElement,
+                    true
                 );
                 let updatedUserJson = null;
                 const newUserJson = {
@@ -2488,7 +2474,7 @@
             this.verbose('Handling logged in status for user: ', user);
 
             if (!user.isLoggedIn) {
-                this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper)?.remove();
+                this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper, HTMLElement, true)?.remove();
             }
 
             if (user.isFemale) {
@@ -2829,7 +2815,7 @@
                 userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
-                this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl)?.remove();
+                this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl, HTMLElement, true)?.remove();
                 this.verbose('Removing sent chip from user:', uid);
             }
         }
@@ -2868,44 +2854,65 @@
                 console.error('[321ChatAddons] ensurePopup called without id');
                 return null;
             }
+
             this.qs(`#${id}`)?.remove();
-            let popup = document.createElement('div');
+
+            const popup = document.createElement('div');
             popup.id = id;
             popup.classList.add('ca-popup');
-            popup.innerHTML =
-                '<div class="ca-popup-header">' +
-                '  <span class="ca-popup-title"></span>' +
-                '  <button class="ca-popup-close" type="button">✕</button>' +
-                '</div>' +
-                '<div class="ca-popup-body"></div>';
+            popup.innerHTML = `
+        <div class="ca-popup-header">
+            <span class="ca-popup-title"></span>
+            <button class="ca-popup-close" type="button">✕</button>
+        </div>
+        <div class="ca-popup-body"></div>
+    `;
 
-            popup.querySelector('.ca-popup-close')?.addEventListener('click', () => {
-                const popup = this.qs(`#${id}`);
-                popup.classList.add('ca-popup-open');
-                popup.remove();
-            });
+            const closeBtn = popup.querySelector('.ca-popup-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    const el = this.qs(`#${id}`);
+                    if (el) {
+                        el.classList.add('ca-popup-open');
+                        el.remove();
+                    }
+                });
+            }
 
             const hdr = popup.querySelector('.ca-popup-header');
+
             let ox = 0, oy = 0, sx = 0, sy = 0;
+
+            /** @param {MouseEvent} e */
             const mm = (e) => {
-                const dx = e.clientX - sx, dy = e.clientY - sy;
+                const dx = e.clientX - sx;
+                const dy = e.clientY - sy;
                 popup.style.left = (ox + dx) + 'px';
                 popup.style.top = (oy + dy) + 'px';
                 popup.style.transform = 'none';
             };
+
             const mu = () => {
                 document.removeEventListener('mousemove', mm);
                 document.removeEventListener('mouseup', mu);
             };
-            if (hdr) hdr.addEventListener('mousedown', (e) => {
-                sx = e.clientX;
-                sy = e.clientY;
-                const r = popup.getBoundingClientRect();
-                ox = r.left;
-                oy = r.top;
-                document.addEventListener('mousemove', mm);
-                document.addEventListener('mouseup', mu);
-            });
+
+            if (hdr) {
+                hdr.addEventListener(
+                    'mousedown',
+                    /** @param {MouseEvent} e */(e) => {
+                        sx = e.clientX;
+                        sy = e.clientY;
+
+                        const r = popup.getBoundingClientRect();
+                        ox = r.left;
+                        oy = r.top;
+
+                        document.addEventListener('mousemove', mm);
+                        document.addEventListener('mouseup', mu);
+                    }
+                );
+            }
 
             document.body.appendChild(popup);
 
@@ -2921,6 +2928,7 @@
 
             return popup;
         }
+
 
         togglePopup(id) {
             const pop = document.getElementById(id);
@@ -3060,7 +3068,7 @@
         }
 
         buildMenuLogPanel() {
-            const mount = document.querySelector('#my_menu .bcell_mid');
+            const mount = this.qs('#my_menu .bcell_mid');
             mount.innerHTML = "";
             if (!mount) {
                 console.error('[CA] #my_menu .bcell_mid not found — cannot create menu panel');
@@ -3116,16 +3124,34 @@
         }
 
         buildSvgIconString(className, svgInnerHTML, small = true) {
-            return `<svg class="${className} ${small ? 'svg-small' : 'svg-large'}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            ${svgInnerHTML}
-        </svg>`;
+            return `<svg class="${className} ${small ? 'svg-small' : 'svg-large'}"
+                 viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        ${svgInnerHTML}
+    </svg>`;
         }
 
+        /**
+         * @param {string} className
+         * @param {string} svgInnerHTML
+         * @param {boolean} [small]
+         * @returns {SVGElement | null}
+         */
         renderSvgIconWithClass(className, svgInnerHTML, small = true) {
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = this.buildSvgIconString(className, svgInnerHTML, small);
+            const el = this.createElementFromString(
+                this.buildSvgIconString(className, svgInnerHTML, small)
+            );
 
-            return wrapper.firstElementChild;
+            if (!el) {
+                console.error("[CA] renderSvgIconWithClass: no element created");
+                return null;
+            }
+
+            if (!(el instanceof SVGElement)) {
+                console.error("[CA] renderSvgIconWithClass: created element is not an <svg>", el);
+                return null;
+            }
+
+            return el;
         }
 
         buildPanel() {
@@ -3673,14 +3699,30 @@
             label.appendChild(checkbox);
             label.appendChild(textSpan);
 
-            checkbox.addEventListener('change', (e) => {
-                const checked = !!e.target.checked;
-                this.debug('[CA] Hide replied users:', checked);
-                this.shouldHideRepliedUsers = checked;
-                this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
-                targetContainer.classList.toggle('ca-hide-replied-ck-toggle', checked);
-                this.applyHideRepliedUsers(checked);
-            });
+            checkbox.addEventListener("change",
+                /** @param {Event} e */
+                (e) => {
+
+                    const target = e.target;
+
+                    if (!(target instanceof HTMLInputElement)) {
+                        console.warn(
+                            "[CA] renderAndWireHideRepliedToggle: event target is not an input",
+                            e
+                        );
+                        return;
+                    }
+
+                    const checked = !!target.checked;
+
+                    this.debug("[CA] Hide replied users:", checked);
+                    this.shouldHideRepliedUsers = checked;
+                    this.Store.set(this.HIDE_REPLIED_USERS_KEY, checked);
+                    targetContainer.classList.toggle("ca-hide-replied-ck-toggle", checked);
+                    this.applyHideRepliedUsers(checked);
+                }
+            );
+
 
             elToAppendTo.appendChild(label);
         }
@@ -3731,29 +3773,29 @@
 
         _isStaffListView() {
             const titleEl =
-                document.querySelector('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
+                this.qs('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
                 null;
             const txt = String((titleEl && titleEl.textContent) || document.title || '').trim().toLowerCase();
             return txt.includes('staff list');
         }
 
         _setHeadersVisible(visible) {
-            const headers = document.querySelectorAll('.ca-user-list-header');
+            const headers = this.qsa('.ca-user-list-header');
             headers.forEach(h => {
-                h.style.display = visible ? '' : 'none';
+                h["style"].display = visible ? '' : 'none';
             });
         }
 
         toggleOriginalUserList(visible) {
-            document.querySelector(`#chat_right_data`).style.display = visible ? 'block' : 'none';
-            document.querySelector(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
-            document.querySelector(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
+            this.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
+            this.qs(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
+            this.qs(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
         }
 
         wireListOptionClicks() {
-            const friendsBtn = document.querySelector('#friends_option');
-            const usersBtn = document.querySelector('#users_option');
-            const searchBtn = document.querySelector('#search_option');
+            const friendsBtn = this.qs('#friends_option');
+            const usersBtn = this.qs('#users_option');
+            const searchBtn = this.qs('#search_option');
 
             [friendsBtn, searchBtn].forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -4011,13 +4053,6 @@
             debugSettingsCheckbox.checked = !!this.debugMode;
             verboseSettingsCheckbox.checked = !!this.verboseMode;
 
-            if (this.ui && this.ui.debugCheckbox) {
-                this.ui.debugCheckbox.checked = !!this.debugMode;
-            }
-            if (this.ui && this.ui.verboseCheckbox) {
-                this.ui.verboseCheckbox.checked = !!this.verboseMode;
-            }
-
             const applyDebugChange = (enabled) => {
                 const safeEnabled = !!enabled;
                 this.debugMode = safeEnabled;
@@ -4034,9 +4069,7 @@
                         : 'Debug mode disabled'
                 );
 
-                if (this.ui && this.ui.debugCheckbox) {
-                    this.ui.debugCheckbox.checked = safeEnabled;
-                }
+
                 if (debugSettingsCheckbox.checked !== safeEnabled) {
                     debugSettingsCheckbox.checked = safeEnabled;
                 }
@@ -4058,9 +4091,6 @@
                         : 'Verbose mode disabled'
                 );
 
-                if (this.ui && this.ui.verboseCheckbox) {
-                    this.ui.verboseCheckbox.checked = safeEnabled;
-                }
                 if (verboseSettingsCheckbox.checked !== safeEnabled) {
                     verboseSettingsCheckbox.checked = safeEnabled;
                 }
@@ -4120,33 +4150,6 @@
             this.ui.presenceBox = this.qs(this.sel.log.presence);
             this.ui.logClear = this.qs(this.sel.log.clear);
             this.ui.loggingBox = this.qs(this.sel.log.general);
-            this.ui.debugCheckbox = this.qs('#ca-debug-checkbox');
-            this.ui.verboseCheckbox = this.qs('#ca-verbose-checkbox');
-        }
-
-        _wireDebugCheckbox() {
-            if (!this.ui.debugCheckbox) return;
-            this.ui.debugCheckbox.checked = this.debugMode;
-
-            this.ui.debugCheckbox.addEventListener('change', (e) => {
-                this.debugMode = e.target.checked;
-                this._setCookie(this.DEBUG_COOKIE, String(this.debugMode));
-                localStorage.setItem(this.DEBUG_MODE_KEY, String(this.debugMode));
-                if (this.Store) this.Store.set(this.DEBUG_MODE_KEY, this.debugMode);
-                console.log(this.debugMode ? '[DEBUG] Debug mode enabled' : 'Debug mode disabled');
-            });
-        }
-
-        _wireVerboseCheckbox() {
-            if (!this.ui.verboseCheckbox) return;
-            this.ui.verboseCheckbox.checked = this.verboseMode;
-            this.ui.verboseCheckbox.addEventListener('change', (e) => {
-                this.verboseMode = e.target.checked;
-                this._setCookie(this.VERBOSE_COOKIE, String(this.verboseMode));
-                localStorage.setItem(this.VERBOSE_MODE_KEY, String(this.verboseMode));
-                if (this.Store) this.Store.set(this.VERBOSE_MODE_KEY, this.verboseMode);
-                console.log(this.verboseMode ? '[VERBOSE] Verbose mode enabled' : 'Verbose mode disabled');
-            });
         }
 
         _boxesForKinds(kinds) {
@@ -4455,8 +4458,7 @@
                 </div>
             `;
 
-            const parser = new DOMParser();
-            const el = parser.parseFromString(entryHTML.trim(), 'text/html').body.firstElementChild;
+            const el = this.createElementFromString(entryHTML);
 
             if (kind !== 'event') {
                 this.setLogDotLoggedInStatusForElement(this.qs(`${this.sel.log.classes.ca_log_dot}`, el), user.isLoggedIn);
@@ -4486,6 +4488,13 @@
             }
 
             this.scrollToBottom(targetContainer);
+        }
+
+        createElementFromString(htmlString) {
+            const template = document.createElement("template");
+            template.innerHTML = htmlString.trim();
+
+            return template.content.firstElementChild;
         }
 
         scrollToBottom(targetContainer) {
@@ -4629,7 +4638,7 @@
 
         removeAds(root) {
             const scope = root && root.querySelectorAll ? root : document;
-            document.querySelectorAll('.coo-widget').forEach(e => e.remove());
+            this.qsa('.coo-widget').forEach(e => e.remove());
             const links = scope.querySelectorAll('a[href*="bit.ly"]');
             if (!links || !links.length) return;
             links.forEach(a => {
