@@ -2208,11 +2208,11 @@
                 segments.push({text, style});
             };
 
-            const checkChange = (key, label, color) => {
+            const checkChange = (key, label, color, overrideText = null) => {
                 if (existingUserJsonFromStore[key] !== updatedExistingUserJson[key]) {
                     changedKeys.push(key);
                     addSegment(
-                        `${updatedExistingUserJson.name} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
+                        overrideText ? overrideText : `${updatedExistingUserJson.name} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
                         color
                     );
                 }
@@ -2224,7 +2224,7 @@
             checkChange("country", "Country", "color:#55ff55");
             checkChange("rank", "Rank", "color:#ffcc55");
             checkChange("gender", "Gender", "color:#ff88aa");
-            checkChange("isLoggedIn", "Loggedin status", "color:#ff88aa");
+            checkChange("isLoggedIn", "", this.colors.SOFT_GREEN, `${updatedExistingUserJson.name} has logged in.`);
 
             if (changedKeys.length > 0) {
                 this._logStyled('[USER_UPDATE] ', segments);
@@ -2366,6 +2366,12 @@
 
                     existingUserEl = updatedExistingUserEl;
                 } else {
+                    this._logStyled('[USER_UPDATE] ', [
+                        {
+                            text: `New user ${newUserJson.name} has logged in.`,
+                            style: this.colors.SOFT_GREEN
+                        }
+                    ]);
                     resultPatches.push(newUserJson);
                     updatedUserJson = newUserJson;
                 }
@@ -2412,8 +2418,8 @@
 
                 this._logStyled('[USER_UPDATE] ', [
                     {
-                        text: `${user.name} has changed ${user.isFemale ? `her` : `his`} LoggedIn status(${user.isLoggedIn} → ${loggedOutPatch.isLoggedIn}), `,
-                        style: "color:#ff88aa"
+                        text: `${user.name} has logged off.`,
+                        style: this.colors.SOFT_RED
                     }
                 ]);
 
@@ -2424,8 +2430,6 @@
                 }
             }
 
-            // Persist updated users
-            console.log('saving', resultPatches);
             this.UserStore._saveAll(resultPatches);
 
             // Update UI counts
