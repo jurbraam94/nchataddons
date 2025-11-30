@@ -581,7 +581,7 @@
                 return false;
             }
 
-            const box = this.qs(targetSelector) || this.qs(targetSelector);
+            const box = this.qs(targetSelector);
             if (!box) {
                 console.error('[CA] _applyPredefinedFromSelect: target not found for selector:', targetSelector);
                 return false;
@@ -990,32 +990,67 @@
             }
         }
 
-        qs(selector, root = document, elementType = HTMLElement, ignoreWarning = false) {
-            const base = root instanceof HTMLElement || root instanceof Document ? root : document;
-            const el = base.querySelector(selector);
+        qs(
+            selector,
+            options = {}
+        ) {
+            let root = document;
+            let elementType = HTMLElement;
+            let ignoreWarning = false;
 
-            if (!el || !el instanceof elementType) {
+            if (options instanceof HTMLElement || options instanceof Document) {
+                root = options;
+            } else if (options && typeof options === "object") {
+                root = options.root || document;
+                elementType = options.elementType || HTMLElement;
+                ignoreWarning = options.ignoreWarning || false;
+            }
+
+            const el = root.querySelector(selector);
+
+            if (!el || !(el instanceof elementType) || !(el instanceof HTMLElement)) {
                 if (!ignoreWarning) {
-                    console.warn('[CA] qs: element not found:', selector);
+                    console.warn("[CA] qs: element not found or wrong type:", selector);
                 }
-
                 return null;
             }
 
             return el;
         }
 
-        qsInput(selector, root) {
-            return this.qs(selector, root, HTMLInputElement);
+        qsInput(selector, options) {
+            const opts = (options instanceof HTMLElement || options instanceof Document)
+                ? {root: options}
+                : (options || {});
+
+            return this.qs(selector, {
+                ...opts,
+                elementType: HTMLInputElement
+            });
         }
 
-        qsTextarea(selector, root) {
-            return this.qs(selector, root, HTMLTextAreaElement);
+        qsTextarea(selector, options) {
+            const opts = (options instanceof HTMLElement || options instanceof Document)
+                ? {root: options}
+                : (options || {});
+
+            return this.qs(selector, {
+                ...opts,
+                elementType: HTMLTextAreaElement
+            });
         }
 
-        qsForm(selector, root) {
-            return this.qs(selector, root, HTMLFormElement);
+        qsForm(selector, options) {
+            const opts = (options instanceof HTMLElement || options instanceof Document)
+                ? {root: options}
+                : (options || {});
+
+            return this.qs(selector, {
+                ...opts,
+                elementType: HTMLFormElement
+            });
         }
+
 
         qsa(s, r) {
             return Array.prototype.slice.call((r || document).querySelectorAll(s));
@@ -2296,11 +2331,12 @@
                 }
 
                 const wasLoggedInBefore = !!(existingUserFromStore?.isLoggedIn);
-                let existingUserEl = this.qs(
+                let existingUserEl = this.isInitialLoad ? null : this.qs(
                     `.user_item[data-id="${uid}"]`,
-                    this.ui.userContainersWrapper,
-                    HTMLElement,
-                    true
+                    {
+                        root: this.ui.userContainersWrapper,
+                        ignoreWarning: false
+                    }
                 );
                 let updatedUserJson = null;
                 const newUserJson = {
@@ -2474,7 +2510,10 @@
             this.verbose('Handling logged in status for user: ', user);
 
             if (!user.isLoggedIn) {
-                this.qs(`.user_item[data-id="${user.uid}"]`, this.ui.userContainersWrapper, HTMLElement, true)?.remove();
+                this.qs(`.user_item[data-id="${user.uid}"]`, {
+                    root: this.ui.userContainersWrapper,
+                    ignoreWarning: true
+                })?.remove();
             }
 
             if (user.isFemale) {
@@ -2815,7 +2854,10 @@
                 userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
             } else {
                 userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
-                this.qs(this.sel.raw.log.classes.ca_sent_chip, userEl, HTMLElement, true)?.remove();
+                this.qs(this.sel.raw.log.classes.ca_sent_chip, {
+                    root: userEl,
+                    ignoreWarning: true
+                })?.remove();
                 this.verbose('Removing sent chip from user:', uid);
             }
         }
