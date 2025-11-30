@@ -284,17 +284,12 @@
             this.scrollToBottom(this.ui.unrepliedMessageBox);
             this.scrollToBottom(this.ui.sentMessagesBox);
 
-            if (typeof window.getProfile === 'function') {
-                this.hostGetProfileOriginal = window.getProfile.bind(window);
-                window.getProfile = async (uid) => {
-                    // We don't await here; errors are handled inside openProfileOnHost
-                    await this.openProfileOnHost(uid);
-                };
-                this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
-            } else {
-                console.warn('[CA] Host window.getProfile function not found; cannot override profile modal');
-            }
-
+            this.hostGetProfileOriginal = window.getProfile.bind(window);
+            window.getProfile = async (uid) => {
+                // We don't await here; errors are handled inside openProfileOnHost
+                await this.openProfileOnHost(uid);
+            };
+            this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
 
             return this;
         }
@@ -656,7 +651,7 @@
                 this.ui.loggingBox.innerHTML = '';
 
                 this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
-                this.verbose?.(`[AutoClear] Cleared ${removed} event log(s).`);
+                this.helpers.verbose(`[AutoClear] Cleared ${removed} event log(s).`);
             };
 
             if (runImmediately) clearEvents();
@@ -726,7 +721,7 @@
 
             const logData = data.log || {};
             const content = logData.log_content || '';
-            const dmSentToUser = await this.UserStore.get(targetUid);
+            const dmSentToUser = await this.UserStore.getOrFetch(targetUid);
 
             if (!dmSentToUser) {
                 console.error(
@@ -1271,14 +1266,17 @@
                     e.stopPropagation();
                     e.stopImmediatePropagation();
 
-                    const expanded = entry.classList.toggle('ca-expanded');
-                    const ind = entry.querySelector(this.sel.log.classes.ca_expand_indicator);
-                    if (ind) {
-                        ind.textContent = expanded ? '▴' : '▾';
-                        ind.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    }
+                    const textEl = this.helpers.qs(`${this.sel.log.classes.ca_log_text}`, entry);
+
+                    // Flip "expanded" state only
+                    textEl.classList.toggle('ca-text-expanded');
+
+                    // Re-run sizing logic to clamp/unclamp & update arrow
+                    this.ensureExpandButtonFor_(entry);
+
                     return;
                 }
+
 
                 if (action === 'delete-log') {
                     e.preventDefault();
@@ -2269,7 +2267,7 @@
             const userEl = this.findUserById(uid);
 
             if (!userEl) {
-                this.debug?.('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
+                this.helpers.debug?.('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
                 return;
             }
 
@@ -2353,7 +2351,7 @@
 
                 applyVisualState(nextInclude);
                 this.UserStore.includeUserForBroadcast(user.uid, nextInclude);
-                this.debug?.(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
+                this.helpers.debug?.(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
             });
 
             userItemDataEl.appendChild(toggle);
@@ -2494,20 +2492,22 @@
              title="">
           </a>
           
-                <a id="ca-nav-users"
-         href="#"
-         class="ca-dm-link ca-dm-right ca-log-action"
-         data-action="open-users"
-         title="Show all users">
-        ${this.helpers.buildSvgIconString(
+          <a id="ca-nav-users"
+               href="#"
+               class="ca-dm-link ca-dm-right ca-log-action"
+               data-action="open-users"
+               title="Show all users">
+              ${this.helpers.buildSvgIconString(
                 "lucide lucide-user",
                 `
-              <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"></path>
-              <path d="M4 20a8 8 0 0 1 16 0"></path>
-            `
+                    <g transform="translate(0,-1)">
+                      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"></path>
+                      <path d="M4 20a8 8 0 0 1 16 0"></path>
+                    </g>
+                  `,
+                false
             )}
-      </a>
-
+            </a>
 
           <a id="ca-nav-settings"
              href="#"
@@ -2985,7 +2985,7 @@
                 console.warn('[CA] createFemaleUsersContainer: subrow is missing, cannot render toggles');
             }
 
-            if (typeof this.verbose === 'function') {
+            if (typeof this.helpers.verbose === 'function') {
                 this.helpers.verbose('Created female users container');
             }
         }
@@ -3213,7 +3213,6 @@
             headerCounter.textContent = `${count}`;
         }
 
-
         _bindStaticRefs() {
             this.ui.sentMessagesBox = this.helpers.qs(this.sel.log.sentMessagesBox);
             this.ui.messagesWrapper = this.helpers.qs(this.sel.log.messagesWrapper);
@@ -3348,66 +3347,41 @@
             return exp;
         }
 
-        ensureExpandButtonFor_(containerEl, textEl, kind) {
-            if (!containerEl || !textEl) {
-                console.error("ensureExpandButtonFor_: missing container/text element", {
-                    containerEl,
-                    textEl,
-                    kind
-                });
-                return;
-            }
+        ensureExpandButtonFor_(logEntryEl) {
+            const logEntryTextEl = logEntryEl.querySelector(`${this.sel.log.classes.ca_log_text}`);
 
-            const expandEl = containerEl.querySelector(this.sel.log.classes.ca_expand_indicator);
-            const actionsEl = containerEl.querySelector(this.sel.log.classes.ca_log_actions);
+            const C = this.sel.raw.log.classes;
+            const ind = logEntryEl.querySelector(`.${C.ca_expand_indicator}`);
+            if (!ind) return;
 
-            if (!actionsEl) {
-                console.error("[CA] ensureExpandButtonFor_: .ca-log-actions not found on log entry", {
-                    containerEl,
-                    kind
-                });
-                return;
-            }
+            // Is expanded?
+            const expanded = logEntryTextEl.classList.contains("ca-text-expanded");
 
-            if (kind !== "dm-out") {
-                if (expandEl) expandEl.remove();
-                containerEl.classList.remove("ca-expanded");
-
-                textEl.style.removeProperty("display");
-                textEl.style.removeProperty("overflow");
-                textEl.style.removeProperty("-webkit-box-orient");
-                textEl.style.removeProperty("-webkit-line-clamp");
-                textEl.style.removeProperty("line-clamp");
-
-                return;
-            }
-
-            const expanded = containerEl.classList.contains("ca-expanded");
-
-            if (!expanded) {
-                textEl.style.display = "-webkit-box";
-                textEl.style.overflow = "hidden";
-                textEl.style.setProperty("-webkit-box-orient", "vertical");
-                textEl.style.setProperty("-webkit-line-clamp", "3");
-                textEl.style.setProperty("line-clamp", "3");
+            // Apply CSS clamp classes (not in click handler anymore)
+            if (expanded) {
+                logEntryTextEl.classList.add("ca-text-expanded");
+                logEntryTextEl.classList.remove("ca-text-clamped");
             } else {
-                textEl.style.removeProperty("display");
-                textEl.style.removeProperty("overflow");
-                textEl.style.removeProperty("-webkit-box-orient");
-                textEl.style.removeProperty("-webkit-line-clamp");
-                textEl.style.removeProperty("line-clamp");
+                logEntryTextEl.classList.remove("ca-text-expanded");
+                logEntryTextEl.classList.add("ca-text-clamped");
             }
 
-            let ind = expandEl;
-            if (!ind) {
-                ind = this.createExpandIndicator_();
-                actionsEl.insertBefore(ind, actionsEl.firstChild);
-            }
+            // Is content actually truncated?
+            const capped = this.isVisuallyTruncated_(logEntryTextEl);
 
+            // Show button if either:
+            // - text is truncated (so needs expand button)
+            // - text is expanded (so we must show collapse icon)
+            const shouldShow = expanded || capped;
+
+            logEntryTextEl.setAttribute("data-action", shouldShow ? 'toggle-expand' : 'open-dm');
+
+            ind.style.display = shouldShow ? "" : "none";
+
+            // Set arrow direction
             ind.textContent = expanded ? "▴" : "▾";
             ind.setAttribute("aria-expanded", expanded ? "true" : "false");
         }
-
 
         renderLogEntry(activityLog, user) {
             if (!activityLog || !user || !user.uid) {
@@ -3459,13 +3433,12 @@
             const mappedKind = kind === 'dm-out' ? 'send-ok' : kind;
             const tsStr = String(ts);
             const displayTs = tsStr.split(' ')[1] || tsStr;
-            const C = this.sel.raw.log.classes;
             const html = this.buildLogHTML(kind, activityLog.content, user);
             const detailsHTML = this.decodeHTMLEntities(html);
             const isSystemUser = String(user.uid) === 'system';
             const userHTML = `
-                <div class="${C.ca_log_cell}">
-                    <span class="${C.ca_log_user}">
+                <div class="${this.sel.raw.log.classes.ca_log_cell}">
+                    <span class="${this.sel.raw.log.classes.ca_log_user}">
                         ${
                 isSystemUser
                     ? `<strong>${user.name || 'System'}</strong>`
@@ -3478,7 +3451,7 @@
             const dmIconHTML = (kind !== 'event' && !isSystemUser)
                 ? `
             <a href="#"
-               class="${C.ca_dm_link} ${C.ca_dm_right} ${C.ca_log_action}"
+               class="${this.sel.raw.log.classes.ca_dm_link} ${this.sel.raw.log.classes.ca_dm_right} ${this.sel.raw.log.classes.ca_log_action}"
                data-action="open-dm"
                title="Direct message">
                ${this.helpers.buildSvgIconString(
@@ -3488,9 +3461,12 @@
                                 <polyline points="3 7,12 13,21 7"></polyline>
                             `)} </a> ` : '';
 
+            const expandIconHTML = (kind !== event && !isSystemUser) ?
+                `<span class="ca-expand-indicator" title="Click to expand/collapse" data-action="toggle-expand" role="button" tabindex="0" aria-expanded="true">▴</span>` : ``;
+
             const deleteIconHTML = `
                 <a href="#"
-                   class="${C.ca_del_link} ${C.ca_log_action}"
+                   class="${this.sel.raw.log.classes.ca_del_link} ${this.sel.raw.log.classes.ca_log_action}"
                    data-action="delete-log"
                    title="Delete this log entry">
                    ${this.helpers.buildSvgIconString(
@@ -3502,66 +3478,42 @@
 
             const guidAttr = guid != null ? ` data-guid="${String(guid)}"` : '';
 
-            const textAction = (kind === 'dm-out')
-                ? 'toggle-expand'
-                : (kind === 'event' ? '' : 'open-dm');
-
-            const dataActionAttr = textAction
-                ? ` data-action="${textAction}"`
-                : '';
-
             const entryHTML = `
                 <div class="ca-log-entry ca-log-${mappedKind}"
                      data-uid="${String(user.uid)}"${guidAttr}>
                     <span class="ca-log-ts">${displayTs}</span>
-                    <div class="${C.ca_log_cell}">
-                        <span class="${C.ca_log_dot} ${C.ca_log_dot_gray}">
+                    <div class="${this.sel.raw.log.classes.ca_log_cell}">
+                        <span class="${this.sel.raw.log.classes.ca_log_dot} ${this.sel.raw.log.classes.ca_log_dot_gray}">
                             ●
                         </span>
                     </div>
                     ${userHTML}
-                    <span class="${C.ca_log_text}"${dataActionAttr}>
+                    <span class="${this.sel.raw.log.classes.ca_log_text}">
                         ${detailsHTML}
                     </span>
-                    <div class="${C.ca_log_actions}">
+                    <div class="${this.sel.raw.log.classes.ca_log_actions}">
+                        ${expandIconHTML}
                         ${dmIconHTML}
                         ${deleteIconHTML}
                     </div>
                 </div>
             `;
 
-            const el = this.helpers.createElementFromString(entryHTML);
+            const logEntryEl = this.helpers.createElementFromString(entryHTML);
 
             if (kind !== 'event') {
-                this.setLogDotLoggedInStatusForElement(this.helpers.qs(`${this.sel.log.classes.ca_log_dot}`, el), user.isLoggedIn);
+                this.setLogDotLoggedInStatusForElement(this.helpers.qs(`${this.sel.log.classes.ca_log_dot}`, logEntryEl), user.isLoggedIn);
             }
 
-            if (!el) {
+            if (!logEntryEl) {
                 console.error('renderLogEntry: Failed to build log entry element', {activityLog, user});
                 return;
             }
 
-            targetContainer.appendChild(el);
-
-            if (kind !== 'event') {
-                const textEl = el.querySelector(`.${C.ca_log_text}`);
-                if (textEl) {
-                    this.ensureExpandButtonFor_(el, textEl, kind);
-                    const ro = new ResizeObserver(() => {
-                        this.ensureExpandButtonFor_(el, textEl, kind);
-                    });
-                    ro.observe(textEl);
-                } else {
-                    console.warn('renderLogEntry: text element not found for expand logic', {
-                        activityLog,
-                        user
-                    });
-                }
-            }
-
+            targetContainer.appendChild(logEntryEl);
+            this.ensureExpandButtonFor_(logEntryEl);
             this.scrollToBottom(targetContainer);
         }
-
 
         scrollToBottom(targetContainer) {
             requestAnimationFrame(() => {

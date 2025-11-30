@@ -333,6 +333,24 @@
     display: flex;
 }
 
+.ca-log-text {
+    display: block;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+.ca-text-clamped {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+
+.ca-text-expanded {
+    display: block;
+}
+
 
 .ca-popup-close {
     appearance: none;
@@ -501,6 +519,11 @@
 
 .ca-user-list-container-group.ca-expanded {
     flex: 1 1 50%;
+    display: block; /* or whatever your normal layout is */
+    overflow: visible;
+    -webkit-box-orient: initial;
+    -webkit-line-clamp: initial;
+    line-clamp: initial;
 }
 
 .ca-user-list-container-group.ca-collapsed {
@@ -908,7 +931,7 @@ svg.svg-large {
     color: #ffffff;
 }
 
-.ca-expanded .ca-expand-indicator {
+.ca-text-expanded .ca-expand-indicator {
     background: rgba(147, 197, 253, 0.3);
 }
 
