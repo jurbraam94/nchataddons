@@ -108,7 +108,9 @@
                 SOFT_GREEN: 'color:#8bdf8b',
                 SOFT_RED: 'color:#d88989',
                 GREY: 'color:#9ca3af',
-                GREY_NUM: 'color:#6b7280'
+                GREY_NUM: 'color:#6b7280',
+                SOFT_PINK: 'color:#e0a2ff',
+                SOFT_BLUE: 'color:#82aaff'
             }
 
             this.sel = {
@@ -224,33 +226,6 @@
                 '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
             this.qs('#message_form').prepend(this.qs('#private_input_box'));
 
-            const dmTextarea = document.getElementById("message_content");
-            const dmSendBtn = document.querySelector('#private_send, #send_button, #message_form button[type="submit"]');
-
-            if (!dmTextarea) {
-                console.error("DM textarea #message_content not found");
-            }
-            if (!dmSendBtn) {
-                console.error("DM send button not found — update selector if needed");
-            }
-
-            if (dmTextarea && dmSendBtn) {
-                dmTextarea.addEventListener("keydown", (event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-
-                        const text = dmTextarea.value.trim();
-                        if (text.length === 0) {
-                            console.warn("Empty private message — not sending");
-                            return;
-                        }
-
-                        dmSendBtn.click();
-                        dmTextarea.value = "";
-                    }
-                });
-            }
-
             this.qs('#private_center').after(this.qs('#private_menu'));
 
             main_wrapper.appendChild(this.qs('#chat_head'));
@@ -301,6 +276,29 @@
                 });
             }
 
+            const dmTextarea = this.qsTextarea("#message_content");
+            const dmSendBtn = this.qs("#private_send");
+
+            if (!dmTextarea || !dmSendBtn) {
+                console.error('Dmtextarea or dmsendbtn not found');
+                return;
+            }
+
+            dmTextarea.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+
+                    const text = dmTextarea.value.trim();
+                    if (text.length === 0) {
+                        console.warn("Empty private message — not sending");
+                        return;
+                    }
+
+                    dmSendBtn.click();
+                    dmTextarea.value = "";
+                }
+            });
+
             this._wireDebugCheckbox();
             this._wireVerboseCheckbox();
             this._wireLogClear();
@@ -318,23 +316,25 @@
         }
 
         _wireTextboxTrackers() {
-            document.addEventListener('focusin', (event) => {
+            document.addEventListener("focusin", (event) => {
                 const target = event.target;
 
                 if (!target) {
-                    console.warn('[CA] focusin event without target');
+                    console.warn("[CA] focusin event without target");
                     return;
                 }
 
-                if (
-                    !((target.tagName === 'TEXTAREA') ||
-                        (target.tagName === 'INPUT' && target.type === 'text'))
-                ) {
+                if (!(target instanceof HTMLElement)) {
+                    console.warn("[CA] focusin target is not an HTMLElement");
                     return;
                 }
+
+                if (!target.matches("textarea, input[type='text']")) {
+                    return;
+                }
+
                 this.activeTextInput = target;
             });
-
         }
 
         _getActiveTextBox() {
@@ -394,7 +394,7 @@
             const listEl = popup.querySelector('#ca-predefined-messages-list');
             const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
             const textInput = popup.querySelector('#ca-predefined-messages-text');
-            const indexInput = popup.querySelector('#ca-predefined-builmessages-index');
+            const indexInput = popup.querySelector('#ca-predefined-messages-index');
 
             if (!listEl || !subjectInput || !textInput || !indexInput) {
                 console.error('[CA] _renderPredefinedList: missing elements');
@@ -500,10 +500,6 @@
                 li.appendChild(preview);
                 listEl.appendChild(li);
             });
-        }
-
-        openGlobalPredefinedTemplatesPopup() {
-            this.openPredefinedPopup(null);
         }
 
         _fillPredefinedSelect(selectEl) {
@@ -766,58 +762,60 @@
 
         openPredefinedPopup(wrapper, prefilledText = null) {
             const popup = this.createPredefinedMessagesPopup();
-            this._renderPredefinedList(popup);
 
-            const form = popup.querySelector('#ca-predefined-messages-form');
-            const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
-            const textInput = popup.querySelector('#ca-predefined-messages-text');
-            const indexInput = popup.querySelector('#ca-predefined-messages-index');
-            const resetBtn = popup.querySelector('#ca-predefined-messages-reset');
-            const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
-            const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
-            const editorBody = popup.querySelector('.ca-predefined-messages-editor-body');
-
-            if (prefilledText) {
-                if (indexInput) {
-                    indexInput.value = '-1';
-                }
-                if (subjectInput) {
-                    subjectInput.value = subjectInput.value || '';
-                }
-
-                textInput.value = prefilledText;
-            }
-
-            if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
-                console.error('[CA] createPredefinedPopup: missing form controls');
+            if (!(popup instanceof HTMLElement)) {
+                console.error("[CA] openPredefinedPopup: popup is not an HTMLElement");
                 return null;
             }
 
-            if (toggleBtn && editorRoot && editorBody && !editorRoot.dataset.caToggleInitialized) {
-                editorRoot.dataset.caToggleInitialized = '1';
-                editorRoot.classList.add('ca-predefined-editor-collapsed');
-                toggleBtn.textContent = 'Show editor';
+            this._renderPredefinedList(popup);
 
-                toggleBtn.addEventListener('click', () => {
-                    const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
-                    toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
+            const form = this.qsForm("#ca-predefined-messages-form", popup);
+            const subjectInput = this.qsInput("#ca-predefined-messages-subject", popup);
+            const textInput = this.qsTextarea("#ca-predefined-messages-text", popup);
+            const indexInput = this.qsInput("#ca-predefined-messages-index", popup);
+            const resetBtn = this.qs("#ca-predefined-messages-reset", popup);
+            const editorRoot = this.qs(".ca-predefined-messages-editor", popup);
+            const toggleBtn = this.qs("#ca-predefined-messages-toggle", popup);
+            const editorBody = this.qs(".ca-predefined-messages-editor-body", popup);
+
+            if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
+                console.error("[CA] openPredefinedPopup: missing form controls");
+                return null;
+            }
+
+            if (prefilledText) {
+                indexInput.value = "-1";
+                subjectInput.value = subjectInput.value || "";
+                textInput.value = prefilledText;
+            }
+
+            if (toggleBtn && editorRoot && editorBody && !editorRoot.dataset.caToggleInitialized) {
+                editorRoot.dataset.caToggleInitialized = "1";
+                editorRoot.classList.add("ca-predefined-editor-collapsed");
+                toggleBtn.textContent = "Show editor";
+
+                toggleBtn.addEventListener("click", () => {
+                    const collapsed = editorRoot.classList.toggle("ca-predefined-editor-collapsed");
+                    toggleBtn.textContent = collapsed ? "Show editor" : "Hide editor";
                 });
             }
 
-            resetBtn.addEventListener('click', () => {
+            resetBtn.addEventListener("click", () => {
                 this.predefinedEditIndex = null;
-                indexInput.value = '-1';
-                subjectInput.value = '';
-                textInput.value = '';
+                indexInput.value = "-1";
+                subjectInput.value = "";
+                textInput.value = "";
             });
 
-            form.addEventListener('submit', (e) => {
+            form.addEventListener("submit", (e) => {
                 e.preventDefault();
+
                 const subject = subjectInput.value.trim();
                 const text = textInput.value.trim();
 
                 if (!subject && !text) {
-                    console.warn('[CA] Cannot save empty predefined message');
+                    console.warn("[CA] Cannot save empty predefined message");
                     return;
                 }
 
@@ -834,14 +832,13 @@
                 this._renderPredefinedList(popup);
                 this._refreshAllPredefinedSelects();
 
-
                 this.predefinedEditIndex = null;
-                indexInput.value = '-1';
-                subjectInput.value = '';
-                textInput.value = '';
+                indexInput.value = "-1";
+                subjectInput.value = "";
+                textInput.value = "";
             });
 
-            this.togglePopup('ca-predefined-messages-popup')
+            this.togglePopup("ca-predefined-messages-popup");
         }
 
         appendCustomActionsToBar() {
@@ -873,7 +870,7 @@
 
             templatesBtn.addEventListener('click', (event) => {
                 event.preventDefault();
-                this.openGlobalPredefinedTemplatesPopup();
+                this.openPredefinedPopup(null);
             });
 
             if (existingOption) {
@@ -997,8 +994,57 @@
             }
         }
 
-        qs(s, r) {
-            return (r || document).querySelector(s);
+        qs(selector, root) {
+            const base = root instanceof HTMLElement || root instanceof Document ? root : document;
+            const el = base.querySelector(selector);
+
+            if (!el) {
+                //console.warn(`[CA] qs: selector "${selector}" returned null`);
+                return null;
+            }
+
+            if (!(el instanceof HTMLElement)) {
+                //console.error(`[CA] qs: selector "${selector}" matched a non-HTMLElement`);
+                return null;
+            }
+
+            return el;
+        }
+
+        qsInput(selector, root) {
+            const el = this.qs(selector, root);
+            if (!el) return null;
+
+            if (!(el instanceof HTMLInputElement)) {
+                console.error(`[CA] qsInput: "${selector}" is not <input>`);
+                return null;
+            }
+
+            return el;
+        }
+
+        qsTextarea(selector, root) {
+            const el = this.qs(selector, root);
+            if (!el) return null;
+
+            if (!(el instanceof HTMLTextAreaElement)) {
+                console.error(`[CA] qsTextarea: "${selector}" is not <textarea>`);
+                return null;
+            }
+
+            return el;
+        }
+
+        qsForm(selector, root) {
+            const el = this.qs(selector, root);
+            if (!el) return null;
+
+            if (!(el instanceof HTMLFormElement)) {
+                console.error(`[CA] qsForm: "${selector}" is not <form>`);
+                return null;
+            }
+
+            return el;
         }
 
         qsa(s, r) {
@@ -1049,7 +1095,7 @@
                     `[PrivateSend] Could not find user with ID ${targetUid}. ` +
                     `Could not process outgoing private message`
                 );
-                return;
+                return null;
             }
 
             console.log(
@@ -1080,10 +1126,11 @@
 
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
                 this.debug('[PrivateSend] No logs to update read status for user:', targetUid);
-                return;
+                return true;
             }
 
             this.processReadStatusForLogs(affectedLogs);
+            return true;
         }
 
         installPrivateSendInterceptor() {
@@ -1591,7 +1638,7 @@
 
             const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(user, params);
 
-            if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse.trim() === '') {
+            if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse === '') {
                 console.warn('Empty response for conversation', user.uid);
             }
 
@@ -1702,19 +1749,6 @@
             }
 
             return `<span class="ca-log-text-main">${escapeHTML(text)}</span>`;
-        }
-
-        buildProfileUrlForId(uid) {
-            if (!uid) return '';
-            const sel = `a[href*="profile"][href*="${uid}"], a[href*="user"][href*="${uid}"]`;
-            const found = document.querySelector(sel);
-            if (found?.href) return found.href;
-            const fallbacks = [
-                '/profile/' + uid,
-                '/user/' + uid,
-                '/system/profile.php?uid=' + uid,
-            ];
-            return fallbacks[0];
         }
 
         _attachLogClickHandlers() {
@@ -1883,16 +1917,13 @@
                 this.setLastDmUid(uid);
             }
 
-            this.debug('applyLegacyAndOpenDm: Setting legacy toggles');
             if (!this.safeSet(window, 'morePriv', 0)) return false;
             if (!this.safeSet(window, 'privReload', 1)) return false;
             if (!this.safeSet(window, 'lastPriv', 0)) return false;
-            this.debug('applyLegacyAndOpenDm: Calling legacy UI functions');
             if (!this.safeCall(window, 'closeList')) return false;
             if (!this.safeCall(window, 'hideModal')) return false;
             if (!this.safeCall(window, 'hideOver')) return false;
-
-            this.debug('applyLegacyAndOpenDm: Calling openPrivate with:', uid, name, avatar);
+            
             openPrivate(uid, name, avatar);
         }
 
@@ -1913,14 +1944,9 @@
 
             if (window.getProfile) {
                 const uidNum = /^\d+$/.test(uid) ? parseInt(uid, 10) : uid;
-                this.debug('openProfileOnHost: Calling window.getProfile with:', uidNum);
                 window.getProfile(uidNum);
-                this.debug('openProfileOnHost: window.getProfile call completed');
             } else {
-                console.warn(`Host profile method not found; falling back to URL (uid: ${uid})`);
-                const url = this.buildProfileUrlForId(uid);
-                this.debug('openProfileOnHost: Fallback URL:', url);
-                if (url) window.open(url, '_blank');
+                console.error('[openProfileOnHost] window.getProfile not available');
             }
         }
 
@@ -1952,8 +1978,15 @@
             return new Promise(r => setTimeout(r, wait))
                 .then(() => this.sendPrivateMessage(id, text))
                 .then((r) => {
+                    if (!r) {
+                        console.error('[sendWithThrottle] Failed to send message:', id, text);
+                        return false;
+                    }
                     this._lastSendAt = Date.now();
-                    return r;
+                    return true;
+                }).catch((err) => {
+                    console.error('[BROADCAST] sendWithThrottle error for uid', id, err);
+                    return false;
                 });
         }
 
@@ -1977,12 +2010,7 @@
                     const item = batch[idx];
                     const uid = item.uid;
 
-                    const res = await this.sendWithThrottle(uid, text).catch((err) => {
-                        console.error('[BROADCAST] sendWithThrottle error for uid', uid, err);
-                        return {ok: false, status: 0};
-                    });
-
-                    if (res && res.ok) {
+                    if (await this.sendWithThrottle(uid, text)) {
                         ok++;
                     } else {
                         fail++;
@@ -2365,19 +2393,19 @@
             if (!plus && !minus) return;
 
             const labelColor = label.toLowerCase().includes('female')
-                ? this.colors.FEMALE_LABEL
-                : this.colors.MALE_LABEL;
+                ? this.colors.SOFT_PINK
+                : this.colors.SOFT_BLUE;
 
-            const plusStyle = plus ? this.colors.SOFT_GREEN : this.colors.ZERO_GREY;
-            const minusStyle = minus ? this.colors.SOFT_RED : this.colors.ZERO_GREY;
+            const plusStyle = plus ? this.colors.SOFT_GREEN : this.colors.GREY;
+            const minusStyle = minus ? this.colors.SOFT_RED : this.colors.GREY;
 
             this._logStyled('', [
                 {text: `${label} `, style: labelColor},
-                {text: '(+', style: this.colors.LIGHT_GREY},
+                {text: '(+', style: this.colors.GREY},
                 {text: String(plus), style: plusStyle},
-                {text: ' : -', style: this.colors.LIGHT_GREY},
+                {text: ' : -', style: this.colors.GREY},
                 {text: String(minus), style: minusStyle},
-                {text: ')', style: this.colors.LIGHT_GREY}
+                {text: ')', style: this.colors.GREY}
             ]);
         }
 
@@ -2699,11 +2727,7 @@
                 }).then(res => res.text().then(async response => {
                     let jsonResponse = JSON.parse(String(response));
 
-                    if (!await this.processPrivateSendResponse(this.toPrivateSendResponse(jsonResponse), String(target))) {
-                        return {ok: false, status: res.status, body: jsonResponse || response};
-                    }
-
-                    return {ok: res.ok, status: res.status, body: jsonResponse || response};
+                    return await this.processPrivateSendResponse(this.toPrivateSendResponse(jsonResponse), String(target));
                 }));
             }, 10000);
         }
@@ -3918,12 +3942,7 @@
                     return this.printModalErrorStatus(`Returned user doesn't have a uid.`);
                 }
 
-                const sendPrivateMessageResponse = await this.sendWithThrottle(user.uid, sendPrivateMessageText)
-                    .catch(_ => {
-                        return this.printModalErrorStatus(`Error sending private message to ${sendPrivateMessageUser}`);
-                    });
-
-                if (sendPrivateMessageResponse.ok) {
+                if (await this.sendWithThrottle(user.uid, sendPrivateMessageText)) {
                     this.logEventLine(`Sent to ${user.name || user.uid}.`)
                     return this.printModalSuccessStatus(`Private message to ${sendPrivateMessageUser} has been successfully sent`);
                 } else {
