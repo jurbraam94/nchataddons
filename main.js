@@ -1062,6 +1062,16 @@
 
             this.logLine('dm-out', content, dmSentToUser, logData.log_id);
 
+            const userEl = this.findUserById(dmSentToUser.uid);
+            if (userEl) {
+                this.updateProfileChip(dmSentToUser.uid, userEl);
+            } else {
+                this.debug(
+                    '[PrivateSend] Skipping profile chip update; user element not found for uid:',
+                    dmSentToUser.uid
+                );
+            }
+
             const affectedLogs =
                 this.ActivityLogStore.MarkReadUntilChatLogId(
                     targetUid,
@@ -1071,16 +1081,6 @@
             if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
                 this.debug('[PrivateSend] No logs to update read status for user:', targetUid);
                 return;
-            }
-
-            const userEl = this.findUserById(dmSentToUser.uid);
-            if (userEl) {
-                this.updateProfileChip(dmSentToUser.uid, userEl);
-            } else {
-                this.debug(
-                    '[PrivateSend] Skipping profile chip update; user element not found for uid:',
-                    dmSentToUser.uid
-                );
             }
 
             this.processReadStatusForLogs(affectedLogs);
