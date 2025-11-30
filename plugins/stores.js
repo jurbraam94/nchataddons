@@ -270,58 +270,53 @@
                 throw new Error('_saveAll expects an array');
             }
 
-            // create a map for fast lookup
-            const byUid = new Map(
-                usersToEdit
-                    .filter(u => u && u.uid != null)
-                    .map(u => [String(u.uid), u])
-            );
+            // Build patch map keyed by uid; later entries override earlier ones
+            const patchesByUid = new Map();
+            for (let i = 0; i < usersToEdit.length; i++) {
+                const u = usersToEdit[i];
+                if (!u || u.uid == null) {
+                    continue;
+                }
+                patchesByUid.set(String(u.uid), u);
+            }
 
-            const updatedUsers = this._getAll().map(existingUser => {
-                const patch = byUid.get(String(existingUser.uid));
+            const existingUsers = this._getAll();
+            const updatedUsers = new Array(existingUsers.length);
 
-                return patch
-                    ? {...existingUser, ...patch} // patch overwrites fields
-                    : existingUser;
-            });
+            // 1) Apply patches to existing users (if any)
+            for (let i = 0; i < existingUsers.length; i++) {
+                const existingUser = existingUsers[i];
+                const key = String(existingUser.uid);
+                const patch = patchesByUid.get(key);
 
-            this.kv.set(this.cacheKey, updatedUsers);
-            return updatedUsers;
-        }
-
-        markAllLoggedOut() {
-            const allUsers = this._getAll();
-            const patches = [];
-
-            for (const user of allUsers) {
-                if (user.isLoggedIn === true) {
-                    // user was logged in, we want to log them out
-                    patches.push({
-                        ...user,
-                        isLoggedIn: false
-                    });
-                } else if (user.isLoggedIn === undefined) {
-                    console.error(
-                        `[UsersStore.markAllLoggedOut] User ${user.uid} has undefined isLoggedIn; setting it to false.`
-                    );
-                    patches.push({
-                        ...user,
-                        isLoggedIn: false
-                    });
+                if (patch) {
+                    // patch overwrites fields on existing user
+                    updatedUsers[i] = {...existingUser, ...patch};
+                    // remove from map so remaining entries are truly "new" users
+                    patchesByUid.delete(key);
+                } else {
+                    updatedUsers[i] = existingUser;
                 }
             }
 
-            if (patches.length === 0) {
-                // nothing to change
-                return [];
+            // 2) Any patches left in the map are for *new* users
+            if (patchesByUid.size > 0) {
+                for (const [, newUser] of patchesByUid.entries()) {
+                    // defaults for new users
+                    const userWithDefaults = {
+                        ...newUser,
+                        parsedDmInUpToLog: 0,
+                        isIncludedForBroadcast: true,
+                        noNewPrivateDmTries: 0,
+                        stalePrivateDmBeforeDate: '' // empty string means "no stale cutoff"
+                    };
+
+                    updatedUsers.push(userWithDefaults);
+                }
             }
 
-            // this writes to kv/localStorage ONCE
-            this._saveAll(patches);
-
-            // Return the logged-out users, so you can still do your loop:
-            // for (const user of loggedOutUsers) { handleLoggedInStatus(user, false); }
-            return patches;
+            this.kv.set(this.cacheKey, updatedUsers);
+            return updatedUsers;
         }
 
         // ---- API (array) ----
