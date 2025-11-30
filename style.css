@@ -519,7 +519,6 @@
 
 .ca-user-list-container-group.ca-expanded {
     flex: 1 1 50%;
-    display: block; /* or whatever your normal layout is */
     overflow: visible;
     -webkit-box-orient: initial;
     -webkit-line-clamp: initial;

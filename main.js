@@ -6,10 +6,6 @@ class App {
         this.helpers = new Helpers();
         this.keyValueStore = new KeyValueStore();
 
-        // this.logger = new Logger({
-        //     settingsStore: this.settingsStore
-        // });
-
         this.settingsStore = new SettingsStore({
             keyValueStore: this.keyValueStore,
             helpers: this.helpers
