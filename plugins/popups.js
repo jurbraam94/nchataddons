@@ -1,4 +1,4 @@
-class UsersPopup {
+class Popups {
     constructor(app) {
         if (!app) {
             throw new Error('[UsersPopup] constructor requires app instance');
@@ -18,27 +18,27 @@ class UsersPopup {
             visibleColumns: {}
         };
 
+        // z-index base for stacking multiple modals
+        this._zBase = 10000;
+        this._zCounter = this._zBase;
+
         this._loadColumnPrefs();
     }
 
-    // ---------- public API ----------
-
     open() {
-        const popup = this._ensurePopup();
+        const popup = this._createUsersPopup();
 
         if (!popup) {
             console.error('[UsersPopup] open: popup not created');
             return;
         }
 
-        this._render(popup);
-        this.app.togglePopup('ca-users-popup');
+        this.renderUsersPopup(popup);
+        this.app.popups.togglePopup('ca-users-popup');
         this.app.installLogImageHoverPreview(popup);
     }
 
-    // ---------- popup skeleton ----------
-
-    _ensurePopup() {
+    _createUsersPopup() {
         const bodyHtml = `
 <div class="ca-users-popup-root" id="ca-users-table-root">
   <div class="ca-users-toolbar">
@@ -79,7 +79,7 @@ class UsersPopup {
 </div>
 `;
 
-        const popup = this.app.ensurePopup({
+        const popup = this.ensurePopup({
             id: 'ca-users-popup',
             title: 'All users',
             bodyHtml
@@ -114,7 +114,7 @@ class UsersPopup {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
         }
@@ -124,7 +124,7 @@ class UsersPopup {
             onlyOnlineCheckbox.addEventListener('change', () => {
                 this.state.onlyOnline = !!onlyOnlineCheckbox.checked;
                 this.state.page = 1;
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
         }
@@ -133,7 +133,7 @@ class UsersPopup {
             searchInput.addEventListener('input', () => {
                 this.state.query = String(searchInput.value || '').trim().toLowerCase();
                 this.state.page = 1;
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
         } else {
@@ -144,7 +144,7 @@ class UsersPopup {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
         }
@@ -166,7 +166,7 @@ class UsersPopup {
                 }
 
                 this.state.page = pageNum;
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
         }
@@ -178,7 +178,7 @@ class UsersPopup {
                 e.preventDefault();
                 const sortKey = String(thSortable.getAttribute('data-sort-key') || '').trim();
                 this._toggleSort(sortKey);
-                this._render(popup);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
                 return;
             }
@@ -195,7 +195,7 @@ class UsersPopup {
                 }
 
                 if (action === 'open-profile') {
-                    this.app.openProfileOnHost(uid);
+                    await this.app.openProfileOnHost(uid);
                     return;
                 }
 
@@ -253,9 +253,632 @@ class UsersPopup {
         });
     }
 
-    // ---------- render ----------
 
-    _render(popup) {
+    // ---------- z-index & focus ----------
+
+    bringToFront(popupEl) {
+        if (!(popupEl instanceof HTMLElement)) {
+            console.warn('[Popups] bringToFront called without HTMLElement');
+            return;
+        }
+
+        this._zIndexBase += 1;
+        popupEl.style.zIndex = String(this._zIndexBase);
+
+        // optional: visual focus indicator
+        document.querySelectorAll('.ca-popup.ca-popup-active').forEach(el => {
+            el.classList.remove('ca-popup-active');
+        });
+        popupEl.classList.add('ca-popup-active');
+    }
+
+    _wireFocus(popup) {
+        if (!popup || popup.dataset.caFocusWired === '1') {
+            return;
+        }
+        popup.dataset.caFocusWired = '1';
+
+        popup.addEventListener('mousedown', () => {
+            this.bringToFront(popup);
+        });
+    }
+
+    // ---------- base popup skeleton ----------
+
+    /**
+     * Create a draggable CA popup with header + body.
+     * Returns the popup HTMLElement (or null on error).
+     */
+    ensurePopup({id, title, bodyHtml}) {
+        if (!id) {
+            console.error('[Popups] ensurePopup called without id');
+            return null;
+        }
+
+        // Remove existing popup with same id (fresh instance)
+        const existing = document.getElementById(id);
+        if (existing) {
+            existing.remove();
+        }
+
+        const popup = document.createElement('div');
+        popup.id = id;
+        popup.className = 'ca-popup';
+
+        popup.innerHTML = `
+      <div class="ca-popup-header">
+        <span class="ca-popup-title"></span>
+        <button class="ca-popup-close" type="button">✕</button>
+      </div>
+      <div class="ca-popup-body"></div>
+    `;
+
+        // close button
+        const closeBtn = popup.querySelector('.ca-popup-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                popup.remove();
+            });
+        }
+
+        // dragging
+        const hdr = popup.querySelector('.ca-popup-header');
+        if (hdr) {
+            let startX = 0, startY = 0, origX = 0, origY = 0;
+
+            const onMove = (e) => {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                popup.style.left = (origX + dx) + 'px';
+                popup.style.top = (origY + dy) + 'px';
+                popup.style.transform = 'none';
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+
+            hdr.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.bringToFront(popup);
+
+                const rect = popup.getBoundingClientRect();
+                origX = rect.left;
+                origY = rect.top;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
+        document.body.appendChild(popup);
+
+        // title
+        const titleEl = popup.querySelector('.ca-popup-title');
+        if (titleEl && typeof title === 'string') {
+            titleEl.textContent = title;
+        }
+
+        // body
+        const bodyEl = popup.querySelector('.ca-popup-body');
+        if (bodyEl) {
+            if (typeof bodyHtml === 'string') {
+                bodyEl.innerHTML = bodyHtml;
+            } else if (bodyHtml instanceof HTMLElement) {
+                bodyEl.innerHTML = '';
+                bodyEl.appendChild(bodyHtml);
+            }
+        }
+
+        // initial focus/z-index
+        this._wireFocus(popup);
+        this.bringToFront(popup);
+
+        return popup;
+    }
+
+    /**
+     * Just ensures the popup is “shown”.
+     * (You can keep any class-based styling you had.)
+     */
+    togglePopup(id) {
+        const popup = document.getElementById(id);
+        if (!popup) {
+            console.error('[Popups] togglePopup: popup not found:', id);
+            return;
+        }
+
+        popup.classList.add('ca-popup-open');
+        this.bringToFront(popup);
+    }
+
+    openBroadcastModal() {
+        const broadcastPopupEl = this.createBroadcastPopup();
+        const broadcastSendEl = broadcastPopupEl.querySelector('#ca-bc-send');
+
+        broadcastSendEl.addEventListener('click', () => {
+            const broadcastMsgEl = this.app.qs('#ca-bc-msg');
+            const raw = (broadcastMsgEl && 'value' in broadcastMsgEl) ? broadcastMsgEl.value : '';
+            const text = this.app.trim(raw);
+
+            if (!text) {
+                console.warn('[BROADCAST] Empty message, nothing to send');
+                return;
+            }
+
+            const broadcastReceiveList = this.app.buildBroadcastList();
+
+            if (!broadcastReceiveList.length) {
+                this.app.logEventLine('[BROADCAST] No new recipients for this message (after exclusions/rank filter).');
+                return;
+            }
+
+            broadcastSendEl.disabled = true;
+            this.app._runBroadcast(broadcastReceiveList, text)
+                .then(({ok, fail}) => {
+                    this.app.logEventLine(`[BROADCAST] Done. Success: ${ok}, Failed: ${fail}.`);
+                })
+                .finally(() => {
+                    broadcastSendEl.disabled = false;
+                });
+        });
+
+        this.togglePopup('ca-broadcast-popup');
+    }
+
+    createBroadcastPopup() {
+        const bodyHtml = `
+                  <textarea 
+                    id="ca-bc-msg" 
+                    class="ca-8" 
+                    rows="5" 
+                    placeholder="Type the broadcast message..."
+                  ></textarea>
+                  <div class="ca-controls" style="margin-top:4px;">
+                    <span id="ca-bc-status" class="ca-status"></span>
+                    <a 
+                      id="ca-bc-reset" 
+                      href="#" 
+                      class="ca-reset-link" 
+                      style="margin-left:auto"
+                    >
+                      Reset tracking
+                    </a>
+                  </div>
+                  <div class="ca-popup-actions">
+                    <button 
+                      id="ca-bc-send" 
+                      class="ca-btn ca-btn-slim" 
+                      type="button"
+                    >
+                      Send
+                    </button>
+                  </div>
+                `;
+
+        return this.ensurePopup({
+            id: 'ca-broadcast-popup',
+            title: 'Broadcast message',
+            bodyHtml
+        });
+    }
+
+    printModalStatus(message) {
+        const statusEl = this.app.qs('#ca-specific-status');
+        statusEl.textContent = message;
+        return statusEl;
+    }
+
+    printModalErrorStatus(errorMessage) {
+        const el = this.printModalStatus(errorMessage);
+        el.classList.add('error');
+        el.classList.remove('success');
+        console.warn(errorMessage);
+    }
+
+    printModalSuccessStatus(successMessage) {
+        const el = this.printModalStatus(successMessage);
+        el.classList.add('success');
+        el.classList.remove('error');
+        console.log(successMessage);
+    }
+
+    openSendMessageModal() {
+        const pop = this.createSpecificPopup();
+        this.app.qs('#ca-specific-status', pop).textContent = '';
+        this.app.qs('#ca-specific-send', pop).addEventListener('click', async () => {
+            const sendPrivateMessageUser = this.app.qs('#ca-specific-username').value;
+            const sendPrivateMessageText = this.app.qs('#ca-specific-message').value;
+            console.log(`[CA] Sending private message to ${sendPrivateMessageUser}:`, sendPrivateMessageText);
+            const result = await this.app.UserStore.getOrFetchByName(sendPrivateMessageUser);
+            console.log(result)
+
+            if (Array.isArray(result) && result.length > 1) {
+                console.warn(`Invalid result:`, result);
+                return this.printModalErrorStatus(`Multiple users were found. Make a more specific search.`);
+            } else if ((Array.isArray(result) && result.length === 0) || !result[0]) {
+                return this.printModalErrorStatus(`User ${sendPrivateMessageUser} not found`);
+            }
+
+            const user = result[0];
+
+            if (!user?.uid) {
+                console.warn(`Invalid user: `, user);
+                return this.printModalErrorStatus(`Returned user doesn't have a uid.`);
+            }
+
+            if (await this.app.sendWithThrottle(user.uid, sendPrivateMessageText)) {
+                this.app.logEventLine(`Sent to ${user.name || user.uid}.`)
+                return this.printModalSuccessStatus(`Private message to ${sendPrivateMessageUser} has been successfully sent`);
+            } else {
+                return this.printModalErrorStatus(`Error sending private message to ${sendPrivateMessageUser}`);
+            }
+        });
+
+        this.togglePopup('ca-specific-popup');
+    }
+
+
+    openSettingsPopup() {
+        const popup = this.createSettingsPopup();
+        if (!popup) {
+            console.error('[CA] openSettingsPopup: popup not created');
+            return;
+        }
+
+        const debugSettingsCheckbox = popup.querySelector('#ca-debug-checkbox-settings');
+        const verboseSettingsCheckbox = popup.querySelector('#ca-verbose-checkbox-settings');
+
+        if (!debugSettingsCheckbox || !verboseSettingsCheckbox) {
+            console.error('[CA] openSettingsPopup: settings checkboxes not found');
+            return;
+        }
+
+        debugSettingsCheckbox.checked = !!this.debugMode;
+        verboseSettingsCheckbox.checked = !!this.verboseMode;
+
+        const applyDebugChange = (enabled) => {
+            const safeEnabled = !!enabled;
+            this.debugMode = safeEnabled;
+
+            this.app._setCookie(this.app.DEBUG_COOKIE, String(safeEnabled));
+            localStorage.setItem(this.app.DEBUG_MODE_KEY, String(safeEnabled));
+            if (this.app.Store) {
+                this.app.Store.set(this.app.DEBUG_MODE_KEY, safeEnabled);
+            }
+
+            console.log(
+                safeEnabled
+                    ? '[DEBUG] Debug mode enabled'
+                    : 'Debug mode disabled'
+            );
+
+
+            if (debugSettingsCheckbox.checked !== safeEnabled) {
+                debugSettingsCheckbox.checked = safeEnabled;
+            }
+        };
+
+        const applyVerboseChange = (enabled) => {
+            const safeEnabled = !!enabled;
+            this.verboseMode = safeEnabled;
+
+            this.app._setCookie(this.app.VERBOSE_COOKIE, String(safeEnabled));
+            localStorage.setItem(this.app.VERBOSE_MODE_KEY, String(safeEnabled));
+            if (this.app.Store) {
+                this.app.Store.set(this.app.VERBOSE_MODE_KEY, safeEnabled);
+            }
+
+            console.log(
+                safeEnabled
+                    ? '[VERBOSE] Verbose mode enabled'
+                    : 'Verbose mode disabled'
+            );
+
+            if (verboseSettingsCheckbox.checked !== safeEnabled) {
+                verboseSettingsCheckbox.checked = safeEnabled;
+            }
+        };
+
+        if (!debugSettingsCheckbox.dataset.caWired) {
+            debugSettingsCheckbox.dataset.caWired = '1';
+            debugSettingsCheckbox.addEventListener('change', (e) => {
+                applyDebugChange(!!e.target.checked);
+            });
+        }
+
+        if (!verboseSettingsCheckbox.dataset.caWired) {
+            verboseSettingsCheckbox.dataset.caWired = '1';
+            verboseSettingsCheckbox.addEventListener('change', (e) => {
+                applyVerboseChange(!!e.target.checked);
+            });
+        }
+
+        this.togglePopup('ca-settings-popup');
+    }
+
+    createAndOpenPopupWithHtml(html, id, title) {
+        // Build our own draggable CA popup
+        const popup = this.ensurePopup({
+            id: id,
+            title: title,
+            bodyHtml: html   // just the inside of large_modal_content
+        });
+
+        this.togglePopup('ca-profile-popup');
+
+        // Reuse image hover preview inside the profile popup as well
+        this.app.installLogImageHoverPreview(popup);
+    }
+
+    createSettingsPopup() {
+        const bodyHtml = `
+              <div class="ca-section">
+                <div class="ca-section-title">
+                  <span>Logging</span>
+                </div>
+                <div class="ca-row">
+                  <label class="ca-debug-toggle" title="Enable debug logging">
+                    <input type="checkbox" id="ca-debug-checkbox-settings">
+                    <span>Debug</span>
+                  </label>
+                </div>
+                <div class="ca-row">
+                  <label class="ca-debug-toggle" title="Enable verbose logging (very detailed)">
+                    <input type="checkbox" id="ca-verbose-checkbox-settings">
+                    <span>Verbose</span>
+                  </label>
+                </div>
+              </div>
+            `;
+
+        return this.ensurePopup({
+            id: 'ca-settings-popup',
+            title: 'Settings',
+            bodyHtml
+        });
+    }
+
+    createSpecificPopup() {
+        const bodyHtml = `
+              <div class="ca-row">
+                <input 
+                  id="ca-specific-username" 
+                  class="ca-input-slim" 
+                  type="text" 
+                  placeholder="Enter username (case-insensitive)"
+                >
+                <button 
+                  id="ca-specific-send" 
+                  class="ca-btn ca-btn-slim" 
+                  type="button"
+                >
+                  Send
+                </button>
+              </div>
+            
+              <div id="ca-specific-status" class="ca-status"></div>
+            
+              <textarea 
+                id="ca-specific-message" 
+                class="ca-8" 
+                rows="5" 
+                placeholder="Type the message..."
+              ></textarea>
+              <div class="ca-popup-actions">
+                <a 
+                  id="ca-specific-reset" 
+                  href="#" 
+                  class="ca-reset-link"
+                >
+                  Reset tracking
+                </a>
+              </div>
+            `;
+
+        return this.ensurePopup({
+            id: 'ca-specific-popup',
+            title: 'Send message',
+            bodyHtml
+        });
+    }
+
+    openCloudflarePopup() {
+        const bodyHtml = `
+      <p style="margin-bottom:8px;">
+        Cloudflare is blocking the chat requests (HTTP 403).<br>
+        Please refresh the page to continue.
+      </p>
+      <div id="ca-cloudflare-url" class="ca-status" style="margin-bottom:8px;"></div>
+      <button id="ca-cloudflare-refresh" class="ca-btn ca-btn-slim" type="button">
+        Refresh page
+      </button>
+    `;
+
+        const popup = this.ensurePopup({
+            id: 'ca-cloudflare-popup',
+            title: 'Connection issue',
+            bodyHtml
+        });
+
+        if (!popup) {
+            console.error('[Popups] openCloudflarePopup: ensurePopup failed');
+            return;
+        }
+
+        const refreshBtn = popup.querySelector('#ca-cloudflare-refresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                window.location.reload();
+            });
+        }
+
+        this.togglePopup('ca-cloudflare-popup');
+    }
+
+    /**
+     * This is your existing “predefined messages” popup, moved out of App.
+     */
+    createPredefinedMessagesPopup() {
+        const bodyHtml = `
+      <div class="ca-predefined-messages-editor">
+        <div class="ca-predefined-messages-editor-header">
+          <span>Template editor</span>
+          <button
+            type="button"
+            id="ca-predefined-messages-toggle"
+            class="ca-predefined-messages-toggle"
+          >
+            Hide editor
+          </button>
+        </div>
+
+        <div class="ca-predefined-messages-editor-body">
+          <form
+            id="ca-predefined-messages-form"
+            class="ca-predefined-messages-form"
+          >
+            <label>
+              Subject<br>
+              <input
+                type="text"
+                id="ca-predefined-messages-subject"
+                class="ca-8"
+              >
+            </label>
+
+            <label>
+              Text<br>
+              <textarea
+                id="ca-predefined-messages-text"
+                class="ca-8"
+                rows="3"
+              ></textarea>
+            </label>
+
+            <input
+              type="hidden"
+              id="ca-predefined-messages-index"
+              value="-1"
+            >
+
+            <div class="ca-predefined-messages-buttons">
+              <button
+                type="button"
+                id="ca-predefined-messages-reset"
+                class="ca-btn ca-btn-slim"
+              >
+                Clear
+              </button>
+
+              <button
+                type="submit"
+                id="ca-predefined-messages-save"
+                class="ca-btn ca-btn-slim"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <ul id="ca-predefined-messages-list"></ul>
+    `;
+
+        return this.ensurePopup({
+            id: 'ca-predefined-messages-popup',
+            title: 'Manage predefined messages',
+            bodyHtml
+        });
+    }
+
+    /**
+     * This is basically your old App.openPredefinedPopup, but here.
+     */
+    openPredefinedPopup(wrapper, prefilledText = null) {
+        const popup = this.createPredefinedMessagesPopup();
+
+        if (!(popup instanceof HTMLElement)) {
+            console.error('[Popups] openPredefinedPopup: popup is not an HTMLElement');
+            return null;
+        }
+
+        const form = this.app.qsForm('#ca-predefined-messages-form', popup);
+        const subjectInput = this.app.qsInput('#ca-predefined-messages-subject', popup);
+        const textInput = this.app.qsTextarea('#ca-predefined-messages-text', popup);
+        const indexInput = this.app.qsInput('#ca-predefined-messages-index', popup);
+        const resetBtn = this.app.qs('#ca-predefined-messages-reset', popup);
+        const editorRoot = this.app.qs('.ca-predefined-messages-editor', popup);
+        const toggleBtn = this.app.qs('#ca-predefined-messages-toggle', popup);
+
+        if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
+            console.error('[Popups] openPredefinedPopup: missing form controls');
+            return null;
+        }
+
+        if (prefilledText) {
+            indexInput.value = '-1';
+            subjectInput.value = subjectInput.value || '';
+            textInput.value = prefilledText;
+        }
+
+        if (toggleBtn && editorRoot && !editorRoot.dataset.caToggleInitialized) {
+            editorRoot.dataset.caToggleInitialized = '1';
+            editorRoot.classList.add('ca-predefined-editor-collapsed');
+            toggleBtn.textContent = 'Show editor';
+
+            toggleBtn.addEventListener('click', () => {
+                const collapsed = editorRoot.classList.toggle('ca-predefined-editor-collapsed');
+                toggleBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
+            });
+        }
+
+        resetBtn.addEventListener('click', () => {
+            this.app.predefinedEditIndex = null;
+            indexInput.value = '-1';
+            subjectInput.value = '';
+            textInput.value = '';
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const subject = subjectInput.value.trim();
+            const text = textInput.value.trim();
+
+            if (!subject && !text) {
+                console.warn('[Popups] Cannot save empty predefined message');
+                return;
+            }
+
+            const list = this.app._getPredefinedMessages().slice();
+            const idx = Number(indexInput.value);
+
+            if (!Number.isNaN(idx) && idx >= 0 && idx < list.length) {
+                list[idx] = {subject, text};
+            } else {
+                list.push({subject, text});
+            }
+
+            this.app._savePredefinedMessages(list);
+            this.app._renderPredefinedList(popup);
+            this.app._refreshAllPredefinedSelects();
+
+            this.app.predefinedEditIndex = null;
+            indexInput.value = '-1';
+            subjectInput.value = '';
+            textInput.value = '';
+        });
+
+        this.togglePopup('ca-predefined-messages-popup');
+        return popup;
+    }
+
+    renderUsersPopup(popup) {
         if (!popup) {
             console.error('[UsersPopup] _render called without popup');
             return;
@@ -307,9 +930,7 @@ class UsersPopup {
         const total = Array.isArray(allUsers) ? allUsers.length : 0;
         const totalFiltered = Array.isArray(filteredUsers) ? filteredUsers.length : 0;
         const totalFemales = allUsers.filter(u => u.isFemale).length;
-        const totalFemalesOnline = this.app.UsersStore
-            ? this.app.UsersStore.getAllLoggedInFemales().length
-            : allUsers.filter(u => u.isFemale && u.isLoggedIn).length;
+        const totalFemalesOnline = this.app.UserStore.getAllLoggedInFemales().length;
 
         el.textContent =
             `Users: ${totalFiltered}/${total} visible ` +
@@ -354,8 +975,8 @@ class UsersPopup {
                 const nextVisible = {...this.state.visibleColumns};
                 nextVisible[colKey] = !!cb.checked;
                 this.state.visibleColumns = nextVisible;
-                this._saveColumnPrefs();
-                this._render(popup);
+                this.app.Store.set(this.COLUMN_PREFS_KEY, this.state.visibleColumns);
+                this.renderUsersPopup(popup);
                 this.app.installLogImageHoverPreview(popup);
             });
 
@@ -759,7 +1380,7 @@ class UsersPopup {
             }
 
             this.app.UserStore.set(updated);
-            this._render(popup);
+            this.renderUsersPopup(popup);
             this.app.installLogImageHoverPreview(popup);
         };
 
@@ -771,7 +1392,7 @@ class UsersPopup {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                commit();
+                return commit();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 cancel();
@@ -821,7 +1442,7 @@ class UsersPopup {
             }
         }
 
-        this._render(popup);
+        this.renderUsersPopup(popup);
         this.app.installLogImageHoverPreview(popup);
     }
 
@@ -858,33 +1479,19 @@ class UsersPopup {
             : {...user, ...parsed};
 
         this.app.UserStore.set(merged);
-        this._render(popup);
+        this.renderUsersPopup(popup);
         this.app.installLogImageHoverPreview(popup);
     }
 
     // ---------- column prefs ----------
 
     _loadColumnPrefs() {
-        if (!this.app.Store) {
-            console.error('[UsersPopup] _loadColumnPrefs: Store not initialized');
-            return;
-        }
-
         const raw = this.app.Store.get(this.COLUMN_PREFS_KEY);
         if (raw && typeof raw === 'object') {
             this.state.visibleColumns = {...raw};
         } else {
             this.state.visibleColumns = {};
         }
-    }
-
-    _saveColumnPrefs() {
-        if (!this.app.Store) {
-            console.error('[UsersPopup] _saveColumnPrefs: Store not initialized');
-            return;
-        }
-
-        this.app.Store.set(this.COLUMN_PREFS_KEY, this.state.visibleColumns || {});
     }
 
     _isColumnVisible(colKey) {
@@ -926,10 +1533,11 @@ class UsersPopup {
     }
 
     _fallbackUserLinkHTML(user) {
-        const uid = this.app.escapeAttr ? this.app.escapeAttr(user.uid) : String(user.uid || '');
-        const name = this.app.escapeHTML ? this.app.escapeHTML(user.name) : String(user.name || '');
+        const uid = this.app.escapeAttr(user.uid);
+        const name = this.app.escapeHTML(user.name);
         return `<a href="#" class="ca-user-link" data-action="open-profile" data-uid="${uid}">${name}</a>`;
     }
 }
 
-window.CAPlugins.UsersPopup = UsersPopup;
+window.CAPlugins = window.CAPlugins || {};
+window.CAPlugins.Popups = Popups;

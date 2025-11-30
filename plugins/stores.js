@@ -243,9 +243,9 @@
     }
 
     /** Users store (array-backed, like ActivityLogStore) */
-    class UsersStore {
+    class UserStore {
         constructor({kv, cacheKey, app} = {}) {
-            if (!kv) throw new Error('UsersStore requires a KeyValueStore');
+            if (!kv) throw new Error('UserStore requires a KeyValueStore');
             this.kv = kv;
             this.cacheKey = cacheKey;
             this.app = app; // for app.searchUserRemote
@@ -253,7 +253,7 @@
 
         _deleteUserByUid(uid) {
             if (uid == null) {
-                console.error('[UsersStore] _deleteUserByUid: uid is null/undefined');
+                console.error('[UserStore] _deleteUserByUid: uid is null/undefined');
                 return false;
             }
 
@@ -547,7 +547,7 @@
 
         clear() {
             if (!this.kv || !this.cacheKey) {
-                console.error('[UsersStore] clear: kv or cacheKey missing');
+                console.error('[UserStore] clear: kv or cacheKey missing');
                 return;
             }
 
@@ -589,6 +589,6 @@
     window.CAPlugins = {};
     window.CAPlugins.KeyValueStore = KeyValueStore;
     window.CAPlugins.ActivityLogStore = ActivityLogStore;
-    window.CAPlugins.UsersStore = UsersStore;
+    window.CAPlugins.UserStore = UserStore;
     window.CAPlugins.NullStorage = NullStorage;
 })();
