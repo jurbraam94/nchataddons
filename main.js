@@ -1923,18 +1923,24 @@
             if (!this.safeCall(window, 'closeList')) return false;
             if (!this.safeCall(window, 'hideModal')) return false;
             if (!this.safeCall(window, 'hideOver')) return false;
-            
+
             openPrivate(uid, name, avatar);
         }
 
         safeSet(obj, key, value) {
-            //if (typeof obj?.[key] === 'undefined') return true;
+            if (typeof obj?.[key] === 'undefined') {
+                console.error(`key ${key} is not defined in object`, obj);
+                return false;
+            }
             obj[key] = value;
             return true;
         }
 
         safeCall(obj, key, ...args) {
-            if (typeof obj?.[key] !== 'function') return true;
+            if (typeof obj?.[key] !== 'function') {
+                console.error(`Function ${key} is not defined in object`, obj);
+                return false;
+            }
             obj[key](...args);
             return true;
         }
