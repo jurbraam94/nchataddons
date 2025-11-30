@@ -2211,10 +2211,15 @@
             const checkChange = (key, label, color, overrideText = null) => {
                 if (existingUserJsonFromStore[key] !== updatedExistingUserJson[key]) {
                     changedKeys.push(key);
+                    const text = overrideText ? overrideText : `${updatedExistingUserJson.name} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `;
                     addSegment(
-                        overrideText ? overrideText : `${updatedExistingUserJson.name} has changed ${updatedExistingUserJson.isFemale ? `her` : `his`} ${label} (${existingUserJsonFromStore[key]} → ${updatedExistingUserJson[key]}), `,
+                        text,
                         color
                     );
+
+                    if (key !== "isLoggedIn") {
+                        this.logEventLine(text, updatedExistingUserJson);
+                    }
                 }
             };
 
