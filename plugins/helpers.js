@@ -2,9 +2,9 @@
 class Helpers {
     constructor() {
         this.FEMALE_CODE = '2';
-        this.SettingsStore = new SettingsStore();
-        this.debugMode = this.SettingsStore.getDebugMode();
-        this.verboseMode = this.SettingsStore.getVerboseMode();
+        this.SettingsStore = window.CAPlugins.SettingsStore;
+        this.verboseMode = null;
+        this.debugMode = null;
     }
 
     extractUserId(el) {
@@ -116,16 +116,42 @@ class Helpers {
     }
 
     debug(...args) {
+        this.verboseMode === null ? this.SettingsStore.getVerboseMode() : false;
+
         if (this.debugMode) {
             console.log('[DEBUG]', ...args);
         }
     };
 
     verbose(...args) {
+        this.verboseMode === null ? this.SettingsStore.getVerboseMode() : false;
+
         if (this.verboseMode) {
             console.log('[VERBOSE]', ...args);
         }
     };
+
+    timeHHMM() {
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        return `${hh}:${mm}`;
+    }
+
+    timeHHMMSS() {
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${hh}:${mm}:${ss}`;
+    }
+
+    getTimeStampInWebsiteFormat() {
+        const d = new Date();
+        const DD = String(d.getDate()).padStart(2, '0');
+        const MM = String(d.getMonth() + 1).padStart(2, '0');
+        return `${DD}/${MM} ${this.timeHHMM()}`;
+    }
 
     parseUserSearchHTML(html) {
         const tmp = document.createElement('div');
@@ -352,5 +378,5 @@ class Helpers {
     }
 }
 
-window.CAPlugins = window.CAPlugins || {};
-window.CAPlugins.Helpers = Helpers;
+// window.CAPlugins = window.CAPlugins || {};
+// window.CAPlugins.Helpers = Helpers;

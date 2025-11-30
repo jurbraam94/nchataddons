@@ -1,32 +1,24 @@
 (async function () {
-    const {
-        KeyValueStore,
-        ActivityLogStore,
-        UserStore,
-        NullStorage,
-        SettingsStore,
-        Popups,
-        Helpers,
-        Api
-    } = window.CAPlugins;
-
-    if (!KeyValueStore || !ActivityLogStore || !UserStore || !NullStorage) {
-        console.error('[CA] Store plugin classes missing. Got:', window.CAPlugins);
-        return;
-    }
-
     class App {
         constructor() {
             this.FEMALE_CODE = '2';
             this.activeTextInput = null;
 
-            this.SettingsStore = new SettingsStore();
-            this.ActivityLogStore = new ActivityLogStore();
-            this.UserStore = new UserStore();
-            this.Api = new Api();
+            window.CAPlugins = {};
+            window.CAPlugins.SettingsStore = new SettingsStore();
+            window.CAPlugins.Helpers = new Helpers();
+            window.CAPlugins.KeyValueStore = new KeyValueStore();
+            window.CAPlugins.ActivityLogStore = new ActivityLogStore();
+            window.CAPlugins.UserStore = new UserStore();
+            window.CAPlugins.NullStorage = new NullStorage();
+            window.CAPlugins.Api = new Api();
+
+            this.ActivityLogStore = window.CAPlugins.ActivityLogStore;
+            this.UserStore = window.CAPlugins.UserStore;
+            this.Api = window.CAPlugins.Api;
             this.Popups = new Popups(this);
-            this.Tester = new ChatAddonTester(this);
-            this.Helpers = new Helpers(this);
+            this.SettingsStore = window.CAPlugins.SettingsStore;
+            this.Helpers = window.CAPlugins.Helpers;
 
             this.options = {};
             this.state = {
@@ -163,7 +155,6 @@
             this.sel.raw = walk(this.sel) || {};
         }
 
-
         async init(options = {}) {
             this.options = options || {};
             this._removeSuperBotMethods();
@@ -207,7 +198,6 @@
             }
 
             this._installAudioAutoplayGate();
-            this.initializeGlobalWatermark();
             this._updateStorageToggleUi(this.SettingsStore.getWriteStorageMode());
             this.buildMenuLogPanel();
             const userContainersWrapper = document.createElement(`div`);
@@ -244,11 +234,6 @@
 
             const dmTextarea = this.Helpers.qsTextarea("#message_content");
             const dmSendBtn = this.Helpers.qs("#private_send");
-
-            if (!dmTextarea || !dmSendBtn) {
-                console.error('Dmtextarea or dmsendbtn not found');
-                return;
-            }
 
             dmTextarea.addEventListener("keydown", (event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -314,12 +299,6 @@
                 return null;
             }
 
-            if (!document.body.contains(this.activeTextInput)) {
-                console.warn('[CA] Active text box is no longer in the DOM');
-                this.activeTextInput = null;
-                return null;
-            }
-
             return this.activeTextInput;
         }
 
@@ -332,20 +311,6 @@
             }
 
             this._appendPredefinedToBox(template, box);
-        }
-
-
-        scheduleIdle(fn, timeout = 1500) {
-            if (typeof fn !== 'function') {
-                console.error('[CA] scheduleIdle: fn must be a function');
-                return;
-            }
-
-            if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-                window.requestIdleCallback(() => fn(), {timeout});
-            } else {
-                setTimeout(() => fn(), 0);
-            }
         }
 
         _removeSuperBotMethods() {
@@ -530,42 +495,6 @@
             box.focus();
         }
 
-        _applyPredefinedFromSelect(selectEl) {
-            if (!selectEl) {
-                console.error('[CA] _applyPredefinedFromSelect: selectEl is missing');
-                return false;
-            }
-
-            const idxStr = selectEl.value;
-            if (!idxStr) {
-                console.warn('[CA] _applyPredefinedFromSelect: nothing selected');
-                return false;
-            }
-
-            const idx = Number(idxStr);
-            const list = this.SettingsStore.getPredefinedMessages();
-            if (Number.isNaN(idx) || idx < 0 || idx >= list.length) {
-                console.warn('[CA] _applyPredefinedFromSelect: invalid index', idxStr);
-                return false;
-            }
-
-            const template = list[idx];
-            const targetSelector = selectEl.dataset.predefinedMessagesTarget;
-            if (!targetSelector) {
-                console.error('[CA] _applyPredefinedFromSelect: missing data-predefined-messages-target');
-                return false;
-            }
-
-            const box = this.Helpers.qs(targetSelector);
-            if (!box) {
-                console.error('[CA] _applyPredefinedFromSelect: target not found for selector:', targetSelector);
-                return false;
-            }
-
-            this._appendPredefinedToBox(template, box);
-            return true;
-        }
-
         appendCustomActionsToBar() {
             const bar = document.getElementById('right_panel_bar');
 
@@ -642,7 +571,7 @@
                 const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
                 this.ui.loggingBox.innerHTML = '';
 
-                this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.timeHHMM()}`);
+                this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.Helpers.timeHHMM()}`);
                 this.Helpers.verbose(`[AutoClear] Cleared ${removed} event log(s).`);
             };
 
@@ -808,9 +737,8 @@
         }
 
         async fetchPrivateMessagesForUid(user, params) {
-            const token = this.Helpers.getToken();
-            if (!token || !user.uid) {
-                console.error(`.caFetchChatLogFor() called with invalid arguments:`, user.uid, params);
+            if (!user.uid) {
+                console.error(`.caFetchChatLogFor() called with invalid arguments:`, user.uid);
                 return Promise.resolve('');
             }
 
@@ -1104,7 +1032,6 @@
         buildLogHTML(kind, content, user) {
             const text = String(content || '');
 
-
             if (kind === 'event') {
                 const m = text.match(/^\[USER_UPDATE]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
 
@@ -1146,13 +1073,7 @@
         }
 
         async _onLogClickGeneric(e) {
-            if (!e || !e.target) {
-                console.error('[CA] _onLogClickGeneric: invalid event/target', e);
-                return;
-            }
-
-            const target = e.target;
-            const entry = target.closest?.(this.sel.log.classes.ca_log_entry);
+            const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
             if (!entry) {
                 return;
             }
@@ -1161,7 +1082,7 @@
             const isSystem = (uid === 'system');
 
             this.Helpers.verbose('Log entry clicked:', {entry, uid, isSystem});
-            const userLinkEl = target.closest?.(this.sel.raw.log.classes.ca_user_link);
+            const userLinkEl = e.target.closest?.(this.sel.raw.log.classes.ca_user_link);
             if (userLinkEl && uid && !isSystem) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1171,7 +1092,7 @@
                 return;
             }
 
-            const actionEl = target.closest?.('[data-action]');
+            const actionEl = e.target.closest?.('[data-action]');
             if (actionEl) {
                 const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
 
@@ -1251,9 +1172,9 @@
             const dmLinkSel = this.sel.log.classes.ca_dm_link;
 
             const dmArea =
-                target.closest?.(logTextSel) ||
-                target.closest?.(dmLinkSel) ||
-                target.closest?.('img.chat_image');
+                e.target.closest?.(logTextSel) ||
+                e.target.closest?.(dmLinkSel) ||
+                e.target.closest?.('img.chat_image');
 
             if (dmArea && uid && !isSystem) {
                 e.preventDefault();
@@ -1355,7 +1276,6 @@
 
         }
 
-
         buildBroadcastList() {
             const out = [];
             const loggedInFemaleUsers = this.UserStore.getAllLoggedInFemales();
@@ -1399,7 +1319,6 @@
 
         async _runBroadcast(to, text) {
             const batchSize = 10;
-
             const secondsBetweenSends = [2000, 5000];
             const secondsBetweenBatches = [10000, 20000];
             const sleep = this.sleep
@@ -1891,10 +1810,6 @@
         }
 
         _logStyled(label, segments, labelStyle = 'color:#9cf; font-weight:bold') {
-            if (!Array.isArray(segments) || segments.length === 0) {
-                return;
-            }
-
             const parts = [];
             const styles = [];
 
@@ -2640,7 +2555,7 @@
             this.SettingsStore.setWriteStorageMode(nextMode);
 
             this._updateStorageToggleUi(nextMode);
-            this.logEventLine(`Storage mode set to ${nextMode} at ${this.timeHHMM()}`);
+            this.logEventLine(`Storage mode set to ${nextMode} at ${this.Helpers.timeHHMM()}`);
         }
 
         _wirePanelNav() {
@@ -2705,7 +2620,7 @@
             const removedLogin = this.ActivityLogStore.clearByKind('login') || 0;
             const removedLogout = this.ActivityLogStore.clearByKind('logout') || 0;
             console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
-            this.logEventLine(`Logs cleared at ${this.timeHHMMSS()}`);
+            this.logEventLine(`Logs cleared at ${this.Helpers.timeHHMMSS()}`);
         }
 
         _createUserListContainer(options) {
@@ -2790,11 +2705,6 @@
         }
 
         createOtherUsersContainer() {
-            if (!this.ui || !this.ui.userContainersWrapper) {
-                console.error('[CA] createOtherUsersContainer: userContainersWrapper is not set');
-                return;
-            }
-
             const refs = this._createUserListContainer({
                 wrapperEl: this.ui.userContainersWrapper,
                 containerId: this.sel.raw.users.otherUsersContainer,
@@ -2821,11 +2731,6 @@
         }
 
         createFemaleUsersContainer() {
-            if (!this.ui || !this.ui.userContainersWrapper) {
-                console.error('[CA] createFemaleUsersContainer: userContainersWrapper is not set');
-                return;
-            }
-
             const refs = this._createUserListContainer({
                 wrapperEl: this.ui.userContainersWrapper,
                 containerId: this.sel.raw.users.femaleUsersContainer,
@@ -2978,10 +2883,6 @@
         }
 
         _setExpanded(container, expanded) {
-            if (!container) {
-                console.error('[CA] _setExpanded: container missing');
-                return;
-            }
             container.classList.toggle('ca-expanded', !!expanded);
             container.classList.toggle('ca-collapsed', !expanded);
         }
@@ -3024,11 +2925,6 @@
         }
 
         wireUserContainerHeaders() {
-            if (!this.ui || !this.ui.userContainersWrapper) {
-                console.error('[CA] wireUserContainerHeaders: userContainersWrapper missing');
-                return;
-            }
-
             const containerGroups = this.ui.userContainersWrapper.children;
 
             if (!containerGroups || containerGroups.length === 0) {
@@ -3119,11 +3015,6 @@
         _wireLogClear() {
             const buttons = this.Helpers.qsa('.ca-section-title .clear-logs', document);
 
-            if (!buttons || buttons.length === 0) {
-                console.warn('[LOG] No per-section clear buttons found (.clear-logs)');
-                return;
-            }
-
             buttons.forEach((btn) => {
                 if (btn._caClearWired) return;
                 btn._caClearWired = true;
@@ -3175,11 +3066,6 @@
         }
 
         isVisuallyTruncated_(el) {
-            if (!el) {
-                console.error("isVisuallyTruncated_: missing element");
-                return false;
-            }
-
             const style = window.getComputedStyle(el);
 
             const clampVal =
@@ -3215,15 +3101,9 @@
 
         ensureExpandButtonFor_(logEntryEl) {
             const logEntryTextEl = logEntryEl.querySelector(`${this.sel.log.classes.ca_log_text}`);
-
-            const C = this.sel.raw.log.classes;
-            const ind = logEntryEl.querySelector(`.${C.ca_expand_indicator}`);
-            if (!ind) return;
-
-            // Is expanded?
+            const ind = logEntryEl.querySelector(`.${this.sel.raw.log.classes.ca_expand_indicator}`);
             const expanded = logEntryTextEl.classList.contains("ca-text-expanded");
 
-            // Apply CSS clamp classes (not in click handler anymore)
             if (expanded) {
                 logEntryTextEl.classList.add("ca-text-expanded");
                 logEntryTextEl.classList.remove("ca-text-clamped");
@@ -3232,19 +3112,12 @@
                 logEntryTextEl.classList.add("ca-text-clamped");
             }
 
-            // Is content actually truncated?
             const capped = this.isVisuallyTruncated_(logEntryTextEl);
-
-            // Show button if either:
-            // - text is truncated (so needs expand button)
-            // - text is expanded (so we must show collapse icon)
             const shouldShow = expanded || capped;
 
             logEntryTextEl.setAttribute("data-action", shouldShow ? 'toggle-expand' : 'open-dm');
 
             ind.style.display = shouldShow ? "" : "none";
-
-            // Set arrow direction
             ind.textContent = expanded ? "▴" : "▾";
             ind.setAttribute("aria-expanded", expanded ? "true" : "false");
         }
@@ -3407,28 +3280,19 @@
         }
 
         logEventLine(content, user) {
-            let finalUser = null;
-
-            if (user && typeof user === 'object') {
-                finalUser = user;
-            } else if (typeof user === 'string' && user) {
-                finalUser = this.UserStore?.get(user) || null;
-            }
-
-            if (!finalUser) {
-                const systemUserFromStore = this.UserStore?.get('system');
-                finalUser = systemUserFromStore || {
+            if (!user) {
+                user = this.UserStore?.get('system') || {
                     uid: 'system',
                     name: 'System',
                     avatar: ''
                 };
             }
 
-            this.logLine('event', content, finalUser);
+            this.logLine('event', content, user);
         }
 
         logLine(kind, content, user, guid) {
-            const ts = this.getTimeStampInWebsiteFormat();
+            const ts = this.Helpers.getTimeStampInWebsiteFormat();
             const entry = {
                 ts,
                 kind,
@@ -3532,21 +3396,6 @@
             });
         }
 
-
-        initializeGlobalWatermark() {
-            const current = this.SettingsStore.getGlobalWatermark();
-            this.Helpers.verbose('Checking watermark... current value:', current || '(not set)');
-
-            if (current && current.length > 0) {
-                this.Helpers.verbose('Watermark already set:', current);
-                return;
-            }
-
-            const timestamp = this.getTimeStampInWebsiteFormat();
-            this.Helpers.verbose('Setting initial watermark to:', timestamp);
-            this.SettingsStore.setGlobalWatermark(timestamp);
-        }
-
         async restoreLastDmFromStore() {
             const uid = this.SettingsStore.getLastDmUid();
             if (!uid) {
@@ -3559,28 +3408,6 @@
 
         parseLogDateToNumber(logDateStr) {
             return this.ActivityLogStore?.parseLogDateToNumber?.(logDateStr) ?? 0;
-        }
-
-        timeHHMM() {
-            const d = new Date();
-            const hh = String(d.getHours()).padStart(2, '0');
-            const mm = String(d.getMinutes()).padStart(2, '0');
-            return `${hh}:${mm}`;
-        }
-
-        timeHHMMSS() {
-            const d = new Date();
-            const hh = String(d.getHours()).padStart(2, '0');
-            const mm = String(d.getMinutes()).padStart(2, '0');
-            const ss = String(d.getSeconds()).padStart(2, '0');
-            return `${hh}:${mm}:${ss}`;
-        }
-
-        getTimeStampInWebsiteFormat() {
-            const d = new Date();
-            const DD = String(d.getDate()).padStart(2, '0');
-            const MM = String(d.getMonth() + 1).padStart(2, '0');
-            return `${DD}/${MM} ${this.timeHHMM()}`;
         }
 
         processReadStatusForLogs(logs) {
@@ -3604,6 +3431,7 @@
 
     const text = document.body.innerText || "";
     if (!text.includes("Verifieer dat u een mens bent")) {
+
         window.app = new App();
     } else {
         console.warn("Human verification page detected — not initializing.");
