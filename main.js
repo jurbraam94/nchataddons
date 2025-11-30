@@ -327,11 +327,12 @@
                 }
 
                 if (
-                    (target.tagName === 'TEXTAREA') ||
-                    (target.tagName === 'INPUT' && target.type === 'text')
+                    !((target.tagName === 'TEXTAREA') ||
+                        (target.tagName === 'INPUT' && target.type === 'text'))
                 ) {
-                    this.activeTextInput = target;
+                    return;
                 }
+                this.activeTextInput = target;
             });
 
         }
@@ -419,7 +420,7 @@
                 const insertLink = document.createElement('a');
                 insertLink.href = "#";
                 insertLink.className = 'ca-log-action ca-insert-link';
-                insertLink.title = "Insert into active text field";
+                insertLink.title = "Paste into active text field";
 
                 insertLink.appendChild(
                     this.renderSvgIconWithClass(
@@ -949,7 +950,7 @@
                                    intervalMs = 30 * 60 * 1000,
                                    runImmediately = true
                                } = {}) {
-            this.stopClearEventLogLoop?.();
+            this.stopClearEventLogLoop();
 
             const clearEvents = () => {
                 const removed = this.ActivityLogStore?.clearByKind?.('event') || 0;
@@ -1034,6 +1035,11 @@
         }
 
         async processPrivateSendResponse(data, targetUid) {
+            if (data?.code !== 1) {
+                console.error(`[PrivateSend] Could not parse response from native message send:`, data);
+                return null;
+            }
+
             const logData = data.log || {};
             const content = logData.log_content || '';
             const dmSentToUser = await this.UserStore.get(targetUid);
@@ -1081,7 +1087,6 @@
         }
 
         installPrivateSendInterceptor() {
-
             if (!this._pp_xhrOpen) this._pp_xhrOpen = XMLHttpRequest.prototype.open;
             if (!this._pp_xhrSend) this._pp_xhrSend = XMLHttpRequest.prototype.send;
 
@@ -1103,9 +1108,6 @@
                         if (this.readyState === 4 && this.status === 200) {
                             let data = self.toPrivateSendResponse(JSON.parse(String(this?.responseText)));
 
-                            if (!data) {
-                                return;
-                            }
                             const targetId = new URLSearchParams(capturedBody).get('target');
                             await self.processPrivateSendResponse(data, targetId);
                         }
@@ -1225,10 +1227,10 @@
             });
         }
 
-        fetchPrivateMessagesForUid(uid, params) {
+        fetchPrivateMessagesForUid(user, params) {
             const token = this.getToken();
-            if (!token || !uid) {
-                console.error(`.caFetchChatLogFor() called with invalid arguments:`, uid, params);
+            if (!token || !user.uid) {
+                console.error(`.caFetchChatLogFor() called with invalid arguments:`, user.uid, params);
                 return Promise.resolve('');
             }
 
@@ -1236,12 +1238,12 @@
                 token,
                 cp: 'chat',
                 fload: '1',
-                preload: '0',
-                priv: String(uid),
-                pcount: params.get('pcount'),
-                last: params.get('last'),
-                lastp: this.UserStore.getParsedDmInUpToLog(uid),
                 caction: String(this.state.CHAT_CTX.caction),
+                last: params.get('last'),
+                preload: '0',
+                priv: String(user.uid),
+                lastp: user.parsedDmInUpToLog,
+                pcount: params.get('pcount'),
                 room: String(this.state.CHAT_CTX.room),
                 notify: String(this.state.CHAT_CTX.notify),
                 curset: String(this.state.CHAT_CTX.curset)
@@ -1249,7 +1251,7 @@
 
             this.verbose(`Fetch chatlog body: `, bodyObj);
             const bodyLog = new URLSearchParams(bodyObj).toString().replace(/token=[^&]*/, 'token=[redacted]');
-            this.verbose('caFetchChatLogFor uid=', uid, ' body:', bodyLog);
+            this.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyLog);
 
             const body = new URLSearchParams(bodyObj).toString();
 
@@ -1441,14 +1443,7 @@
             console.log('[CA] Log image hover preview installed (logs + user list + public chat)');
         }
 
-        async caProcessPrivateLogResponse(uid, privateChatLogs) {
-            const uidStr = String(uid);
-            const user = await this.UserStore.getOrFetch(uidStr);
-            if (!user) {
-                console.error('[caProcessPrivateLogResponse] Could not resolve user for uid:', uidStr);
-                return;
-            }
-
+        async caProcessPrivateLogResponse(user, privateChatLogs) {
             let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
             const initialFetch = parsedDmInUpToLog === 0;
             let newMessages = 0;
@@ -1469,7 +1464,7 @@
                         continue;
                     }
 
-                    console.log(`New message ${res.logId} for user ${uidStr}`, privateChatLog);
+                    console.log(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
 
                     if (res.logId > parsedDmInUpToLog) {
                         parsedDmInUpToLog = res.logId;
@@ -1478,7 +1473,7 @@
                     newMessages++;
                 }
             } else {
-                console.log(`No new private chat logs for user ${uidStr}`);
+                console.log(`No new private chat logs for user ${user.uid}`);
             }
 
             const updatedUser = {...user};
@@ -1487,7 +1482,7 @@
             if (newMessages > 0) {
                 if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                     updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                    this.debug(`Set last read for user ${uidStr} to ${parsedDmInUpToLog}`);
+                    this.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
                     shouldSave = true;
                 }
 
@@ -1501,13 +1496,12 @@
                 updatedUser.noNewPrivateDmTries = tries;
                 shouldSave = true;
 
-                console.warn(`[PrivateChat] No messages accepted for uid ${uidStr} (attempt ${tries})`);
+                console.warn(`[PrivateChat] No messages accepted for uid ${user.uid} (attempt ${tries})`);
 
                 if (tries >= 3) {
-                    const wm = this.getTimeStampInWebsiteFormat();
                     updatedUser.parsedDmInUpToLog = 0;
                     console.warn(
-                        `[PrivateChat] 3x nothing parsed for uid ${uidStr}; ` +
+                        `[PrivateChat] 3x nothing parsed for uid ${user.uid}; ` +
                         `reset the complete chat history (setting parsedDmUptoLog to 0)`
                     );
                 }
@@ -1543,7 +1537,7 @@
             }
         }
 
-        caProcessChatPayload(txt, params) {
+        async caProcessChatPayload(txt, params) {
             if (!txt || typeof txt !== 'string' || txt.trim() === '') {
                 console.warn('Empty or invalid chat payload response');
                 return;
@@ -1552,50 +1546,65 @@
             const data = this.toChatLogResponse(JSON.parse(String(txt)));
 
             if (Array.isArray(data.plogs) && data.plogs.length > 0) {
-                this.handleChatLogPlogs(data.plogs);
+                await this.handleChatLogPlogs(data.plogs);
                 return;
             }
 
             const pico = Number(data && data.pico);
-            if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) return;
+
+            if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) {
+                return;
+            }
+
             this.debug('Private messages count (pico):', pico, '— checking for new messages');
-            this.caUpdatePrivateConversationsList(false).then((privateConversations) => {
-                privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-                this.verbose('Private conversations returned:', privateConversations.length, privateConversations);
-                const privateChatsToFetch = privateConversations
-                    .filter(pc => pc.unread > 0)
-                    .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
+            const privateConversations = await this.caUpdatePrivateConversationsList(false);
+            await this.handlePrivateConversationsList(privateConversations, params);
+        }
 
-                if (!privateChatsToFetch.length) {
-                    console.log('None of the conversations has new messages');
-                    return;
-                }
+        async handlePrivateConversationsList(privateConversations, params) {
+            privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
+            this.verbose('Private conversations returned:', privateConversations.length, privateConversations);
+            const privateChatsToFetch = privateConversations
+                .filter(pc => pc.unread > 0)
+                .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
 
-                this.verbose('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
+            if (!privateChatsToFetch.length) {
+                console.log('None of the conversations has new messages');
+                return;
+            }
 
-                (async () => {
-                    for (const privateChat of privateChatsToFetch) {
-                        console.log('Fetch private message for conversation', privateChat.uid, '— unread:', privateChat.unread);
-                        const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(privateChat.uid, params);
+            this.verbose('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
 
-                        if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse.trim() === '') {
-                            console.warn('Empty response for conversation', privateChat.uid);
-                            return;
-                        }
+            for (const privateChat of privateChatsToFetch) {
+                await this.handlePrivateChat(privateChat, params);
+            }
+        }
 
-                        const privateChatLogResponse = this.toPrivateChatLogResponse(JSON.parse(String(rawPrivateChatLogResponse)));
+        async handlePrivateChat(privateChat, params) {
+            console.log('Fetch private message for conversation', privateChat.uid, '— unread:', privateChat.unread);
 
-                        const privateChatLogs =
-                            (Array.isArray(privateChatLogResponse?.pload) && privateChatLogResponse.pload.length ? privateChatLogResponse.pload :
-                                (Array.isArray(privateChatLogResponse?.plogs) ? privateChatLogResponse.plogs : []));
+            const user = await this.UserStore.getOrFetch(privateChat.uid);
+            if (!user) {
+                console.error('[caProcessChatPayload] Could not resolve user for uid and aborting the fetch or private messages:', privateChat.uid);
+                return null;
+            }
 
-                        await this.caProcessPrivateLogResponse(
-                            privateChat.uid,
-                            privateChatLogs
-                        );
-                    }
-                })();
-            });
+            const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(user, params);
+
+            if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string' || rawPrivateChatLogResponse.trim() === '') {
+                console.warn('Empty response for conversation', user.uid);
+            }
+
+            const privateChatLogResponse = this.toPrivateChatLogResponse(JSON.parse(String(rawPrivateChatLogResponse)));
+
+            const privateChatLogs =
+                (Array.isArray(privateChatLogResponse?.pload) && privateChatLogResponse?.pload?.length ? privateChatLogResponse.pload :
+                    (Array.isArray(privateChatLogResponse?.plogs) ? privateChatLogResponse.plogs : []));
+
+            await this.caProcessPrivateLogResponse(
+                user,
+                privateChatLogs
+            );
         }
 
         installNetworkTaps() {
@@ -1624,7 +1633,7 @@
                     const responseUrl = this.responseURL || this._ca_url || '';
                     if (this.readyState === 4 && this.status === 200 && this.responseText) {
                         if (self.isChatLogUrl(responseUrl)) {
-                            self.caProcessChatPayload(this.responseText, qs);
+                            await self.caProcessChatPayload(this.responseText, qs);
                         }
                         if (self.isUserListUrl(responseUrl)) {
                             await self.processUserListResponse(this.responseText);
@@ -1672,7 +1681,7 @@
                 .replace(/>/g, '&gt;');
 
             if (kind === 'event') {
-                const m = text.match(/^\[USER_UPDATE\]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
+                const m = text.match(/^\[USER_UPDATE]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
 
                 if (m) {
                     const userName = m[1] || '';
@@ -1744,7 +1753,7 @@
             if (userLinkEl && uid && !isSystem) {
                 e.preventDefault();
                 e.stopPropagation();
-                e.stopImmediatePropagation?.();
+                e.stopImmediatePropagation();
 
                 this.openProfileOnHost(uid);
                 return;
@@ -1771,7 +1780,7 @@
                 if (action === 'delete-log') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
+                    e.stopImmediatePropagation();
 
                     const guid = entry.getAttribute('data-guid');
                     if (guid && this.ActivityLogStore?.remove) {
@@ -1786,7 +1795,7 @@
                 if (action === 'open-profile') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
+                    e.stopImmediatePropagation();
 
                     if (!uid || isSystem) {
                         this.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
@@ -1800,7 +1809,7 @@
                 if (action === 'open-dm') {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation?.();
+                    e.stopImmediatePropagation();
 
                     if (!uid || isSystem) {
                         this.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
@@ -1835,7 +1844,7 @@
             if (dmArea && uid && !isSystem) {
                 e.preventDefault();
                 e.stopPropagation();
-                e.stopImmediatePropagation?.();
+                e.stopImmediatePropagation();
 
                 if (!this.UserStore?.getOrFetch) {
                     console.error('[CA] Generic DM click: UserStore.getOrFetch not available');
@@ -1856,7 +1865,7 @@
             if (uid && !isSystem) {
                 e.preventDefault();
                 e.stopPropagation();
-                e.stopImmediatePropagation?.();
+                e.stopImmediatePropagation();
 
                 this.openProfileOnHost(uid);
             }
@@ -1883,21 +1892,12 @@
             if (!this.safeCall(window, 'hideModal')) return false;
             if (!this.safeCall(window, 'hideOver')) return false;
 
-            const openDm = window['openPrivate'] || window.parent['openPrivate'] || null;
-            this.debug('applyLegacyAndOpenDm: openPrivate function found:', !!openDm);
-            if (!openDm) {
-                console.warn('[321ChatAddons] openPrivate() not available on host');
-                return false;
-            }
-
             this.debug('applyLegacyAndOpenDm: Calling openPrivate with:', uid, name, avatar);
-            const result = this.safeCall({openPrivate: openDm}, 'openPrivate', uid, name, avatar);
-            this.debug('applyLegacyAndOpenDm: openPrivate call result:', result);
-            return result;
+            openPrivate(uid, name, avatar);
         }
 
         safeSet(obj, key, value) {
-            if (typeof obj?.[key] === 'undefined') return true;
+            //if (typeof obj?.[key] === 'undefined') return true;
             obj[key] = value;
             return true;
         }
@@ -2556,8 +2556,8 @@
             };
         }
 
-        toPrivateChatLogResponse(x) {
-            const o = x && typeof x === 'object' ? x : {};
+        toPrivateChatLogResponse(jsonResponse) {
+            const o = jsonResponse && typeof jsonResponse === 'object' ? jsonResponse : {};
             const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
             const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
             return {
@@ -2698,14 +2698,11 @@
                     body
                 }).then(res => res.text().then(async response => {
                     let jsonResponse = JSON.parse(String(response));
-                    let data = this.toPrivateSendResponse(jsonResponse);
 
-                    if (!data || data.code !== 1) {
-                        console.error(`[PrivateSend] Could not parse response from native message send:`, data);
+                    if (!await this.processPrivateSendResponse(this.toPrivateSendResponse(jsonResponse), String(target))) {
                         return {ok: false, status: res.status, body: jsonResponse || response};
                     }
 
-                    await this.processPrivateSendResponse(data, String(target));
                     return {ok: res.ok, status: res.status, body: jsonResponse || response};
                 }));
             }, 10000);
@@ -3321,7 +3318,6 @@
 
                     if (prevSize < 0) {
                         nextSize += prevSize;
-                        delta -= prevSize;
                         prevSize = 0;
                     }
 
@@ -3621,9 +3617,8 @@
             this.ui.femaleUsersContainer = refs.container;
 
             if (refs.subrow) {
-                // your current signatures; this matches the call you showed
                 this.renderAndWireEnableBroadcastCheckbox(refs.subrow, this.ui.femaleUsersContainer);
-                this.renderAndWireHideRepliedToggle(refs.subrow);
+                this.renderAndWireHideRepliedToggle(refs.subrow,);
             } else {
                 console.warn('[CA] createFemaleUsersContainer: subrow is missing, cannot render toggles');
             }
