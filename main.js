@@ -240,14 +240,10 @@ class App {
             this.ui.userContainersWrapper
         ]);
 
-        await this.restoreLastDmFromStore();
         this.appendCustomActionsToBar();
-
         this.overwriteHostMethods();
-
         this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
 
-// Wiring
         this._wireLogClear();
         this._wireTextboxTrackers();
         this._wirePrivatePopupHeaderProfileClick();
@@ -321,7 +317,6 @@ class App {
             });
         }
 
-
         this.helpers.init({
             debugMode: this.settingsStore.getDebugMode(),
             verboseMode: this.settingsStore.getVerboseMode()
@@ -332,6 +327,8 @@ class App {
         await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
         this.installNetworkTaps();
         this.installPrivateSendInterceptor();
+
+        await this.restoreLastDmFromStore();
 
         return this;
     }
@@ -1640,8 +1637,7 @@ class App {
             console.error('[CA] applyLegacyAndOpenDm: window.openPrivate is not a function');
             return;
         }
-
-        window.openPrivate(uid, name, avatar);
+        this.openPrivateInCaPopup({uid, name, avatar});
     }
 
     safeSet(obj, key, value) {

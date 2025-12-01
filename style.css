@@ -1804,3 +1804,286 @@ svg.svg-large {
     min-height: 160px;
     overflow-y: auto;
 }
+
+/* === CA Host Private Popup – Theming & Layout === */
+
+#ca-host-private-popup {
+    /* slightly wider by default, but clamped by global .ca-popup rules */
+    width: 420px;
+    max-width: 90vw;
+}
+
+/* Header: subtle gradient + tighter layout */
+#ca-host-private-popup .ca-popup-header {
+    background: linear-gradient(90deg, #0f172a, #1d293b);
+    border-bottom: 1px solid #1e3a8a;
+    padding: 8px 10px;
+    gap: 8px;
+}
+
+#ca-host-private-popup .ca-host-private-header-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#ca-host-private-popup .ca-host-private-header-left img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+
+/* Username behaves like a link */
+#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips {
+    font-weight: 600;
+    cursor: pointer;
+    color: #e5e7eb;
+}
+
+#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips:hover {
+    text-decoration: underline;
+    color: #bfdbfe;
+}
+
+/* Cog on the right */
+#ca-host-private-popup .ca-host-private-header-right .private_opt {
+    color: #93c5fd;
+}
+
+/* Body background */
+#ca-host-private-popup .ca-popup-body {
+    background: #0f172a;
+    padding: 10px;
+}
+
+/* Messages area and content */
+#ca-host-private-popup .ca-private-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#ca-host-private-popup .ca-private-messages-slot {
+    flex: 1 1 auto;
+    min-height: 160px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 4px 2px 4px 0;
+}
+
+/* Container where host puts messages */
+#ca-host-private-popup #private_content {
+    padding: 6px 4px 4px;
+}
+
+/* Improve spacing between bubbles */
+#ca-host-private-popup #show_private {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Base bubble styling */
+#ca-host-private-popup .privlog .private_logs {
+    align-items: flex-end;
+}
+
+#ca-host-private-popup .privlog .prbox {
+    border-radius: 14px;
+    padding: 6px 9px;
+    font-size: 13px;
+    line-height: 1.4;
+    max-width: 85%;
+    word-break: break-word;
+}
+
+/* Outgoing (you) – right, blue bubble */
+#ca-host-private-popup .outpriv .privcont {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+#ca-host-private-popup .outpriv .prbox {
+    color: #e5e7eb;
+    border-bottom-right-radius: 4px;
+}
+
+/* Incoming – left, darker bubble */
+#ca-host-private-popup .inpriv .privcont {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+#ca-host-private-popup .inpriv .prbox {
+    background: #020617;
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-bottom-left-radius: 4px;
+}
+
+/* Timestamp styling */
+#ca-host-private-popup .prdate {
+    font-size: 11px;
+    opacity: 0.65;
+    margin-top: 2px;
+}
+
+/* Avatars next to bubbles */
+#ca-host-private-popup .avatar_private {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.6);
+}
+
+/* Show bubble actions (delete, etc.) a bit clearer on hover */
+#ca-host-private-popup .privlog:hover .privopt {
+    opacity: 1;
+}
+
+#ca-host-private-popup .privopt {
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+}
+
+/* Footer area */
+#ca-host-private-popup .ca-private-footer-slot {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(51, 65, 85, 0.8);
+    background: #0b1220;
+}
+
+/* Quote bar */
+#ca-host-private-popup #pquote_controller {
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.95);
+}
+
+/* Upload progress */
+#ca-host-private-popup #private_progress .uprogress_wrap {
+    border-radius: 8px;
+    overflow: hidden;
+    background: #020617;
+}
+
+/* Input bar */
+#ca-host-private-popup #priv_input {
+    background: #0b1220;
+    border-radius: 10px;
+    padding: 6px 8px 8px;
+    border: 1px solid #1f2937;
+}
+
+#ca-host-private-popup #private_input {
+    background: transparent;
+}
+
+/* Textarea slightly taller & themed (host already controls id) */
+#ca-host-private-popup #message_content {
+    min-height: 70px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+#ca-host-private-popup #message_content::placeholder {
+    color: #64748b;
+    text-align: left;
+}
+
+/* Input icons row */
+#ca-host-private-popup .input_table {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Plus / emoji / mic icons */
+#ca-host-private-popup .input_item.main_item i,
+#ca-host-private-popup #message_send i {
+    color: #93c5fd;
+    font-size: 15px;
+}
+
+#ca-host-private-popup .input_item.main_item:hover i {
+    color: #bfdbfe;
+}
+
+/* Send button */
+#ca-host-private-popup #message_send .send_btn {
+    border-radius: 999px;
+    padding: 6px 10px;
+    border: 1px solid #2563eb;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #e5e7eb;
+}
+
+#ca-host-private-popup #message_send .send_btn:hover {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+}
+
+/* Private extras (upload / giphy menu) */
+#ca-host-private-popup #priv_input_extra {
+    background: #020617;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
+}
+
+/* Emoji panel inside CA popup */
+#ca-host-private-popup #private_emoticon.back_box {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+
+    width: 100% !important;
+    max-height: 230px;
+    margin-top: 4px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    border-radius: 10px;
+    border: 1px solid #1f2937;
+    background: #020617;
+}
+
+#ca-host-private-popup #private_emoticon .emo_head.private_emo_head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #020617;
+    border-bottom: 1px solid #1f2937;
+}
+
+#ca-host-private-popup #private_emoticon .emo_menu img {
+    width: 22px;
+    height: 22px;
+}
+
+/* Settings menu (ignore / report / delete) */
+#ca-host-private-popup #private_opt.back_menu {
+    background: #020617;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.9);
+}
+
+.hunter_private, .targ_quote {
+    color: #fff;
+    background: #41515f;
+}
