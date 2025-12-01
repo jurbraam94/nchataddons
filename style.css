@@ -1148,6 +1148,7 @@ svg.svg-large {
 #wrap_chat,
 #chat_center,
 #chat_left,
+#chat_right_data,
 #private_content {
     height: 100% !important;
 }

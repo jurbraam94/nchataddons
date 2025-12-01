@@ -1412,6 +1412,8 @@ class App {
         const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
         const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
 
+        closeBtn.addEventListener('click', () => this.settingsStore.setLastDmUid(''));
+
         if (titleSpan) {
             titleSpan.remove();
         }
@@ -3608,6 +3610,7 @@ class App {
 
     async restoreLastDmFromStore() {
         const uid = this.settingsStore.getLastDmUid();
+        console.log(uid, typeof uid)
         if (!uid) {
             this.helpers.debug('There was no uid for a last dm');
             return;
