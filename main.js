@@ -366,6 +366,7 @@ class App {
     }
 
     setAndPersistDebugMode(debugMode) {
+        this.settingsStore.setDebugMode(debugMode);
         this.helpers.setDebugMode(debugMode);
         console.log(
             debugMode
@@ -947,6 +948,7 @@ class App {
 
     async caProcessPrivateLogResponse(user, privateChatLogs) {
         let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
+        console.error('checking parsedDmInUpToLog=', parsedDmInUpToLog);
         const initialFetch = parsedDmInUpToLog === 0;
         let newMessages = 0;
         let skipped = '';
@@ -1054,6 +1056,13 @@ class App {
 
         const pico = Number(data && data.pico);
 
+        if (data.pload?.length > 0 && params.get('preload') == 1) {
+            const user = await this.userStore.getOrFetch(params.get('priv'));
+
+            console.error(data, params.toString('priv'), user);
+            await this.caProcessPrivateLogResponse(user, data.pload);
+        }
+
         if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) {
             return;
         }
@@ -1138,11 +1147,7 @@ class App {
                 // Only handle string bodies here (x-www-form-urlencoded style)
                 if (typeof body === "string") {
 
-                    if (body.indexOf("priv=1") !== -1) {
-                        return;
-                    }
-
-                    if (body.length > 0) {
+                    if (!body.indexOf("priv=1") !== -1) {
                         qs = new URLSearchParams(body);
                         self.caUpdateChatCtxFromBody(qs);
                     }
@@ -1448,22 +1453,22 @@ class App {
         }
 
         const privateTop = privateCenter.querySelector('#private_top');
-        const showPrivate = document.getElementById('show_private');
-        const privInput = document.getElementById('priv_input');
 
-// NEW: extra panels used by plus / emoji / quote / settings / upload
+// IMPORTANT: use the full private_content container, not just the inner UL
+        const privateContent = document.getElementById('private_content');
+
+        const privInput = document.getElementById('priv_input');
         const privInputExtra = document.getElementById('priv_input_extra');
         const pquoteController = document.getElementById('pquote_controller');
         const privateEmoticon = document.getElementById('private_emoticon');
         const privateProgress = document.getElementById('private_progress');
         const privateOptMenu = document.getElementById('private_opt');
 
-
         if (!privateTop) {
             console.error('[CA] openPrivateInCaPopup: #private_top not found inside #private_center');
         }
-        if (!showPrivate) {
-            console.error('[CA] openPrivateInCaPopup: #show_private not found');
+        if (!privateContent) {
+            console.error('[CA] openPrivateInCaPopup: #private_content not found');
         }
         if (!privInput) {
             console.error('[CA] openPrivateInCaPopup: #priv_input not found');
@@ -1564,13 +1569,11 @@ class App {
             console.error('[CA] openPrivateInCaPopup: popup header or close button not found');
         }
 
-
-        // ---------- BODY: move messages + footer into the popup body ----------
         const messagesSlot = popup.querySelector('#ca-private-messages-slot');
-        if (messagesSlot && showPrivate instanceof HTMLElement) {
-            if (!messagesSlot.contains(showPrivate)) {
+        if (messagesSlot && privateContent instanceof HTMLElement) {
+            if (!messagesSlot.contains(privateContent)) {
                 messagesSlot.innerHTML = '';
-                messagesSlot.appendChild(showPrivate);
+                messagesSlot.appendChild(privateContent);
             }
         } else if (!messagesSlot) {
             console.error('[CA] openPrivateInCaPopup: #ca-private-messages-slot not found in popup');
@@ -2439,7 +2442,7 @@ class App {
         const userEl = this.findUserById(uid);
 
         if (!userEl) {
-            this.logger.debug?.('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
+            this.helpers.debug('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
             return;
         }
 
@@ -2523,7 +2526,7 @@ class App {
 
             applyVisualState(nextInclude);
             this.userStore.includeUserForBroadcast(user.uid, nextInclude);
-            this.logger.debug?.(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
+            this.helpers.debug(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
         });
 
         userItemDataEl.appendChild(toggle);

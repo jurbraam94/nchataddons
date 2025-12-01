@@ -1280,6 +1280,10 @@ svg.svg-large {
     height: 100%;
 }
 
+.back_priv, .back_input {
+    background: unset;
+}
+
 #message_content {
     margin-top: auto;
     field-sizing: content;
@@ -1730,14 +1734,12 @@ svg.svg-large {
     overflow-y: auto;
 }
 
-
 /* Keep emoji header visible when scrolling inside the panel */
 #private_emoticon .emo_head.private_emo_head {
     position: sticky;
     top: 0;
     z-index: 1;
 }
-
 
 #ca-host-private-popup {
     width: 25%;
