@@ -1210,7 +1210,7 @@ svg.svg-large {
 }
 
 #rlist_open {
-    margin-left: auto;
+    display: none;
 }
 
 #ca_chat_right {
@@ -2090,16 +2090,4 @@ svg.svg-large {
 .hunter_private, .targ_quote {
     color: #fff;
     background: #41515f;
-}
-
-/* Position the host private popup to the left side, away from the right panel */
-#ca-host-private-popup {
-    position: fixed; /* keep it in view when scrolling */
-    top: 10vh !important; /* nice vertical offset from top */
-    right: 300px !important; /* leave room for the right panel (~280px) */
-    left: auto !important; /* override .ca-popup default (left: 50%) */
-    transform: none !important; /* no horizontal centering */
-    width: 420px; /* fixed, compact DM width */
-    max-width: 420px;
-    z-index: 10008; /* keep it above chat but below any global overlays */
 }

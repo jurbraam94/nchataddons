@@ -254,9 +254,8 @@ class App {
 
         this._wireLogClear();
         this._wireTextboxTrackers();
-        this._wirePrivatePopupHeaderProfileClick();
+        this._wireGlobalChatHeaderProfileClick();
         this.wireListOptionClicks();
-        this.wireUserContainerHeaders();
         this._attachLogClickHandlers();
         this._wirePrivateEmojiEsc();
 
@@ -414,48 +413,30 @@ class App {
         });
     }
 
-    /**
-     * Make the username in the CA private popup header clickable
-     * and open the profile on the host when clicked.
-     */
-    _wirePrivatePopupHeaderProfileClick() {
-        document.addEventListener('click', (event) => {
-            const target = event.target;
+    _wireGlobalChatHeaderProfileClick() {
+        this.helpers.qs('#chat_logs_container').addEventListener('click', async (event) => {
+            const infoEl = event.target.closest('.chat_avatar');
 
-            if (!target || !(target instanceof HTMLElement)) {
+            if (!infoEl) {
                 return;
             }
 
-            // Find a click on the private header username inside our DM popup
-            const nameCell = target.closest(
-                '#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips'
-            );
-            if (!nameCell) {
-                return;
-            }
+            const uid = infoEl.getAttribute('data-id');
 
-            const headerLeft = nameCell.closest('.ca-host-private-header-left');
-            if (!headerLeft) {
-                console.error('[CA] _wirePrivatePopupHeaderProfileClick: header left not found');
-                return;
-            }
-
-            const avatarImg = headerLeft.querySelector('img[data]');
-            if (!avatarImg) {
-                console.error('[CA] _wirePrivatePopupHeaderProfileClick: avatar img with data attr not found');
-                return;
-            }
-
-            const uid = avatarImg.getAttribute('data');
             if (!uid) {
-                console.error('[CA] _wirePrivatePopupHeaderProfileClick: avatar data attribute missing');
+                console.warn('[CA] .get_info element clicked without data user id');
                 return;
             }
 
+            // Prevent old default behavior if any
             event.preventDefault();
-            event.stopPropagation();
 
-            this.openProfileOnHost(uid);
+            if (typeof window.getProfile !== 'function') {
+                console.error('[CA] window.getProfile is not a function, cannot open profile modal');
+                return;
+            }
+
+            await this.openProfileOnHost(uid);
         });
     }
 
@@ -1419,22 +1400,6 @@ class App {
 
     openPrivateInCaPopup({uid, name, avatar}) {
         this.helpers.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
-
-        if (!uid) {
-            console.error('[CA] openPrivateInCaPopup: missing uid', {uid, name, avatar});
-            return;
-        }
-
-        if (!this.hostOpenPrivateOriginal || typeof this.hostOpenPrivateOriginal !== 'function') {
-            console.error('[CA] openPrivateInCaPopup: hostOpenPrivateOriginal is not available');
-            return;
-        }
-
-        if (!this.popups) {
-            console.error('[CA] openPrivateInCaPopup: this.popups is not available');
-            return;
-        }
-
         this.settingsStore.setLastDmUid(uid);
 
         if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
@@ -1449,11 +1414,6 @@ class App {
 
         /** @type {HTMLElement|null} */
         const privateCenter = document.getElementById('private_center');
-        if (!privateCenter) {
-            console.error('[CA] openPrivateInCaPopup: #private_center not found');
-            return;
-        }
-
         const privateTop = privateCenter.querySelector('#private_top');
         const privateContent = document.getElementById('private_content');
         const privInput = document.getElementById('priv_input');
@@ -1477,12 +1437,15 @@ class App {
             name ? `Private chat with ${name}` : 'Private chat'
         );
 
+        popup.uid = uid;
+
+        popup.addEventListener('click', this.openProfileOnHost.bind(this, uid));
+
         if (!(popup instanceof HTMLElement)) {
             console.error('[CA] openPrivateInCaPopup: popup not created for id', popupId);
             return;
         }
 
-        // ---------- CA HEADER: avatar + name + settings icon ----------
         const popupHeader = popup.querySelector('.ca-popup-header');
         const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
         const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
@@ -2559,10 +2522,6 @@ class App {
   `;
 
         mount.appendChild(panel);
-        const rListEl = this.helpers.qs('#rlist_open');
-        const logDualEl = this.helpers.qs('.ca-log-dual');
-        logDualEl.appendChild(rListEl);
-
         this._attachLogClickHandlers();
     }
 
@@ -3040,6 +2999,8 @@ class App {
         content.className = 'ca-user-list-content';
         container.appendChild(content);
 
+        group.addEventListener('click', this._setExpanded.bind(this, group));
+
         return {
             group,
             header,
@@ -3226,9 +3187,9 @@ class App {
         });
     }
 
-    _setExpanded(container, expanded) {
-        container.classList.toggle('ca-expanded', !!expanded);
-        container.classList.toggle('ca-collapsed', !expanded);
+    _setExpanded(container) {
+        container.classList.toggle('ca-expanded');
+        container.classList.toggle('ca-collapsed');
     }
 
     _isStaffListView() {
@@ -3266,46 +3227,6 @@ class App {
         usersBtn.addEventListener('click', () => {
             this.toggleOriginalUserList(false);
         });
-    }
-
-    wireUserContainerHeaders() {
-        const containerGroups = this.ui.userContainersWrapper.children;
-
-        if (!containerGroups || containerGroups.length === 0) {
-            console.warn('[CA] wireUserContainerHeaders: no container groups found in userContainersWrapper');
-            return;
-        }
-
-        for (const userListContainerGroup of containerGroups) {
-            const headerEl = this.helpers.qs('.ca-user-list-header', userListContainerGroup);
-            if (!headerEl) {
-                console.warn('[CA] wireUserContainerHeaders: header not found in group', userListContainerGroup);
-                continue;
-            }
-
-            headerEl.addEventListener('click', (event) => {
-                // 🔴 If the click is inside the checkbox subrow, do nothing here.
-                // Let the checkbox / label behave normally.
-                const inSubrow = event.target.closest('.ca-subrow');
-                if (inSubrow) {
-                    return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-
-                const isExpanded = userListContainerGroup.classList.contains('ca-expanded');
-                const nextExpanded = !isExpanded;
-
-                console.debug('[CA] Header clicked, toggling group', {
-                    group: userListContainerGroup,
-                    wasExpanded: isExpanded,
-                    willBeExpanded: nextExpanded
-                });
-
-                this._setExpanded(userListContainerGroup, nextExpanded);
-            });
-        }
     }
 
     updateFemaleUserCount(count) {
