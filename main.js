@@ -408,15 +408,31 @@ class App {
 
     _wireGlobalChatHeaderProfileClick() {
         this.helpers.qs('#chat_logs_container').addEventListener('click', async (e) => {
-            const infoEl = e.target.closest('.chat_avatar');
-
-            if (!infoEl) {
+            // Don’t hijack image/lightbox or menu clicks
+            if (e.target.closest('a[data-fancybox], .chat_image, .logs_menu')) {
                 return;
             }
 
-            const uid = infoEl.getAttribute('data-id');
+            // Find the whole chat row
+            const logItem = e.target.closest('.chat_log');
+            if (!logItem) {
+                return;
+            }
 
-            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
+            // Always resolve UID from the avatar in that row
+            const avatarEl = logItem.querySelector('.chat_avatar');
+            if (!avatarEl) {
+                console.warn('[App] No .chat_avatar found inside .chat_log');
+                return;
+            }
+
+            const uid = avatarEl.getAttribute('data-id');
+            if (!uid) {
+                console.warn('[App] .chat_avatar has no data-id');
+                return;
+            }
+
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost.bind(this), uid);
         });
     }
 
@@ -1491,7 +1507,7 @@ class App {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        return await fn(params);
+        return await fn(...params);
     }
 
     openAndRememberPrivateChat({uid, name, avatar}) {
