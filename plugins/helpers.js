@@ -376,12 +376,25 @@ class Helpers {
 
             container.addEventListener('mouseout', (evt) => {
                 const imgEl = evt.target.closest(HOVER_SELECTOR);
-                if (!imgEl) return;
 
-                if (!container.contains(evt.relatedTarget)) {
-                    hidePreview();
+                // Only react when we’re actually leaving a preview image
+                if (!imgEl || !(imgEl instanceof HTMLImageElement)) {
+                    return;
                 }
+
+                const toEl = evt.relatedTarget && evt.relatedTarget instanceof HTMLElement
+                    ? evt.relatedTarget
+                    : null;
+
+                // If we go from one preview image to another, keep the preview alive
+                if (toEl && toEl.closest && toEl.closest(HOVER_SELECTOR)) {
+                    return;
+                }
+
+                // Leaving the image to anything else → hide the preview
+                hidePreview();
             });
+
         };
 
         filteredContainers.forEach((container) => attachHoverHandlers(container));

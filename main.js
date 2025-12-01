@@ -50,6 +50,8 @@ class App {
             otherUserContainerGroup: null,
             femaleUsersContainer: null,
             otherUsersContainer: null,
+            caChatRight: null,
+            globalChat: null
         };
 
         this._lastSendAt = 0;
@@ -170,15 +172,22 @@ class App {
         this.options = options || {};
 
         this.buildRawTree(this.sel, this.sel.raw);
-
+        this.ui.globalChat = this.helpers.qs(`#global_chat`);
+        this.ui.caChatRight = this.helpers.qs(`#chat_right`);
+        this.ui.caChatRight.id = 'ca_chat_right';
+        this.ui.caChatRight.removeAttribute('style');
+        this.ui.caChatRight.classList.remove('pheight');
         const main_wrapper = document.createElement('div');
         main_wrapper.id = 'main_wrapper';
         document.body.prepend(main_wrapper);
-        main_wrapper.appendChild(this.helpers.qs('#global_chat'));
+        main_wrapper.appendChild(this.helpers.qs('#chat_head'));
+        main_wrapper.appendChild(this.ui.globalChat);
+        main_wrapper.appendChild(this.helpers.qs('#wrap_footer'));
+        this.ui.globalChat.prepend(this.ui.caChatRight);
 
         const userContainersWrapper = document.createElement(`div`);
         userContainersWrapper.id = `ca-user-container`;
-        this.helpers.qs(`#chat_right`).appendChild(userContainersWrapper);
+        this.ui.caChatRight.appendChild(userContainersWrapper);
         this.ui.userContainersWrapper = userContainersWrapper;
 
         this.shouldHideRepliedUsers = this.settingsStore.getHideReplied();
@@ -194,8 +203,6 @@ class App {
             this.isInitialLoad = false;
         }
 
-        main_wrapper.appendChild(this.helpers.qs('#chat_head'));
-        main_wrapper.appendChild(this.helpers.qs('#wrap_footer'));
 
         this.buildPanel();
         this.buildMenuLogPanel();
@@ -237,7 +244,8 @@ class App {
             this.ui.sentMessagesBox,
             this.ui.presenceBox,
             this.ui.loggingBox,
-            this.ui.userContainersWrapper
+            this.ui.userContainersWrapper,
+            this.ui.globalChat
         ]);
 
         this.appendCustomActionsToBar();
@@ -653,6 +661,11 @@ class App {
         box.focus();
     }
 
+    async onClickRefreshButton() {
+        await this.refreshUserList();
+        this.logEventLine(`Manually refreshed user list on ${this.helpers.timeHHMMSS()}`);
+    }
+
     appendCustomActionsToBar() {
         const bar = document.getElementById('right_panel_bar');
 
@@ -671,7 +684,7 @@ class App {
         refreshBtn.title = 'Refresh users';
         refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
         refreshBtn.addEventListener('click', async () => {
-            await this.refreshUserList();
+            await this.onClickRefreshButton();
             refreshBtn.classList.remove('loading');
         });
 
@@ -1404,14 +1417,6 @@ class App {
         });
     }
 
-
-    // if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
-    // if (!this.safeSet(window, 'privReload', 1)) throw Error('Failed to set privReload');
-    // if (!this.safeSet(window, 'lastPriv', 0)) throw Error('Failed to set lastPriv');
-    // if (!this.safeCall(window, 'closeList')) throw Error('Failed to call closeList');
-    // if (!this.safeCall(window, 'hideModal')) throw Error('Failed to call hideModal');
-    // if (!this.safeCall(window, 'hideOver')) throw Error('Failed to call hideOver');
-    //
     openPrivateInCaPopup({uid, name, avatar}) {
         this.helpers.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
 
@@ -1450,30 +1455,15 @@ class App {
         }
 
         const privateTop = privateCenter.querySelector('#private_top');
-
-// IMPORTANT: use the full private_content container, not just the inner UL
         const privateContent = document.getElementById('private_content');
-
         const privInput = document.getElementById('priv_input');
         const privInputExtra = document.getElementById('priv_input_extra');
         const pquoteController = document.getElementById('pquote_controller');
         const privateEmoticon = document.getElementById('private_emoticon');
         const privateProgress = document.getElementById('private_progress');
         const privateOptMenu = document.getElementById('private_opt');
-
-        if (!privateTop) {
-            console.error('[CA] openPrivateInCaPopup: #private_top not found inside #private_center');
-        }
-        if (!privateContent) {
-            console.error('[CA] openPrivateInCaPopup: #private_content not found');
-        }
-        if (!privInput) {
-            console.error('[CA] openPrivateInCaPopup: #priv_input not found');
-        }
-
         const popupId = 'ca-host-private-popup';
 
-        // Our body only has messages + footer; header is handled by ca-popup-header
         const layoutHtml = `
       <div class="ca-private-layout">
         <div class="ca-private-messages-slot" id="ca-private-messages-slot"></div>
@@ -1497,123 +1487,92 @@ class App {
         const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
         const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
 
-        if (popupHeader && closeBtn) {
-            // Remove old plain title text
-            if (titleSpan) {
-                titleSpan.remove();
-            }
-
-            // IMPORTANT: remove any previous CA private header blocks so we don't stack them
-            const oldHeaders = popupHeader.querySelectorAll('.ca-host-private-header-inner');
-            if (oldHeaders && oldHeaders.length > 0) {
-                oldHeaders.forEach((el) => {
-                    if (el && el.parentNode === popupHeader) {
-                        popupHeader.removeChild(el);
-                    }
-                });
-            }
-
-            // Build our own header content from the host DOM
-            const headerInner = document.createElement('div');
-            headerInner.className = 'ca-host-private-header-inner';
-
-            const left = document.createElement('div');
-            left.className = 'ca-host-private-header-left';
-
-            const right = document.createElement('div');
-            right.className = 'ca-host-private-header-right';
-
-            // Avatar
-            const hostAvatarWrap = privateTop && privateTop.querySelector('#private_av_wrap');
-            if (hostAvatarWrap instanceof HTMLElement) {
-                const avatarClone = hostAvatarWrap.cloneNode(true);
-                avatarClone.removeAttribute('id');
-
-                const img = avatarClone.querySelector('#private_av');
-                if (img instanceof HTMLElement) {
-                    img.removeAttribute('id');
-                }
-
-                left.appendChild(avatarClone);
-            }
-
-            // Username
-            const hostName = privateTop && privateTop.querySelector('#private_name');
-            if (hostName instanceof HTMLElement) {
-                const nameClone = hostName.cloneNode(true);
-                nameClone.removeAttribute('id');
-                left.appendChild(nameClone);
-            } else {
-                const span = document.createElement('span');
-                span.textContent = name || '';
-                left.appendChild(span);
-            }
-
-            // Settings (cog)
-            const hostSettings = privateTop && privateTop.querySelector('#private_min');
-            if (hostSettings instanceof HTMLElement) {
-                const settingsClone = hostSettings.cloneNode(true);
-                settingsClone.removeAttribute('id');
-                right.appendChild(settingsClone);
-            }
-
-            headerInner.appendChild(left);
-            headerInner.appendChild(right);
-
-            // Insert our header content before the close button
-            popupHeader.insertBefore(headerInner, closeBtn);
-        } else {
-            console.error('[CA] openPrivateInCaPopup: popup header or close button not found');
+        if (titleSpan) {
+            titleSpan.remove();
         }
 
-        const messagesSlot = popup.querySelector('#ca-private-messages-slot');
-        if (messagesSlot && privateContent instanceof HTMLElement) {
-            if (!messagesSlot.contains(privateContent)) {
-                messagesSlot.innerHTML = '';
-                messagesSlot.appendChild(privateContent);
+        const oldHeaders = popupHeader.querySelectorAll('.ca-host-private-header-inner');
+        if (oldHeaders && oldHeaders.length > 0) {
+            oldHeaders.forEach((el) => {
+                if (el && el.parentNode === popupHeader) {
+                    popupHeader.removeChild(el);
+                }
+            });
+        }
+
+        // Build our own header content from the host DOM
+        const headerInner = document.createElement('div');
+        headerInner.className = 'ca-host-private-header-inner';
+
+        const left = document.createElement('div');
+        left.className = 'ca-host-private-header-left';
+
+        const right = document.createElement('div');
+        right.className = 'ca-host-private-header-right';
+
+        // Avatar
+        const hostAvatarWrap = privateTop && privateTop.querySelector('#private_av_wrap');
+        if (hostAvatarWrap instanceof HTMLElement) {
+            const avatarClone = hostAvatarWrap.cloneNode(true);
+            avatarClone.removeAttribute('id');
+
+            const img = avatarClone.querySelector('#private_av');
+            if (img instanceof HTMLElement) {
+                img.removeAttribute('id');
             }
-        } else if (!messagesSlot) {
-            console.error('[CA] openPrivateInCaPopup: #ca-private-messages-slot not found in popup');
+
+            left.appendChild(avatarClone);
+        }
+
+        // Username
+        const hostName = privateTop && privateTop.querySelector('#private_name');
+        if (hostName instanceof HTMLElement) {
+            const nameClone = hostName.cloneNode(true);
+            nameClone.removeAttribute('id');
+            left.appendChild(nameClone);
+        } else {
+            const span = document.createElement('span');
+            span.textContent = name || '';
+            left.appendChild(span);
+        }
+
+        // Settings (cog)
+        const hostSettings = privateTop && privateTop.querySelector('#private_min');
+        if (hostSettings instanceof HTMLElement) {
+            const settingsClone = hostSettings.cloneNode(true);
+            settingsClone.removeAttribute('id');
+            right.appendChild(settingsClone);
+        }
+
+        headerInner.appendChild(left);
+        headerInner.appendChild(right);
+
+        // Insert our header content before the close button
+        popupHeader.insertBefore(headerInner, closeBtn);
+
+        const messagesSlot = popup.querySelector('#ca-private-messages-slot');
+        if (!messagesSlot.contains(privateContent)) {
+            messagesSlot.innerHTML = '';
+            messagesSlot.appendChild(privateContent);
         }
 
         const footerSlot = popup.querySelector('#ca-private-footer-slot');
-        if (footerSlot) {
-            footerSlot.innerHTML = '';
 
-            const appendIfExists = (el) => {
-                if (el instanceof HTMLElement) {
-                    footerSlot.appendChild(el);
-                }
-            };
+        footerSlot.innerHTML = '';
 
-            // Order:
-            //  1) extra controls (upload etc.)
-            //  2) quote bar
-            //  3) upload progress
-            //  4) main input (textarea + buttons)
-            //  5) emoji board (must be directly under textarea to stay visible)
-            //  6) settings menu (cog menu)
-            appendIfExists(privInputExtra);
-            appendIfExists(pquoteController);
-            appendIfExists(privateProgress);
-            appendIfExists(privInput);
-            appendIfExists(privateEmoticon);
-            appendIfExists(privateOptMenu);
-        } else {
-            console.error('[CA] openPrivateInCaPopup: #ca-private-footer-slot not found in popup');
-        }
+        const appendIfExists = (el) => {
+            if (el instanceof HTMLElement) {
+                footerSlot.appendChild(el);
+            }
+        };
 
-        // Keep host container hidden; we just borrow its pieces
-        privateCenter.style.display = 'none';
-
-        popup.style.display = 'flex';
-        popup.classList.add('ca-popup-open');
-
-        if (typeof this.popups.bringToFront === 'function') {
-            this.popups.bringToFront(popup);
-        }
+        appendIfExists(privInputExtra);
+        appendIfExists(pquoteController);
+        appendIfExists(privateProgress);
+        appendIfExists(privInput);
+        appendIfExists(privateEmoticon);
+        appendIfExists(privateOptMenu);
     }
-
 
     applyLegacyAndOpenDm({uid, name, avatar}) {
         this.helpers.debug('[CA] applyLegacyAndOpenDm', {uid, name, avatar});
@@ -3478,6 +3437,10 @@ class App {
         const logEntryTextEl = logEntryEl.querySelector(`${this.sel.log.classes.ca_log_text}`);
         const ind = logEntryEl.querySelector(`.${this.sel.raw.log.classes.ca_expand_indicator}`);
         const expanded = logEntryTextEl.classList.contains("ca-text-expanded");
+
+        if (!ind) {
+            return;
+        }
 
         if (expanded) {
             logEntryTextEl.classList.add("ca-text-expanded");
