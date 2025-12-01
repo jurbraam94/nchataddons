@@ -177,10 +177,10 @@ class Helpers {
     }
 
     createElementFromString(htmlString) {
-        const template = document.createElement("template");
+        const template = document.createElement("div");
         template.innerHTML = htmlString.trim();
 
-        return template.content.firstElementChild;
+        return template.firstChild;
     }
 
     getToken() {

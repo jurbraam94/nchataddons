@@ -1415,7 +1415,7 @@ class App {
 
         const left = document.createElement('div');
         left.className = 'ca-host-private-header-left';
-        
+
         left.addEventListener('click', async (e) => {
             await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
         });
@@ -1533,9 +1533,9 @@ class App {
         }
 
         const profileHtmlResult = await this.api.getProfile(uid);
-        const user = await this.userStore.getOrFetch(uid);
-
-        this.popups.createAndOpenPopupWithHtml(profileHtmlResult, 'ca-profile-popup', user?.name || 'Profile')
+        const profileEl = document.createElement("div");
+        profileEl.innerHTML = profileHtmlResult.trim();
+        this.popups.createAndOpenPopupWithHtml(profileEl, 'ca-profile-popup', this.helpers.qs(`.pro_name`, profileEl)?.innerText || 'User profile');
     }
 
     buildBroadcastList() {
@@ -1633,7 +1633,7 @@ class App {
 
         wrapper.appendChild(nameSpan);
 
-        wrapper.addEventListener('click', async (e) => {
+        nameSpan.addEventListener('click', async (e) => {
             await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, updatedUserJson.uid)
         });
 
