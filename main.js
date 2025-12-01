@@ -310,6 +310,27 @@ class App {
         return this;
     }
 
+    setAndPersistDebugMode(debugMode) {
+        this.helpers.setDebugMode(debugMode);
+        console.log(
+            debugMode
+                ? '[DEBUG] Debug mode enabled'
+                : 'Debug mode disabled'
+        );
+        this.helpers.debug('[DEBUG] Debug logs are now visible');
+    }
+
+    setAndPersistVerboseMode(verboseMode) {
+        this.settingsStore.setVerboseMode(verboseMode);
+        this.helpers.setVerboseMode(verboseMode);
+        console.log(
+            verboseMode
+                ? '[VERBOSE] Verbose mode enabled'
+                : 'Verbose mode disabled'
+        );
+        this.helpers.verbose('[DEBUG] Debug logs are now visible');
+    }
+
     _wireTextboxTrackers() {
         document.addEventListener("focusin", (event) => {
             const target = event.target;
