@@ -937,7 +937,6 @@ svg.svg-large {
 /* Image preview */
 #ca-log-image-preview {
     position: fixed;
-    z-index: 9999;
     pointer-events: none;
     display: none;
     border: 1px solid rgba(0, 0, 0, 0.5);
@@ -947,6 +946,7 @@ svg.svg-large {
     max-width: 260px;
     max-height: 260px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 999999; /* absurdly high and safe */
 }
 
 #ca-log-image-preview img {
@@ -2084,4 +2084,24 @@ svg.svg-large {
 .hunter_private, .targ_quote {
     color: #fff;
     background: #41515f;
+}
+
+#pquote_control.qcontrol {
+    position: absolute;
+    bottom: 100%; /* position directly ABOVE the message input */
+    left: 0;
+    right: 0;
+
+    z-index: 9999; /* always on top */
+    padding: 8px 10px;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    background: var(--bg-quote, #262626);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
 }

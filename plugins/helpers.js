@@ -284,6 +284,7 @@ class Helpers {
 
     installLogImageHoverPreview(containers) {
         const filteredContainers = containers.filter(Boolean);
+        console.log(containers);
         if (!filteredContainers.length) {
             console.warn('[CA] installLogImageHoverPreview: no containers found to wire');
         }

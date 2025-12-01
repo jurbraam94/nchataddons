@@ -206,7 +206,6 @@ class App {
             this.isInitialLoad = false;
         }
 
-
         this.buildPanel();
         this.buildMenuLogPanel();
 
@@ -293,38 +292,7 @@ class App {
             userStore: this.userStore
         });
 
-        if (!window._caPrivateEmojiEscWired) {
-            window._caPrivateEmojiEscWired = true;
-
-            document.addEventListener('keydown', (e) => {
-                if (!e) {
-                    console.error('[CA] document keydown: event missing');
-                    return;
-                }
-
-                if (e.key !== 'Escape' && e.key !== 'Esc') {
-                    return;
-                }
-
-                const emojiPanel = document.getElementById('private_emoticon');
-                if (!emojiPanel) {
-                    return;
-                }
-
-                const style = window.getComputedStyle(emojiPanel);
-                const isVisible = style && style.display !== 'none';
-
-                if (!isVisible) {
-                    return;
-                }
-
-                if (typeof window.hidePrivEmoticon === 'function') {
-                    window.hidePrivEmoticon();
-                } else {
-                    emojiPanel.style.display = 'none';
-                }
-            });
-        }
+        this._wireHostEmojiKeyboard();
 
         this.helpers.init({
             debugMode: this.settingsStore.getDebugMode(),
@@ -403,6 +371,37 @@ class App {
             }
 
             this.activeTextInput = target;
+        });
+    }
+
+    _wireHostEmojiKeyboard() {
+        document.addEventListener('keydown', (e) => {
+            if (!e) {
+                console.error('[CA] document keydown: event missing');
+                return;
+            }
+
+            if (e.key !== 'Escape' && e.key !== 'Esc') {
+                return;
+            }
+
+            const emojiPanel = document.getElementById('private_emoticon');
+            if (!emojiPanel) {
+                return;
+            }
+
+            const style = window.getComputedStyle(emojiPanel);
+            const isVisible = style && style.display !== 'none';
+
+            if (!isVisible) {
+                return;
+            }
+
+            if (typeof window.hidePrivEmoticon === 'function') {
+                window.hidePrivEmoticon();
+            } else {
+                emojiPanel.style.display = 'none';
+            }
         });
     }
 
@@ -885,25 +884,125 @@ class App {
         return out;
     }
 
-    async fetchPrivateMessagesForUid(user, params) {
-        if (!user.uid) {
-            console.error(`.caFetchChatLogFor() called with invalid arguments:`, user.uid);
-            return Promise.resolve('');
+    stopOnError(exception) {
+        if (!exception) {
+            console.error('[CA] stopOnError called without an exception object');
+            this.destroy();
+            return;
         }
 
-        const bodyObj = {
-            caction: String(this.state.CHAT_CTX.caction),
-            last: params.get('last'),
-            priv: String(user.uid),
-            lastp: user.parsedDmInUpToLog,
-            pcount: params.get('pcount'),
-            room: String(this.state.CHAT_CTX.room),
-            notify: String(this.state.CHAT_CTX.notify),
-            curset: String(this.state.CHAT_CTX.curset)
-        };
+        console.error('================ [CRITICAL ERROR] ================');
 
-        this.helpers.verbose('caFetchChatLogFor uid=', user.uid, ' body:', bodyObj);
-        return await this.api.fetchChatLog(bodyObj);
+        // Human label for where it came from (loop / network tap / method)
+        if (exception._ca_loopLabel) {
+            console.error('[CA] Origin label:', exception._ca_loopLabel);
+        }
+
+        // --- NEW: explicitly report whether _ca_context exists ---
+        const hasContextProp = Object.prototype.hasOwnProperty.call(exception, '_ca_context');
+        console.error('[CA] _ca_context present on exception?', hasContextProp);
+
+        if (hasContextProp) {
+            const ctx = exception._ca_context;
+            console.error('[CA] Call context (raw object):', ctx);
+
+            try {
+                console.error('[CA] Call context (JSON):', JSON.stringify(ctx, null, 2));
+            } catch (ctxErr) {
+                console.error('[CA] Failed to JSON.stringify _ca_context:', ctxErr);
+            }
+        }
+
+        // Basic message
+        console.error('[CA] A critical exception occurred:', exception.message || exception);
+
+        // Stack / origin line
+        if (exception.stack) {
+            const stackLines = exception.stack.split('\n').map(l => l.trim());
+            console.error('[CA] Exception type:', stackLines[0] || 'Unknown');
+
+            const locationLine = stackLines.find(l => l.match(/:\d+:\d+/));
+            if (locationLine) {
+                console.error('[CA] Origin:', locationLine);
+            } else {
+                console.warn('[CA] Could not detect origin location in stack.');
+            }
+        } else {
+            console.warn('[CA] Exception has no stack trace.');
+        }
+
+        console.error('[CA] Full exception:', exception);
+        console.log('[CA] System halt triggered to prevent log flooding.');
+        console.log('[CA] Pending loops, timers, and tasks will be stopped.');
+
+        try {
+            this.destroy();
+            console.log('[CA] Shutdown complete.');
+        } catch (destroyErr) {
+            console.error('[CA] Error occurred during shutdown:', destroyErr);
+        }
+
+        console.error('=================================================');
+    }
+
+    async fetchPrivateMessagesForUid(user, params) {
+        if (!user || !user.uid) {
+            console.error('[CA] fetchPrivateMessagesForUid called with invalid user.uid:', user && user.uid);
+            return '';
+        }
+
+        let bodyObj;
+
+        try {
+            bodyObj = {
+                caction: String(this.state.CHAT_CTX.caction),
+                last: params?.get('last'),
+                priv: String(user.uid),
+                lastp: user.parsedDmInUpToLog,
+                pcount: params?.get('pcount'),
+                room: String(this.state.CHAT_CTX.room),
+                notify: String(this.state.CHAT_CTX.notify),
+                curset: String(this.state.CHAT_CTX.curset)
+            };
+
+            this.helpers.verbose('[CA] fetchPrivateMessagesForUid body for uid=', user.uid, ' -> ', bodyObj);
+
+            return await this.api.fetchChatLog(bodyObj);
+        } catch (e) {
+            // Attach a readable label for the error handler
+            e._ca_loopLabel = 'FETCH_PRIVATE_MESSAGES_FOR_UID';
+
+            // Snapshot params in a log-friendly way
+            let paramsSnapshot = null;
+            if (params instanceof URLSearchParams) {
+                paramsSnapshot = {};
+                for (const [k, v] of params.entries()) {
+                    paramsSnapshot[k] = v;
+                }
+            } else if (params) {
+                paramsSnapshot = params;
+            }
+
+            // Attach rich context for stopOnError to print
+            e._ca_context = {
+                function: 'fetchPrivateMessagesForUid',
+                user: {
+                    uid: user.uid,
+                    parsedDmInUpToLog: user.parsedDmInUpToLog
+                },
+                chatCtx: {
+                    caction: this.state?.CHAT_CTX?.caction,
+                    room: this.state?.CHAT_CTX?.room,
+                    notify: this.state?.CHAT_CTX?.notify,
+                    curset: this.state?.CHAT_CTX?.curset
+                },
+                bodyObj,           // may be undefined if it failed before assignment
+                params: paramsSnapshot
+            };
+
+            this.stopOnError(e);
+            return '';
+        }
     }
 
     processSinglePrivateChatLog(privateChatLog, user, initialFetch, currentHighestLogId) {
@@ -929,10 +1028,13 @@ class App {
             user,
             privateChatLog.log_id
         );
-        this.updateProfileChipByUid(user.uid);
+        if (user.isLoggedIn) {
+            this.updateProfileChipByUid(user.uid);
+        } else {
+            this.helpers.verbose('[CA] Skipping profile chip update for uid', user.uid, 'because user is not logged in');
+        }
         return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
     }
-
 
     async caProcessPrivateLogResponse(user, privateChatLogs) {
         let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
@@ -963,6 +1065,7 @@ class App {
 
                 newMessages++;
             }
+            this.scrollToBottom(this.ui.caPrivateMessagesSlot);
         } else {
             console.log(`No new private chat logs for user ${user.uid}`);
         }
@@ -973,7 +1076,9 @@ class App {
         if (newMessages > 0) {
             if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                 updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                this.helpers.debug(`Setting last read for user ${user.uid} to ${parsedDmInUpToLog}`);
+                this.helpers.debug(
+                    `[PrivateChat] Setting parsedDmInUpToLog for user ${user.uid} to ${parsedDmInUpToLog}`
+                );
                 shouldSave = true;
             }
 
@@ -988,14 +1093,57 @@ class App {
             updatedUser.noNewPrivateDmTries = tries;
             shouldSave = true;
 
-            console.warn(`[PrivateChat] No messages accepted for uid ${user.uid} (attempt ${tries})`);
+            console.warn(
+                `[PrivateChat] No messages accepted for uid ${user.uid} (attempt ${tries})`
+            );
+
+            // --- RECOVERY + KILLSWITCH LOGIC ---
 
             if (tries >= 3) {
-                updatedUser.parsedDmInUpToLog = 0;
-                console.warn(
-                    `[PrivateChat] 3x nothing parsed for uid ${user.uid}; ` +
-                    `reset the complete chat history (setting parsedDmUptoLog to 0)`
-                );
+                const hadNonZeroParsedBefore = (user.parsedDmInUpToLog || 0) > 0;
+
+                if (hadNonZeroParsedBefore) {
+                    // Stage 1: we had a non-zero parsedDmInUpToLog, but repeatedly nothing
+                    // parsed; reset to 0 to trigger a full history reload on next loop.
+                    updatedUser.parsedDmInUpToLog = 0;
+                    console.warn(
+                        `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid}; ` +
+                        `resetting complete chat history (setting parsedDmInUpToLog to 0)`
+                    );
+                } else {
+                    // Stage 2: we are ALREADY at parsedDmInUpToLog === 0 and still
+                    // getting nothing accepted after multiple tries -> hard abort.
+                    console.error(
+                        `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with parsedDmInUpToLog already 0. ` +
+                        `Aborting private DM polling via killswitch.`
+                    );
+
+                    const err = new Error(
+                        `[PrivateChat] Repeatedly failed to parse any private DM logs for uid ${user.uid} ` +
+                        `even from parsedDmInUpToLog=0 (attempts=${tries}).`
+                    );
+
+                    // Label for our global error handler
+                    err._ca_loopLabel = 'PRIVATE_DM_POLL_LOOP';
+
+                    // Attach rich context for stopOnError()
+                    err._ca_context = {
+                        function: 'caProcessPrivateLogResponse',
+                        uid: user.uid,
+                        initialFetch,
+                        attemptsWithoutMessages: tries,
+                        parsedDmInUpToLogBefore: user.parsedDmInUpToLog || 0,
+                        parsedDmInUpToLogAfter: updatedUser.parsedDmInUpToLog || 0,
+                        hasLogs,
+                        privateChatLogsLength: hasLogs ? privateChatLogs.length : 0,
+                        // Keep this small – we don't want to flood logs with full history
+                        sampleLogs: hasLogs ? privateChatLogs.slice(0, 3) : []
+                    };
+
+                    this.stopOnError(err);
+                    // Hard abort: don't continue processing this user any further
+                    return;
+                }
             }
         }
 
@@ -1114,59 +1262,155 @@ class App {
 
     installNetworkTaps() {
         this.helpers.debug('Installing network taps (fetch/XHR interceptors)');
+
         if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
         if (!this._xhrSend) this._xhrSend = XMLHttpRequest.prototype.send;
+
+        // Monotonic counter only for the XHRs we actually process
+        if (typeof this._networkTapRequestSeq !== 'number') {
+            this._networkTapRequestSeq = 0;
+        }
 
         const self = this;
 
         XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-            this._ca_url = String(url || '');
-            return self._xhrOpen.apply(this, [method, url, ...rest]);
+            const originalUrl = String(url || '');
+            let modifiedUrl = originalUrl;
+
+            const isChat = self.isChatLogUrl(originalUrl);
+            const isUserList = self.isUserListUrl(originalUrl);
+            const shouldTap = isChat || isUserList;
+
+            if (!shouldTap) {
+                // Not a URL we process -> no label, no params, just pass through
+                this._ca_url = originalUrl;
+                this._ca_label = null;
+                this._ca_reqId = null;
+                return self._xhrOpen.call(this, method, originalUrl, ...rest);
+            }
+
+            // Only for URLs we process:
+            const requestId = ++self._networkTapRequestSeq;
+            const debugLabel = isChat ? 'CHAT_LOG_XHR' : 'USER_LIST_XHR';
+
+            this._ca_reqId = requestId;
+            this._ca_label = debugLabel;
+
+            try {
+                const u = new URL(originalUrl, window.location.origin);
+                u.searchParams.set('_ca_tap', '1');
+                u.searchParams.set('_ca_label', debugLabel);
+                u.searchParams.set('_ca_req', String(requestId)); // unique ID for this processed call
+
+                modifiedUrl = u.toString();
+            } catch (e) {
+                console.warn('[CA] Failed to inject debug params into URL:', originalUrl, e);
+                // Fall back to the original URL, but still keep label + reqId on the instance
+                modifiedUrl = originalUrl;
+            }
+
+            this._ca_url = modifiedUrl;
+
+            self.helpers.verbose(
+                `[NetworkTap][${debugLabel}#${requestId}] open ${method} ${modifiedUrl}`
+            );
+
+            return self._xhrOpen.call(this, method, modifiedUrl, ...rest);
         };
 
         XMLHttpRequest.prototype.send = function (...sendArgs) {
+            const reqId = this._ca_reqId;
+            const label = this._ca_label;
+
+            // If this XHR wasn't "tapped" in open(), just pass through.
+            // (No chat/userlist processing, no extra logging.)
+            if (!label || reqId == null) {
+                return self._xhrSend.apply(this, sendArgs);
+            }
+
             /** @type {URLSearchParams | null} */
             let qs = null;
-
             const body = sendArgs[0];
 
+            // Only chat log posts get body inspection / context updates
             if (self.isChatLogUrl(this._ca_url) && body != null) {
-                // Only handle string bodies here (x-www-form-urlencoded style)
-                if (typeof body === "string") {
-
-                    if (body.indexOf("priv=1") > -1) {
-                        qs = new URLSearchParams(body);
-                        self.caUpdateChatCtxFromBody(qs);
+                if (typeof body === 'string') {
+                    if (body.indexOf('priv=1') > -1) {
+                        try {
+                            qs = new URLSearchParams(body);
+                            self.caUpdateChatCtxFromBody(qs);
+                        } catch (e) {
+                            e._ca_loopLabel = 'XHR_SEND_INTERCEPT_BODY_PARSE';
+                            e._ca_context = {
+                                requestId: reqId,
+                                label,
+                                url: this._ca_url,
+                                bodySnippet: String(body).slice(0, 200)
+                            };
+                            self.stopOnError(e);
+                            return;
+                        }
                     }
                 } else {
-                    console.warn("[PrivateSend] Unexpected body type for chat log request", body);
+                    console.warn(
+                        `[PrivateSend][${label}#${reqId}] Unexpected body type for chat log request`,
+                        body
+                    );
                 }
             }
 
-            this.addEventListener("readystatechange", async function () {
-                const responseUrl = this.responseURL || this._ca_url || "";
+            this.addEventListener('readystatechange', async function () {
+                const responseUrl = this.responseURL || this._ca_url || '';
+                const evtReqId = this._ca_reqId;
+                const evtLabel = this._ca_label;
 
-                if (this.readyState === 4 && this.status === 200 && this.responseText) {
-                    if (self.isChatLogUrl(responseUrl)) {
-                        await self.caProcessChatPayload(this.responseText, qs);
+                // Should never happen, but guard anyway
+                if (!evtLabel || evtReqId == null) {
+                    return;
+                }
+
+                try {
+                    if (this.readyState === 4 && this.status === 200 && this.responseText) {
+                        if (self.isChatLogUrl(responseUrl)) {
+                            await self.caProcessChatPayload(this.responseText, qs, {
+                                requestId: evtReqId,
+                                label: evtLabel
+                            });
+                        }
+
+                        if (self.isUserListUrl(responseUrl)) {
+                            self.helpers.debug(
+                                `[NetworkTap][${evtLabel}#${evtReqId}] Processing user list response`
+                            );
+                            await self.processUserListResponse(this.responseText, {
+                                requestId: evtReqId,
+                                label: evtLabel
+                            });
+                        }
+                    } else if (this.readyState === 4 && this.status === 403) {
+                        console.error(
+                            `[PrivateSend][${evtLabel}#${evtReqId}] 403 error while fetching resource. ` +
+                            'Uninstalling the network taps to prevent any more calls until the browser is manually refreshed.',
+                            responseUrl
+                        );
+                        self.popups.openCloudflarePopup(responseUrl);
+                        self.destroy();
                     }
-                    if (self.isUserListUrl(responseUrl)) {
-                        await self.processUserListResponse(this.responseText);
-                    }
-                } else if (this.status === 403) {
-                    console.error(
-                        "[PrivateSend] 403 error while fetching chat log. This is probably because of Cloudflare.\n" +
-                        "Uninstalling the network taps to prevent any more calls being done until the browser is manually refreshed.",
-                        responseUrl
-                    );
-                    self.popups.openCloudflarePopup(responseUrl);
-                    self.destroy();
+                } catch (e) {
+                    e._ca_loopLabel = 'XHR_READYSTATE_INTERCEPT';
+                    e._ca_context = {
+                        requestId: evtReqId,
+                        label: evtLabel,
+                        url: responseUrl,
+                        status: this.status,
+                        readyState: this.readyState
+                    };
+                    self.stopOnError(e);
                 }
             });
 
             return self._xhrSend.apply(this, sendArgs);
         };
-
     }
 
     uninstallNetworkTaps() {
@@ -1258,7 +1502,6 @@ class App {
 
                 return;
             }
-
 
             if (action === 'delete-log') {
                 e.preventDefault();
@@ -3617,6 +3860,7 @@ class App {
         }
 
         this.openAndRememberPrivateChat(await this.userStore.getOrFetch(uid));
+
     }
 
     parseLogDateToNumber(logDateStr) {
@@ -3634,6 +3878,7 @@ class App {
     }
 
     destroy() {
+        console.warn(`Destroying ChatApp UI and helpers.`);
         this._uninstallAudioAutoplayGate();
         this.uninstallNetworkTaps();
         this.uninstallPrivateSendInterceptor();
