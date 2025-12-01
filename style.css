@@ -1660,3 +1660,145 @@ svg.svg-large {
     padding-bottom: 0;
     padding-top: 0;
 }
+
+/* Private popup header layout */
+.ca-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* The inner header block we add with avatar + name + cog */
+.ca-host-private-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+/* Left: avatar + name */
+.ca-host-private-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Right: settings (cog) */
+.ca-host-private-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* Make the avatar small & round in the header */
+.ca-host-private-header-left .bcell_mid img {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+/* Truncate long names nicely */
+.ca-host-private-header-left .bellips {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ca-private-footer-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+#private_emoticon.back_box {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+
+    width: 100% !important;
+    max-height: 220px;
+    margin-top: 4px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+
+/* Keep emoji header visible when scrolling inside the panel */
+#private_emoticon .emo_head.private_emo_head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+
+#ca-host-private-popup {
+    width: 25%;
+    min-height: 160px;
+}
+
+/* Make the DM textarea a bit taller by default */
+#ca-host-private-popup #message_content {
+    min-height: 64px;
+    resize: vertical;
+}
+
+#ca-host-private-popup .ca-host-private-header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Username in header behaves like a link */
+#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips {
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips:hover {
+    text-decoration: underline;
+}
+
+#ca-host-private-popup .ca-host-private-header-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#ca-host-private-popup .ca-host-private-header-left img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+/* Keep private chat body from collapsing when there are no messages */
+.ca-private-messages-slot {
+    min-height: 160px; /* tweak to taste: 120–220px */
+    max-height: 400px; /* optional: avoid going too tall */
+    overflow-y: auto;
+}
+
+.ca-private-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.ca-private-footer-slot {
+    flex: 0 0 auto;
+}
+
+.ca-private-messages-slot {
+    flex: 1 1 auto;
+    min-height: 160px;
+    overflow-y: auto;
+}

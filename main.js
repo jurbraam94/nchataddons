@@ -126,6 +126,9 @@ class App {
             }
         };
         this.sel.raw = {};
+
+        this.hostOpenPrivateOriginal = null;
+        this.hostGetProfileOriginal = null;
     }
 
     buildRawTree() {
@@ -240,32 +243,21 @@ class App {
         await this.restoreLastDmFromStore();
         this.appendCustomActionsToBar();
 
-        this.hostGetProfileOriginal = window.getProfile.bind(window);
-        window.getProfile = async (uid) => {
-            // We don't await here; errors are handled inside openProfileOnHost
-            await this.openProfileOnHost(uid);
-        };
-
-        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+        this.overwriteHostMethods();
 
         this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
 
-        // Wiring
+// Wiring
         this._wireLogClear();
         this._wireTextboxTrackers();
+        this._wirePrivatePopupHeaderProfileClick();
         this.wireListOptionClicks();
         this.wireUserContainerHeaders();
         this._attachLogClickHandlers();
+        this._wirePrivateEmojiEsc();
 
         if (this.shouldShowBroadcastCheckboxes) {
             this.helpers.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
-        }
-
-        const privateCloseButton = this.helpers.qs('#private_close');
-        if (privateCloseButton) {
-            privateCloseButton.addEventListener('click', () => {
-                this.settingsStore.clearLastDmUid();
-            });
         }
 
         const dmTextarea = this.helpers.qsTextarea("#message_content");
@@ -296,6 +288,40 @@ class App {
             userStore: this.userStore
         });
 
+        if (!window._caPrivateEmojiEscWired) {
+            window._caPrivateEmojiEscWired = true;
+
+            document.addEventListener('keydown', (e) => {
+                if (!e) {
+                    console.error('[CA] document keydown: event missing');
+                    return;
+                }
+
+                if (e.key !== 'Escape' && e.key !== 'Esc') {
+                    return;
+                }
+
+                const emojiPanel = document.getElementById('private_emoticon');
+                if (!emojiPanel) {
+                    return;
+                }
+
+                const style = window.getComputedStyle(emojiPanel);
+                const isVisible = style && style.display !== 'none';
+
+                if (!isVisible) {
+                    return;
+                }
+
+                if (typeof window.hidePrivEmoticon === 'function') {
+                    window.hidePrivEmoticon();
+                } else {
+                    emojiPanel.style.display = 'none';
+                }
+            });
+        }
+
+
         this.helpers.init({
             debugMode: this.settingsStore.getDebugMode(),
             verboseMode: this.settingsStore.getVerboseMode()
@@ -308,6 +334,35 @@ class App {
         this.installPrivateSendInterceptor();
 
         return this;
+    }
+
+    overwriteHostMethods() {
+        this.hostGetProfileOriginal = window.getProfile.bind(window);
+        window.getProfile = async (uid) => {
+            // We don't await here; errors are handled inside openProfileOnHost
+            await this.openProfileOnHost(uid);
+        };
+        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+
+        this.hostGetProfileOriginal = window.getProfile.bind(window);
+        window.getProfile = async (uid) => {
+            // We don't await here; errors are handled inside openProfileOnHost
+            await this.openProfileOnHost(uid);
+        };
+
+        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+
+        if (typeof window.openPrivate === 'function') {
+            this.hostOpenPrivateOriginal = window.openPrivate.bind(window);
+
+            window.openPrivate = (uid, name, avatar) => {
+                this.openPrivateInCaPopup({uid, name, avatar});
+            };
+
+            this.helpers.debug('[CA] Overridden window.openPrivate with CA private popup');
+        } else {
+            console.warn('[CA] window.openPrivate is not a function; cannot override private chat popup');
+        }
     }
 
     setAndPersistDebugMode(debugMode) {
@@ -350,6 +405,51 @@ class App {
             }
 
             this.activeTextInput = target;
+        });
+    }
+
+    /**
+     * Make the username in the CA private popup header clickable
+     * and open the profile on the host when clicked.
+     */
+    _wirePrivatePopupHeaderProfileClick() {
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+
+            if (!target || !(target instanceof HTMLElement)) {
+                return;
+            }
+
+            // Find a click on the private header username inside our DM popup
+            const nameCell = target.closest(
+                '#ca-host-private-popup .ca-host-private-header-inner .bcell_mid.bellips'
+            );
+            if (!nameCell) {
+                return;
+            }
+
+            const headerLeft = nameCell.closest('.ca-host-private-header-left');
+            if (!headerLeft) {
+                console.error('[CA] _wirePrivatePopupHeaderProfileClick: header left not found');
+                return;
+            }
+
+            const avatarImg = headerLeft.querySelector('img[data]');
+            if (!avatarImg) {
+                console.error('[CA] _wirePrivatePopupHeaderProfileClick: avatar img with data attr not found');
+                return;
+            }
+
+            const uid = avatarImg.getAttribute('data');
+            if (!uid) {
+                console.error('[CA] _wirePrivatePopupHeaderProfileClick: avatar data attribute missing');
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            this.openProfileOnHost(uid);
         });
     }
 
@@ -1265,26 +1365,280 @@ class App {
         }
     }
 
-    applyLegacyAndOpenDm({uid, name, avatar}) {
-        this.helpers.debug('applyLegacyAndOpenDm called with:', {uid, name, avatar});
-
-        if (!uid || !name || !avatar) {
-            console.error('[applyLegacyAndOpenDm] Invalid arguments:', {uid, name, avatar});
+    _wirePrivateEmojiEsc() {
+        if (window._caPrivateEmojiEscWired) {
             return;
         }
 
-        if (uid) {
-            this.settingsStore.setLastDmUid(uid);
+        window._caPrivateEmojiEscWired = true;
+
+        document.addEventListener('keydown', (e) => {
+            if (!e) {
+                console.error('[CA] _wirePrivateEmojiEsc: keydown event missing');
+                return;
+            }
+
+            if (e.key !== 'Escape' && e.key !== 'Esc') {
+                return;
+            }
+
+            const emojiPanel = document.getElementById('private_emoticon');
+            if (!emojiPanel) {
+                return;
+            }
+
+            const style = window.getComputedStyle(emojiPanel);
+            const isVisible = style && style.display !== 'none';
+
+            if (!isVisible) {
+                return;
+            }
+
+            if (typeof window.hidePrivEmoticon === 'function') {
+                window.hidePrivEmoticon();
+            } else {
+                emojiPanel.style.display = 'none';
+            }
+        });
+    }
+
+
+    // if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
+    // if (!this.safeSet(window, 'privReload', 1)) throw Error('Failed to set privReload');
+    // if (!this.safeSet(window, 'lastPriv', 0)) throw Error('Failed to set lastPriv');
+    // if (!this.safeCall(window, 'closeList')) throw Error('Failed to call closeList');
+    // if (!this.safeCall(window, 'hideModal')) throw Error('Failed to call hideModal');
+    // if (!this.safeCall(window, 'hideOver')) throw Error('Failed to call hideOver');
+    //
+    openPrivateInCaPopup({uid, name, avatar}) {
+        this.helpers.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
+
+        if (!uid) {
+            console.error('[CA] openPrivateInCaPopup: missing uid', {uid, name, avatar});
+            return;
         }
 
-        if (!this.safeSet(window, 'morePriv', 0)) return false;
-        if (!this.safeSet(window, 'privReload', 1)) return false;
-        if (!this.safeSet(window, 'lastPriv', 0)) return false;
-        if (!this.safeCall(window, 'closeList')) return false;
-        if (!this.safeCall(window, 'hideModal')) return false;
-        if (!this.safeCall(window, 'hideOver')) return false;
+        if (!this.hostOpenPrivateOriginal || typeof this.hostOpenPrivateOriginal !== 'function') {
+            console.error('[CA] openPrivateInCaPopup: hostOpenPrivateOriginal is not available');
+            return;
+        }
 
-        openPrivate(uid, name, avatar);
+        if (!this.popups) {
+            console.error('[CA] openPrivateInCaPopup: this.popups is not available');
+            return;
+        }
+
+        this.settingsStore.setLastDmUid(uid);
+
+        if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
+        if (!this.safeSet(window, 'privReload', 1)) throw Error('Failed to set privReload');
+        if (!this.safeSet(window, 'lastPriv', 0)) throw Error('Failed to set lastPriv');
+        if (!this.safeCall(window, 'closeList')) throw Error('Failed to call closeList');
+        if (!this.safeCall(window, 'hideModal')) throw Error('Failed to call hideModal');
+        if (!this.safeCall(window, 'hideOver')) throw Error('Failed to call hideOver');
+
+        // Let the host build/update its own DOM first
+        this.hostOpenPrivateOriginal(uid, name, avatar);
+
+        /** @type {HTMLElement|null} */
+        const privateCenter = document.getElementById('private_center');
+        if (!privateCenter) {
+            console.error('[CA] openPrivateInCaPopup: #private_center not found');
+            return;
+        }
+
+        const privateTop = privateCenter.querySelector('#private_top');
+        const showPrivate = document.getElementById('show_private');
+        const privInput = document.getElementById('priv_input');
+
+// NEW: extra panels used by plus / emoji / quote / settings / upload
+        const privInputExtra = document.getElementById('priv_input_extra');
+        const pquoteController = document.getElementById('pquote_controller');
+        const privateEmoticon = document.getElementById('private_emoticon');
+        const privateProgress = document.getElementById('private_progress');
+        const privateOptMenu = document.getElementById('private_opt');
+
+
+        if (!privateTop) {
+            console.error('[CA] openPrivateInCaPopup: #private_top not found inside #private_center');
+        }
+        if (!showPrivate) {
+            console.error('[CA] openPrivateInCaPopup: #show_private not found');
+        }
+        if (!privInput) {
+            console.error('[CA] openPrivateInCaPopup: #priv_input not found');
+        }
+
+        const popupId = 'ca-host-private-popup';
+
+        // Our body only has messages + footer; header is handled by ca-popup-header
+        const layoutHtml = `
+      <div class="ca-private-layout">
+        <div class="ca-private-messages-slot" id="ca-private-messages-slot"></div>
+        <div class="ca-private-footer-slot" id="ca-private-footer-slot"></div>
+      </div>
+    `;
+
+        const popup = this.popups.createAndOpenPopupWithHtml(
+            layoutHtml,
+            popupId,
+            name ? `Private chat with ${name}` : 'Private chat'
+        );
+
+        if (!(popup instanceof HTMLElement)) {
+            console.error('[CA] openPrivateInCaPopup: popup not created for id', popupId);
+            return;
+        }
+
+        // ---------- CA HEADER: avatar + name + settings icon ----------
+        const popupHeader = popup.querySelector('.ca-popup-header');
+        const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
+        const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
+
+        if (popupHeader && closeBtn) {
+            // Remove old plain title text
+            if (titleSpan) {
+                titleSpan.remove();
+            }
+
+            // IMPORTANT: remove any previous CA private header blocks so we don't stack them
+            const oldHeaders = popupHeader.querySelectorAll('.ca-host-private-header-inner');
+            if (oldHeaders && oldHeaders.length > 0) {
+                oldHeaders.forEach((el) => {
+                    if (el && el.parentNode === popupHeader) {
+                        popupHeader.removeChild(el);
+                    }
+                });
+            }
+
+            // Build our own header content from the host DOM
+            const headerInner = document.createElement('div');
+            headerInner.className = 'ca-host-private-header-inner';
+
+            const left = document.createElement('div');
+            left.className = 'ca-host-private-header-left';
+
+            const right = document.createElement('div');
+            right.className = 'ca-host-private-header-right';
+
+            // Avatar
+            const hostAvatarWrap = privateTop && privateTop.querySelector('#private_av_wrap');
+            if (hostAvatarWrap instanceof HTMLElement) {
+                const avatarClone = hostAvatarWrap.cloneNode(true);
+                avatarClone.removeAttribute('id');
+
+                const img = avatarClone.querySelector('#private_av');
+                if (img instanceof HTMLElement) {
+                    img.removeAttribute('id');
+                }
+
+                left.appendChild(avatarClone);
+            }
+
+            // Username
+            const hostName = privateTop && privateTop.querySelector('#private_name');
+            if (hostName instanceof HTMLElement) {
+                const nameClone = hostName.cloneNode(true);
+                nameClone.removeAttribute('id');
+                left.appendChild(nameClone);
+            } else {
+                const span = document.createElement('span');
+                span.textContent = name || '';
+                left.appendChild(span);
+            }
+
+            // Settings (cog)
+            const hostSettings = privateTop && privateTop.querySelector('#private_min');
+            if (hostSettings instanceof HTMLElement) {
+                const settingsClone = hostSettings.cloneNode(true);
+                settingsClone.removeAttribute('id');
+                right.appendChild(settingsClone);
+            }
+
+            headerInner.appendChild(left);
+            headerInner.appendChild(right);
+
+            // Insert our header content before the close button
+            popupHeader.insertBefore(headerInner, closeBtn);
+        } else {
+            console.error('[CA] openPrivateInCaPopup: popup header or close button not found');
+        }
+
+
+        // ---------- BODY: move messages + footer into the popup body ----------
+        const messagesSlot = popup.querySelector('#ca-private-messages-slot');
+        if (messagesSlot && showPrivate instanceof HTMLElement) {
+            if (!messagesSlot.contains(showPrivate)) {
+                messagesSlot.innerHTML = '';
+                messagesSlot.appendChild(showPrivate);
+            }
+        } else if (!messagesSlot) {
+            console.error('[CA] openPrivateInCaPopup: #ca-private-messages-slot not found in popup');
+        }
+
+        const footerSlot = popup.querySelector('#ca-private-footer-slot');
+        if (footerSlot) {
+            footerSlot.innerHTML = '';
+
+            const appendIfExists = (el) => {
+                if (el instanceof HTMLElement) {
+                    footerSlot.appendChild(el);
+                }
+            };
+
+            // Order:
+            //  1) extra controls (upload etc.)
+            //  2) quote bar
+            //  3) upload progress
+            //  4) main input (textarea + buttons)
+            //  5) emoji board (must be directly under textarea to stay visible)
+            //  6) settings menu (cog menu)
+            appendIfExists(privInputExtra);
+            appendIfExists(pquoteController);
+            appendIfExists(privateProgress);
+            appendIfExists(privInput);
+            appendIfExists(privateEmoticon);
+            appendIfExists(privateOptMenu);
+        } else {
+            console.error('[CA] openPrivateInCaPopup: #ca-private-footer-slot not found in popup');
+        }
+
+        // Keep host container hidden; we just borrow its pieces
+        privateCenter.style.display = 'none';
+
+        popup.style.display = 'flex';
+        popup.classList.add('ca-popup-open');
+
+        if (typeof this.popups.bringToFront === 'function') {
+            this.popups.bringToFront(popup);
+        }
+    }
+
+
+    applyLegacyAndOpenDm({uid, name, avatar}) {
+        this.helpers.debug('[CA] applyLegacyAndOpenDm', {uid, name, avatar});
+
+        if (!uid) {
+            console.error('[CA] applyLegacyAndOpenDm: missing uid', {uid, name, avatar});
+            return;
+        }
+
+        if (!name) {
+            console.warn('[CA] applyLegacyAndOpenDm: name is empty', {uid, name, avatar});
+        }
+
+        if (!avatar) {
+            console.warn('[CA] applyLegacyAndOpenDm: avatar is empty', {uid, name, avatar});
+        }
+
+        this.settingsStore.setLastDmUid(uid);
+
+        if (typeof window.openPrivate !== 'function') {
+            console.error('[CA] applyLegacyAndOpenDm: window.openPrivate is not a function');
+            return;
+        }
+
+        window.openPrivate(uid, name, avatar);
     }
 
     safeSet(obj, key, value) {

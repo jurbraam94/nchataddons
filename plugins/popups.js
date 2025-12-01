@@ -1,9 +1,5 @@
 class Popups {
     constructor({app, settingsStore, helpers, userStore}) {
-        if (!app) {
-            throw new Error('[UsersPopup] requires app');
-        }
-
         this.app = app;
         this.settingsStore = settingsStore;
         this.helpers = helpers;
@@ -22,10 +18,69 @@ class Popups {
 
         this._zBase = 10000;
         this._zCounter = this._zBase;
+        // Also keep a dedicated z-index base for bringToFront
+        this._zIndexBase = this._zBase;
 
-        // Load saved column preferences immediately
+        this._columnPrefsKey = 'ca-column-prefs';
+        this._columnPrefs = {
+            logs: true,
+            presence: true,
+            users: true
+        };
+
+        this._escWired = false;
+
         this._loadColumnPrefs();
+        this._wireGlobalEsc();   // 👈 add this
     }
+
+    /**
+     * Wire a global Escape key handler to close the top-most open CA popup.
+     */
+    _wireGlobalEsc() {
+        if (this._escWired) {
+            return;
+        }
+        this._escWired = true;
+
+        document.addEventListener('keydown', (event) => {
+            const key = event.key || event.code;
+
+            if (key !== 'Escape' && key !== 'Esc') {
+                return;
+            }
+
+            const openPopups = Array.from(
+                document.querySelectorAll('.ca-popup.ca-popup-open')
+            );
+
+            if (!openPopups.length) {
+                return;
+            }
+
+            // Prefer the one that is marked active; fallback to "last" one
+            let target =
+                document.querySelector('.ca-popup.ca-popup-open.ca-popup-active') ||
+                openPopups[openPopups.length - 1];
+
+            if (!(target instanceof HTMLElement)) {
+                console.error('[CA] _wireGlobalEsc: target popup is not an HTMLElement');
+                return;
+            }
+
+            const closeBtn = target.querySelector('.ca-popup-close');
+            if (!closeBtn) {
+                console.warn('[CA] _wireGlobalEsc: could not find .ca-popup-close button on popup');
+                return;
+            }
+
+            // Trigger through DOM so any attached handlers fire
+            closeBtn.dispatchEvent(
+                new MouseEvent('click', {bubbles: true})
+            );
+        });
+    }
+
 
     open() {
         const popup = this._createUsersPopup();
@@ -572,17 +627,68 @@ class Popups {
     }
 
     createAndOpenPopupWithHtml(html, id, title) {
-        // Build our own draggable CA popup
-        const popup = this.ensurePopup({
-            id: id,
-            title: title,
-            bodyHtml: html   // just the inside of large_modal_content
-        });
+        if (!id) {
+            console.error('[Popups] createAndOpenPopupWithHtml called without id');
+            return null;
+        }
 
-        this.togglePopup('ca-profile-popup');
+        // Reuse existing popup if present, otherwise create a new one
+        let popup = document.getElementById(id);
 
-        // Reuse image hover preview inside the profile popup as well
+        if (!popup) {
+            popup = this.ensurePopup({
+                id,
+                title,
+                bodyHtml: html
+            });
+        } else {
+            // Update title if needed
+            const titleEl = popup.querySelector('.ca-popup-title');
+            if (titleEl && typeof title === 'string') {
+                titleEl.textContent = title;
+            }
+
+            // Update body
+            const bodyEl = popup.querySelector('.ca-popup-body');
+            if (bodyEl) {
+                if (typeof html === 'string') {
+                    bodyEl.innerHTML = html;
+                } else if (html instanceof HTMLElement) {
+                    bodyEl.innerHTML = '';
+                    bodyEl.appendChild(html);
+                }
+            }
+        }
+
+        if (!(popup instanceof HTMLElement)) {
+            console.error('[Popups] createAndOpenPopupWithHtml: ensurePopup did not return an HTMLElement for id', id);
+            return null;
+        }
+
+        // Override the default close behaviour (which called popup.remove())
+        const closeBtn = popup.querySelector('.ca-popup-close');
+        if (closeBtn && !closeBtn.dataset.caCustomClose) {
+            const newCloseBtn = closeBtn.cloneNode(true);
+            newCloseBtn.dataset.caCustomClose = '1';
+            newCloseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                popup.classList.remove('ca-popup-open');
+                popup.style.display = 'none';
+            });
+
+            closeBtn.replaceWith(newCloseBtn);
+        }
+
+        popup.style.display = 'flex';
+        popup.classList.add('ca-popup-open');
+        this.bringToFront(popup);
+
+        // Image hover preview inside any popup
         this.helpers.installLogImageHoverPreview([popup]);
+
+        return popup;
     }
 
     createSettingsPopup() {
