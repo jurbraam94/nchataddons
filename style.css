@@ -1148,8 +1148,7 @@ svg.svg-large {
 #wrap_chat,
 #chat_center,
 #chat_left,
-#private_content,
-#chat_right {
+#private_content {
     height: 100% !important;
 }
 
@@ -1214,7 +1213,8 @@ svg.svg-large {
 }
 
 #ca_chat_right {
-    min-width: 300px;
+    min-width: 250px;
+    max-width: 300px;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -1922,13 +1922,6 @@ svg.svg-large {
     flex-direction: row;
     justify-content: flex-start;
     gap: 6px;
-}
-
-#ca-host-private-popup .inpriv .prbox {
-    background: #020617;
-    color: #e5e7eb;
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    border-bottom-left-radius: 4px;
 }
 
 /* Timestamp styling */

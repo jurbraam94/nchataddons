@@ -572,7 +572,6 @@ class Popups {
         this.togglePopup('ca-specific-popup');
     }
 
-
     openSettingsPopup() {
         const popup = this.createSettingsPopup();
         if (!popup) {

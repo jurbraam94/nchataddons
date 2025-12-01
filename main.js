@@ -51,7 +51,8 @@ class App {
             femaleUsersContainer: null,
             otherUsersContainer: null,
             caChatRight: null,
-            globalChat: null
+            globalChat: null,
+            caPrivateMessagesSlot: null
         };
 
         this._lastSendAt = 0;
@@ -173,10 +174,12 @@ class App {
 
         this.buildRawTree(this.sel, this.sel.raw);
         this.ui.globalChat = this.helpers.qs(`#global_chat`);
-        this.ui.caChatRight = this.helpers.qs(`#chat_right`);
+        this.ui.caChatRight = document.createElement('div');
+        const hostChatRight = this.helpers.qs(`#chat_right`);
+        this.ui.caChatRight.innerHTML = hostChatRight.innerHTML;
         this.ui.caChatRight.id = 'ca_chat_right';
         this.ui.caChatRight.removeAttribute('style');
-        this.ui.caChatRight.classList.remove('pheight');
+        hostChatRight.remove();
         const main_wrapper = document.createElement('div');
         main_wrapper.id = 'main_wrapper';
         document.body.prepend(main_wrapper);
@@ -252,7 +255,6 @@ class App {
         this.overwriteHostMethods();
         this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
 
-        this._wireLogClear();
         this._wireTextboxTrackers();
         this._wireGlobalChatHeaderProfileClick();
         this.wireListOptionClicks();
@@ -343,17 +345,8 @@ class App {
     overwriteHostMethods() {
         this.hostGetProfileOriginal = window.getProfile.bind(window);
         window.getProfile = async (uid) => {
-            // We don't await here; errors are handled inside openProfileOnHost
-            await this.openProfileOnHost(uid);
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
         };
-        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
-
-        this.hostGetProfileOriginal = window.getProfile.bind(window);
-        window.getProfile = async (uid) => {
-            // We don't await here; errors are handled inside openProfileOnHost
-            await this.openProfileOnHost(uid);
-        };
-
         this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
 
         if (typeof window.openPrivate === 'function') {
@@ -414,8 +407,8 @@ class App {
     }
 
     _wireGlobalChatHeaderProfileClick() {
-        this.helpers.qs('#chat_logs_container').addEventListener('click', async (event) => {
-            const infoEl = event.target.closest('.chat_avatar');
+        this.helpers.qs('#chat_logs_container').addEventListener('click', async (e) => {
+            const infoEl = e.target.closest('.chat_avatar');
 
             if (!infoEl) {
                 return;
@@ -423,20 +416,7 @@ class App {
 
             const uid = infoEl.getAttribute('data-id');
 
-            if (!uid) {
-                console.warn('[CA] .get_info element clicked without data user id');
-                return;
-            }
-
-            // Prevent old default behavior if any
-            event.preventDefault();
-
-            if (typeof window.getProfile !== 'function') {
-                console.error('[CA] window.getProfile is not a function, cannot open profile modal');
-                return;
-            }
-
-            await this.openProfileOnHost(uid);
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
         });
     }
 
@@ -794,6 +774,7 @@ class App {
 
         this.logLine('dm-out', content, dmSentToUser, logData.log_id);
 
+        this.scrollToBottom(this.ui.caPrivateMessagesSlot);
         const userEl = this.findUserById(dmSentToUser.uid);
         if (userEl) {
             this.updateProfileChip(dmSentToUser.uid, userEl);
@@ -939,7 +920,6 @@ class App {
 
     async caProcessPrivateLogResponse(user, privateChatLogs) {
         let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
-        console.error('checking parsedDmInUpToLog=', parsedDmInUpToLog);
         const initialFetch = parsedDmInUpToLog === 0;
         let newMessages = 0;
         let skipped = '';
@@ -977,7 +957,7 @@ class App {
         if (newMessages > 0) {
             if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
                 updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                this.helpers.debug(`Set last read for user ${user.uid} to ${parsedDmInUpToLog}`);
+                this.helpers.debug(`Setting last read for user ${user.uid} to ${parsedDmInUpToLog}`);
                 shouldSave = true;
             }
 
@@ -985,6 +965,7 @@ class App {
                 updatedUser.noNewPrivateDmTries = 0;
                 shouldSave = true;
             }
+            this.scrollToBottom(this.ui.caPrivateMessagesSlot);
         } else {
             const prevTries = Number(user.noNewPrivateDmTries) || 0;
             const tries = prevTries + 1;
@@ -1029,6 +1010,7 @@ class App {
             } else {
                 this.helpers.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
             }
+            this.scrollToBottom(this.ui.caPrivateMessagesSlot);
         }
     }
 
@@ -1047,10 +1029,8 @@ class App {
 
         const pico = Number(data && data.pico);
 
-        if (data.pload?.length > 0 && params.get('preload') == 1) {
+        if (data.pload?.length > 0 && params?.get('preload') === 1) {
             const user = await this.userStore.getOrFetch(params.get('priv'));
-
-            console.error(data, params.toString('priv'), user);
             await this.caProcessPrivateLogResponse(user, data.pload);
         }
 
@@ -1138,7 +1118,7 @@ class App {
                 // Only handle string bodies here (x-www-form-urlencoded style)
                 if (typeof body === "string") {
 
-                    if (!body.indexOf("priv=1") !== -1) {
+                    if (body.indexOf("priv=1") > -1) {
                         qs = new URLSearchParams(body);
                         self.caUpdateChatCtxFromBody(qs);
                     }
@@ -1239,11 +1219,7 @@ class App {
         this.helpers.verbose('Log entry clicked:', {entry, uid, isSystem});
         const userLinkEl = e.target.closest?.(this.sel.raw.log.classes.ca_user_link);
         if (userLinkEl && uid && !isSystem) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-
-            await this.openProfileOnHost(uid);
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
             return;
         }
 
@@ -1284,16 +1260,7 @@ class App {
             }
 
             if (action === 'open-profile') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-
-                if (!uid || isSystem) {
-                    this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
-                    return;
-                }
-
-                await this.openProfileOnHost(uid);
+                await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
                 return;
             }
 
@@ -1307,18 +1274,8 @@ class App {
                     return;
                 }
 
-                if (!this.userStore.getOrFetch) {
-                    console.error('[CA] open-dm: UserStore.getOrFetch is not available');
-                    return;
-                }
-
                 const user = await this.userStore.getOrFetch(uid);
-                if (!user || !user.uid) {
-                    console.error('[CA] open-dm: could not fetch user for uid', uid, user);
-                    return;
-                }
-
-                this.applyLegacyAndOpenDm(user);
+                this.openAndRememberPrivateChat(user);
                 return;
             }
         }
@@ -1336,11 +1293,6 @@ class App {
             e.stopPropagation();
             e.stopImmediatePropagation();
 
-            if (!this.userStore.getOrFetch) {
-                console.error('[CA] Generic DM click: UserStore.getOrFetch not available');
-                return;
-            }
-
             const user = await this.userStore.getOrFetch(uid);
             if (!user || !user.uid) {
                 console.error('[CA] Generic DM click: could not fetch user for uid', uid, user);
@@ -1348,16 +1300,12 @@ class App {
             }
 
             console.log('[CA] Opening private (generic) with:', uid, user.name, user.avatar);
-            this.applyLegacyAndOpenDm(user);
+            this.openAndRememberPrivateChat(user);
             return;
         }
 
         if (uid && !isSystem) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-
-            await this.openProfileOnHost(uid);
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
         }
     }
 
@@ -1437,9 +1385,7 @@ class App {
             name ? `Private chat with ${name}` : 'Private chat'
         );
 
-        popup.uid = uid;
-
-        popup.addEventListener('click', this.openProfileOnHost.bind(this, uid));
+        this.ui.caPrivateMessagesSlot = this.helpers.qs('#ca-private-messages-slot', popup);
 
         if (!(popup instanceof HTMLElement)) {
             console.error('[CA] openPrivateInCaPopup: popup not created for id', popupId);
@@ -1469,6 +1415,10 @@ class App {
 
         const left = document.createElement('div');
         left.className = 'ca-host-private-header-left';
+        
+        left.addEventListener('click', async (e) => {
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
+        });
 
         const right = document.createElement('div');
         right.className = 'ca-host-private-header-right';
@@ -1537,29 +1487,23 @@ class App {
         appendIfExists(privateOptMenu);
     }
 
-    applyLegacyAndOpenDm({uid, name, avatar}) {
+    wrapFnWithEventPrevent = async (e, fn, ...params) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return await fn(params);
+    }
+
+    openAndRememberPrivateChat({uid, name, avatar}) {
+        if (!uid || !name || !avatar) {
+            console.error('[CA] open-dm: could not fetch user for uid', uid, name, avatar);
+            return;
+        }
+
         this.helpers.debug('[CA] applyLegacyAndOpenDm', {uid, name, avatar});
-
-        if (!uid) {
-            console.error('[CA] applyLegacyAndOpenDm: missing uid', {uid, name, avatar});
-            return;
-        }
-
-        if (!name) {
-            console.warn('[CA] applyLegacyAndOpenDm: name is empty', {uid, name, avatar});
-        }
-
-        if (!avatar) {
-            console.warn('[CA] applyLegacyAndOpenDm: avatar is empty', {uid, name, avatar});
-        }
-
         this.settingsStore.setLastDmUid(uid);
-
-        if (typeof window.openPrivate !== 'function') {
-            console.error('[CA] applyLegacyAndOpenDm: window.openPrivate is not a function');
-            return;
-        }
         this.openPrivateInCaPopup({uid, name, avatar});
+        this.scrollToBottom(this.ui.caPrivateMessagesSlot);
     }
 
     safeSet(obj, key, value) {
@@ -1580,8 +1524,13 @@ class App {
         return true;
     }
 
-    async openProfileOnHost(uid) {
+    openProfileOnHost = async (uid) => {
         this.helpers.debug('openProfileOnHost called with uid:', uid);
+
+        if (!uid || uid === 'system') {
+            this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+            return;
+        }
 
         const profileHtmlResult = await this.api.getProfile(uid);
         const user = await this.userStore.getOrFetch(uid);
@@ -1685,19 +1634,13 @@ class App {
         wrapper.appendChild(nameSpan);
 
         wrapper.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            await this.openProfileOnHost(updatedUserJson.uid);
+            await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, updatedUserJson.uid)
         });
 
         this.helpers.qs('.user_item_avatar img.avav', parsedUserItemEl).addEventListener(
             'click',
             async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                await this.openProfileOnHost(updatedUserJson.uid);
+                await this.wrapFnWithEventPrevent(e, this.openProfileOnHost, updatedUserJson.uid)
             },
             true
         );
@@ -1841,7 +1784,9 @@ class App {
                     : '';
 
                 const text = `[USER_UPDATE] ${updatedExistingUserJson.name} has changed ${pronoun} Avatar (${oldAvatar} → ${newAvatar})${avatarImgHtml}`;
-                this.logEventLine(text, updatedExistingUserJson);
+                if (!this.isInitialLoad) {
+                    this.logEventLine(text, updatedExistingUserJson);
+                }
             }
         }
 
@@ -2467,7 +2412,7 @@ class App {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            this.applyLegacyAndOpenDm(user);
+            this.openAndRememberPrivateChat(user);
         });
 
         userItemDataEl.appendChild(dmLink);
@@ -2520,6 +2465,8 @@ class App {
         </div>
     </div>
   `;
+
+        this.helpers.qs('.clear-logs', panel).addEventListener('click', this._onLogClearClick)
 
         mount.appendChild(panel);
         this._attachLogClickHandlers();
@@ -2999,7 +2946,7 @@ class App {
         content.className = 'ca-user-list-content';
         container.appendChild(content);
 
-        group.addEventListener('click', this._setExpanded.bind(this, group));
+        header.addEventListener('click', this._setExpanded.bind(this, group));
 
         return {
             group,
@@ -3267,57 +3214,44 @@ class App {
         return Array.from(boxes);
     }
 
-    _wireLogClear() {
-        const buttons = this.helpers.qsa('.ca-section-title .clear-logs', document);
+    _onLogClearClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = e.target;
 
-        buttons.forEach((btn) => {
-            if (btn._caClearWired) return;
-            btn._caClearWired = true;
+        const kindsAttr = (btn.dataset?.kinds || '').trim();
+        if (!kindsAttr) {
+            console.warn('[LOG] Clear clicked but data-kinds is missing');
+            return;
+        }
 
-            const handle = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+        const kinds = Array.from(new Set(
+            kindsAttr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+        ));
 
-                const kindsAttr = (btn.dataset?.kinds || '').trim();
-                if (!kindsAttr) {
-                    console.warn('[LOG] Clear clicked but data-kinds is missing');
-                    return;
-                }
+        if (!this.activityLogStore || typeof this.activityLogStore.clearByKind !== 'function') {
+            console.error('[LOG] ActivityLogStore.clearByKind unavailable for section clear');
+            return;
+        }
 
-                const kinds = Array.from(new Set(
-                    kindsAttr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-                ));
+        let totalRemoved = 0;
+        for (let i = 0; i < kinds.length; i++) {
+            const k = kinds[i];
+            const removed = this.activityLogStore.clearByKind(k) || 0;
+            totalRemoved += removed;
+        }
 
-                if (!this.activityLogStore || typeof this.activityLogStore.clearByKind !== 'function') {
-                    console.error('[LOG] ActivityLogStore.clearByKind unavailable for section clear');
-                    return;
-                }
+        const boxes = this._boxesForKinds(kinds);
+        if (boxes.length === 0) {
+            console.warn('[LOG] No UI boxes resolved for kinds:', kinds);
+        } else {
+            for (let i = 0; i < boxes.length; i++) {
+                boxes[i].innerHTML = '';
+            }
+        }
 
-                let totalRemoved = 0;
-                for (let i = 0; i < kinds.length; i++) {
-                    const k = kinds[i];
-                    const removed = this.activityLogStore.clearByKind(k) || 0;
-                    totalRemoved += removed;
-                }
+        console.log(`[LOG] Section cleared: kinds=[${kinds.join(', ')}], removed=${totalRemoved}`);
 
-                const boxes = this._boxesForKinds(kinds);
-                if (boxes.length === 0) {
-                    console.warn('[LOG] No UI boxes resolved for kinds:', kinds);
-                } else {
-                    for (let i = 0; i < boxes.length; i++) {
-                        boxes[i].innerHTML = '';
-                    }
-                }
-
-                console.log(`[LOG] Section cleared: kinds=[${kinds.join(', ')}], removed=${totalRemoved}`);
-            };
-
-            btn.addEventListener('click', handle);
-            btn.addEventListener('keydown', (ev) => {
-                if (!ev) return;
-                if (ev.key === 'Enter' || ev.key === ' ') handle(ev);
-            });
-        });
     }
 
     isVisuallyTruncated_(el) {
@@ -3459,7 +3393,7 @@ class App {
                                 <polyline points="3 7,12 13,21 7"></polyline>
                             `)} </a> ` : '';
 
-        const expandIconHTML = (kind !== event && !isSystemUser) ?
+        const expandIconHTML = (kind !== 'event' && !isSystemUser) ?
             `<span class="ca-expand-indicator" title="Click to expand/collapse" data-action="toggle-expand" role="button" tabindex="0" aria-expanded="true">▴</span>` : ``;
 
         const deleteIconHTML = `
@@ -3662,7 +3596,7 @@ class App {
             return;
         }
 
-        this.applyLegacyAndOpenDm(await this.userStore.getOrFetch(uid));
+        this.openAndRememberPrivateChat(await this.userStore.getOrFetch(uid));
     }
 
     parseLogDateToNumber(logDateStr) {
@@ -3695,4 +3629,4 @@ if (!text.includes("Verifieer dat u een mens bent")) {
 } else {
     console.warn("Human verification page detected — not initializing.");
 }
-app.init();
+app.init().catch(console.error);

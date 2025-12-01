@@ -641,23 +641,6 @@ class UserStore {
         return this.set(updated);
     }
 
-    getParsedDmInUpToLog(uid) {
-        const u = this.getOrFetch(uid);
-        if (!u) {
-            console.error(`User ${uid} not found, cannot get parsedDmInUpToLog`);
-            return null;
-        }
-        return u.parsedDmInUpToLog;
-    }
-
-    hasParsedDmAlready(uid) {
-        const u = this.get(uid);
-        if (!u) {
-            console.error(`User ${uid} not found, cannot check hasParsedDmAlready`);
-        }
-        return u.parsedDmInUpToLog !== 0;
-    }
-
     isLoggedIn(uid) {
         const isLoggedIn = this.get(uid)?.isLoggedIn;
 
@@ -665,26 +648,6 @@ class UserStore {
             throw new Error(`User ${uid} isLoggedIn is undefined`);
         }
         return !!(this.get(uid)?.isLoggedIn);
-    }
-
-    setLoggedIn(uid, status) {
-        const user = this.get(uid);
-
-        if (user.isLoggedIn === undefined) {
-            throw new Error(`User ${uid} isLoggedIn is undefined`);
-        }
-
-        const loggedInStatusChanged = user.isLoggedIn !== status;
-
-        if (!user) {
-            console.log(`User ${uid} not found, cannot set isLoggedIn to ${status}`);
-            return null;
-        }
-
-        return {
-            loggedInStatusChanged: loggedInStatusChanged,
-            user: loggedInStatusChanged ? this.set({...user, isLoggedIn: status}) : user
-        }
     }
 
     getAllLoggedIn() {
@@ -703,14 +666,6 @@ class UserStore {
 
     getMalesLoggedIn() {
         return this.getAllLoggedIn().filter(u => !u.isFemale);
-    }
-
-    getFemalesLoggedInCount() {
-        return this.getAllLoggedInFemales().length;
-    }
-
-    getMalesLoggedInCount() {
-        return this.getMalesLoggedIn().length;
     }
 
     async getOrFetch(id) {
@@ -737,7 +692,11 @@ class UserStore {
             const result = this.helpers.parseUserSearchHTML(await this.api.searchUserRemoteByUsername(String(name)));
 
             if (Array.isArray(result) && result.length > 1) {
-                console.warn(`Invalid result:`, result);
+                const exactMatch = result.find(u => u.name === name);
+                if (exactMatch) {
+                    return exactMatch;
+                }
+                console.warn(`Invalid result (too many search results, name is not specific enough):`, result);
                 return null;
             } else if (Array.isArray(result) && result.length === 1) {
                 console.log(`Found user ${name} by username, saving to store and returning it:`, result[0]);
