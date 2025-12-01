@@ -539,12 +539,13 @@ class Popups {
         const applyDebugChange = (enabled) => {
             const safeEnabled = !!enabled;
             this.settingsStore.setDebugMode(safeEnabled);
-
+            this.helpers.setDebugMode(safeEnabled);
             console.log(
                 safeEnabled
                     ? '[DEBUG] Debug mode enabled'
                     : 'Debug mode disabled'
             );
+            this.helpers.debug('[DEBUG] Debug logs are now visible');
 
 
             if (debugSettingsCheckbox.checked !== safeEnabled) {
@@ -555,12 +556,13 @@ class Popups {
         const applyVerboseChange = (enabled) => {
             const safeEnabled = !!enabled;
             this.settingsStore.setVerboseMode(safeEnabled);
-
+            this.helpers.setVerboseMode(safeEnabled);
             console.log(
                 safeEnabled
                     ? '[VERBOSE] Verbose mode enabled'
                     : 'Verbose mode disabled'
             );
+            this.helpers.verbose('[DEBUG] Debug logs are now visible');
 
             if (verboseSettingsCheckbox.checked !== safeEnabled) {
                 verboseSettingsCheckbox.checked = safeEnabled;

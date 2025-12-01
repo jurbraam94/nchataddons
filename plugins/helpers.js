@@ -10,6 +10,14 @@ class Helpers {
         this.debugMode = debugMode;
     }
 
+    setDebugMode(debugMode) {
+        this.debugMode = debugMode;
+    }
+
+    setVerboseMode(verboseMode) {
+        this.verboseMode = verboseMode;
+    }
+
     debug(...args) {
 
         if (this.debugMode) {
