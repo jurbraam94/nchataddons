@@ -22,9 +22,8 @@ class Popups {
 
         this._zBase = 10000;
         this._zCounter = this._zBase;
-    }
 
-    init() {
+        // Load saved column preferences immediately
         this._loadColumnPrefs();
     }
 
@@ -911,17 +910,48 @@ class Popups {
     _renderSummary(popup, allUsers, filteredUsers) {
         const el = popup.querySelector('#ca-users-summary');
         if (!el) {
+            console.error('[UsersPopup] _renderSummary: #ca-users-summary not found');
             return;
         }
 
         const total = Array.isArray(allUsers) ? allUsers.length : 0;
         const totalFiltered = Array.isArray(filteredUsers) ? filteredUsers.length : 0;
-        const totalFemales = allUsers.filter(u => u.isFemale).length;
+        const totalFemales = Array.isArray(allUsers)
+            ? allUsers.filter(u => u.isFemale).length
+            : 0;
         const totalFemalesOnline = this.userStore.getAllLoggedInFemales().length;
 
+        const hasFilter =
+            !!this.state.query ||
+            !!this.state.onlyFemales ||
+            !!this.state.onlyOnline;
+
+        // Case 1: no users at all
+        if (total === 0) {
+            el.textContent = 'No users found';
+            return;
+        }
+
+        // Case 2: no filter active, or filters don’t change the list
+        if (!hasFilter || totalFiltered === total) {
+            el.textContent =
+                `Users: ${total} total — ` +
+                `Females: ${totalFemales} (online: ${totalFemalesOnline})`;
+            return;
+        }
+
+        // Case 3: filters active but nothing matches
+        if (totalFiltered === 0) {
+            el.textContent =
+                `No users match current filters (0/${total}) — ` +
+                `Females: ${totalFemales} (online: ${totalFemalesOnline})`;
+            return;
+        }
+
+        // Case 4: filters active and some subset visible
         el.textContent =
-            `Users: ${totalFiltered}/${total} visible ` +
-            `— Females: ${totalFemales} (online: ${totalFemalesOnline})`;
+            `Users: ${totalFiltered} of ${total} visible — ` +
+            `Females: ${totalFemales} (online: ${totalFemalesOnline})`;
     }
 
     _renderColumnSelector(popup, columns) {
@@ -962,6 +992,7 @@ class Popups {
                 const nextVisible = {...this.state.visibleColumns};
                 nextVisible[colKey] = !!cb.checked;
                 this.state.visibleColumns = nextVisible;
+                this.helpers.debug(`Persisting visible columns:`, JSON.stringify(this.state.visibleColumns));
                 this.settingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
                 this.renderUsersPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
@@ -1440,13 +1471,23 @@ class Popups {
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
-    // ---------- column prefs ----------
-
     _loadColumnPrefs() {
-        const prefs = this.settingsStore.getUserManagerVisibleColumnPrefs();
-        if (prefs && typeof prefs === 'object') {
-            this.state.visibleColumns = {...raw};
-        } else {
+        const raw = this.settingsStore.getUserManagerVisibleColumnPrefs();
+
+        if (!raw) {
+            this.state.visibleColumns = {};
+            return;
+        }
+
+        try {
+            if (raw && typeof raw === 'object') {
+                this.state.visibleColumns = raw;
+            } else {
+                this.state.visibleColumns = {};
+            }
+            console.debug('[UsersPopup] Loaded visible columns:', this.state.visibleColumns);
+        } catch (e) {
+            console.error('[UsersPopup] Failed to parse column prefs:', e);
             this.state.visibleColumns = {};
         }
     }

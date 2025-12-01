@@ -4,6 +4,7 @@ class App {
         this.activeTextInput = null;
 
         this.helpers = new Helpers();
+        window.Helpers = this.helpers;
         this.keyValueStore = new KeyValueStore();
 
         this.settingsStore = new SettingsStore({
@@ -294,12 +295,12 @@ class App {
             helpers: this.helpers,
             userStore: this.userStore
         });
-        this.popups.init();
 
         this.helpers.init({
             debugMode: this.settingsStore.getDebugMode(),
             verboseMode: this.settingsStore.getVerboseMode()
-        })
+        });
+
         this._removeSuperBotMethods();
         this._installAudioAutoplayGate();
         await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
@@ -1751,6 +1752,24 @@ class App {
         // Update UI counts
         this.updateFemaleUserCount(totalFemaleLoggedInCount);
         this.updateOtherUsersCount(totalOthersLoggedInCount);
+
+        // Logging (unchanged)
+        console.log('\n');
+        this._logSummaryDouble('Female online status changed:', femaleLoggedInCount, femaleLoggedOutCount);
+        this._logSummaryDouble('Others online status changed:', othersLoggedInCount, othersLoggedOutCount);
+        this._logSummarySingle('Total female online:', totalFemaleLoggedInCount);
+        this._logSummarySingle('Others online:', totalOthersLoggedInCount);
+        this._logSummarySingle('Total users online: ', currentOnlineUserEls.length);
+        console.log('\n');
+
+        if (updatedProfileCount > 0) {
+            this._logStyled('', [
+                {
+                    text: `Profiles updated: ${updatedProfileCount}`,
+                    style: 'color:#ffff55;font-weight:bold'
+                }
+            ]);
+        }
 
     }
 

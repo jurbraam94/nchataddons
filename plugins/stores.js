@@ -20,11 +20,13 @@ class SettingsStore {
     }
 
     setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
-        this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, String(userManagerVisibleColumnPrefs));
+        this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, userManagerVisibleColumnPrefs);
     }
 
     getUserManagerVisibleColumnPrefs() {
-        return this.store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY) || '';
+        return this.store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, {
+            parseJson: true
+        });
     }
 
     getWriteStorageMode(mode) {
@@ -90,7 +92,7 @@ class SettingsStore {
 
     getVerboseMode() {
         return this.store.getCookie(this.VERBOSE_COOKIE) === 'true' ||
-            this.store.get(this.VERBOSE_MODE_KEY) === 'true';
+            this.store.get(this.VERBOSE_MODE_KEY) === 'true' || false;
     }
 
     setDebugMode(isEnabled) {
