@@ -762,12 +762,12 @@
     vertical-align: top;
 }
 
-#ca-users-popup .chat_image {
+#ca-uer-management-popup .chat_image {
     height: 40px;
 }
 
 /* Users popup layout – body fills popup, table area scrolls */
-#ca-users-popup .ca-popup-body {
+#ca-uer-management-popup .ca-popup-body {
     padding: 10px;
     display: flex;
     flex-direction: column;
@@ -776,13 +776,13 @@
     min-height: 0;
 }
 
-#ca-users-popup .ca-users-popup-root {
+#ca-uer-management-popup .ca-uer-management-popup-root {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
-#ca-users-popup .ca-users-modal {
+#ca-uer-management-popup .ca-users-modal {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -813,26 +813,26 @@
 
 
 /* Pagination stays at bottom (no scroll) */
-#ca-users-popup .ca-users-pagination {
+#ca-uer-management-popup .ca-users-pagination {
     flex: 0 0 auto;
 }
 
 /* Let the users modal size itself to its contents, up to popup max width */
-#ca-users-popup .ca-users-modal {
+#ca-uer-management-popup .ca-users-modal {
     width: max-content;
     max-width: 100%;
 }
 
 /* rows follow content width, not full popup */
-#ca-users-popup .ca-users-controls,
-#ca-users-popup .ca-users-columns,
-#ca-users-popup .ca-users-pagination {
+#ca-uer-management-popup .ca-users-controls,
+#ca-uer-management-popup .ca-users-columns,
+#ca-uer-management-popup .ca-users-pagination {
     width: auto;
     align-self: flex-start;
 }
 
 /* table wrapper can stretch within modal, but still respects content width */
-#ca-users-popup .ca-users-table-wrapper {
+#ca-uer-management-popup .ca-users-table-wrapper {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
@@ -846,15 +846,15 @@
 
 
 /* Table width based on content instead of forced full width */
-#ca-users-popup .ca-users-table {
+#ca-uer-management-popup .ca-users-table {
     width: 100%;
     max-width: 100%;
     border-collapse: collapse;
 }
 
 /* Optional: keep cells compact and truncate long values */
-#ca-users-popup .ca-users-table th,
-#ca-users-popup .ca-users-table td {
+#ca-uer-management-popup .ca-users-table th,
+#ca-uer-management-popup .ca-users-table td {
     white-space: nowrap;
     max-width: 260px;
     overflow: hidden;
@@ -1524,7 +1524,7 @@ svg.svg-large {
     margin-right: 4px;
 }
 
-#ca-users-popup {
+#ca-uer-management-popup {
     min-width: 0;
     max-width: 60%;
     height: 100%;
@@ -1572,14 +1572,14 @@ svg.svg-large {
 
 /* --- Users popup toolbar layout --- */
 
-#ca-users-popup .ca-users-toolbar {
+#ca-uer-management-popup .ca-users-toolbar {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 4px; /* gives some air above the table */
 }
 
-#ca-users-popup .ca-users-toolbar-row {
+#ca-uer-management-popup .ca-users-toolbar-row {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -1587,7 +1587,7 @@ svg.svg-large {
 }
 
 /* summary on the left, filters+search on the right (when there’s space) */
-#ca-users-popup .ca-users-summary {
+#ca-uer-management-popup .ca-users-summary {
     margin-right: auto;
     font-size: 12px;
     opacity: 0.8;
@@ -1595,7 +1595,7 @@ svg.svg-large {
 }
 
 /* filters + search grouped */
-#ca-users-popup .ca-users-filters {
+#ca-uer-management-popup .ca-users-filters {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1603,7 +1603,7 @@ svg.svg-large {
 }
 
 /* small inline checkbox labels */
-#ca-users-popup .ca-users-filter-item {
+#ca-uer-management-popup .ca-users-filter-item {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1613,14 +1613,14 @@ svg.svg-large {
 }
 
 /* reuse existing input styling but make sure it doesn't shrink weirdly */
-#ca-users-popup .ca-users-search {
+#ca-uer-management-popup .ca-users-search {
     flex: 1 1 160px;
     min-width: 140px;
 }
 
 /* --- Columns row: subtle panel under filters --- */
 
-#ca-users-popup .ca-users-columns-row {
+#ca-uer-management-popup .ca-users-columns-row {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
@@ -1632,21 +1632,21 @@ svg.svg-large {
     margin-top: 2px; /* space between search row and columns */
 }
 
-#ca-users-popup .ca-users-columns-row > strong {
+#ca-uer-management-popup .ca-users-columns-row > strong {
     font-size: 12px;
     opacity: 0.9;
     margin-top: 2px;
 }
 
 /* container for all column pills */
-#ca-users-popup .ca-users-column-selector {
+#ca-uer-management-popup .ca-users-column-selector {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
 }
 
 /* one "pill" with checkbox + label */
-#ca-users-popup .ca-users-column-checkbox {
+#ca-uer-management-popup .ca-users-column-checkbox {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1659,7 +1659,7 @@ svg.svg-large {
     white-space: nowrap;
 }
 
-#ca-users-popup .ca-users-column-checkbox input[type="checkbox"] {
+#ca-uer-management-popup .ca-users-column-checkbox input[type="checkbox"] {
     margin: 0;
     transform: scale(0.9);
 }

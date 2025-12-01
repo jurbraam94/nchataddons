@@ -81,23 +81,22 @@ class Popups {
         });
     }
 
-
-    open() {
-        const popup = this._createUsersPopup();
+    openUserManagementPopup() {
+        const popup = this.createUserManagementPopup();
 
         if (!popup) {
             console.error('[UsersPopup] open: popup not created');
             return;
         }
 
-        this.renderUsersPopup(popup);
-        this.togglePopup('ca-users-popup');
+        this.renderUserManagementPopup(popup);
+        this.togglePopup('ca-uer-management-popup');
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
-    _createUsersPopup() {
+    createUserManagementPopup() {
         const bodyHtml = `
-<div class="ca-users-popup-root" id="ca-users-table-root">
+<div class="ca-uer-management-popup-root" id="ca-users-table-root">
   <div class="ca-users-toolbar">
     <div class="ca-users-toolbar-row">
       <div class="ca-users-summary" id="ca-users-summary"></div>
@@ -137,7 +136,7 @@ class Popups {
 `;
 
         const popup = this.ensurePopup({
-            id: 'ca-users-popup',
+            id: 'ca-uer-management-popup',
             title: 'All users',
             bodyHtml
         });
@@ -171,7 +170,7 @@ class Popups {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -181,7 +180,7 @@ class Popups {
             onlyOnlineCheckbox.addEventListener('change', () => {
                 this.state.onlyOnline = !!onlyOnlineCheckbox.checked;
                 this.state.page = 1;
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -190,7 +189,7 @@ class Popups {
             searchInput.addEventListener('input', () => {
                 this.state.query = String(searchInput.value || '').trim().toLowerCase();
                 this.state.page = 1;
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         } else {
@@ -201,7 +200,7 @@ class Popups {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -223,7 +222,7 @@ class Popups {
                 }
 
                 this.state.page = pageNum;
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -235,7 +234,7 @@ class Popups {
                 e.preventDefault();
                 const sortKey = String(thSortable.getAttribute('data-sort-key') || '').trim();
                 this._toggleSort(sortKey);
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
                 return;
             }
@@ -956,7 +955,7 @@ class Popups {
         return popup;
     }
 
-    renderUsersPopup(popup) {
+    renderUserManagementPopup(popup) {
         if (!popup) {
             console.error('[UsersPopup] _render called without popup');
             return;
@@ -1086,7 +1085,7 @@ class Popups {
                 this.state.visibleColumns = nextVisible;
                 this.helpers.debug(`Persisting visible columns:`, JSON.stringify(this.state.visibleColumns));
                 this.settingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
-                this.renderUsersPopup(popup);
+                this.renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
 
@@ -1488,7 +1487,7 @@ class Popups {
             }
 
             this.userStore.set(updated);
-            this.renderUsersPopup(popup);
+            this.renderUserManagementPopup(popup);
             this.helpers.installLogImageHoverPreview([popup]);
         };
 
@@ -1522,7 +1521,7 @@ class Popups {
 
         this.userStore.remove(uid);
 
-        this.renderUsersPopup(popup);
+        this.renderUserManagementPopup(popup);
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
@@ -1559,7 +1558,7 @@ class Popups {
             : {...user, ...parsed};
 
         this.userStore.set(merged);
-        this.renderUsersPopup(popup);
+        this.renderUserManagementPopup(popup);
         this.helpers.installLogImageHoverPreview([popup]);
     }
 

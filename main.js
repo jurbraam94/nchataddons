@@ -2867,7 +2867,7 @@ class App {
 
                 case 'open-users':
                     this.helpers.verbose('Nav: users clicked');
-                    this.popups.open();
+                    this.popups.openUserManagementPopup();
                     break;
 
                 default:
@@ -2883,6 +2883,7 @@ class App {
         this.ui.unrepliedMessageBox.innerHTML = '';
         this.ui.repliedMessageBox.innerHTML = '';
         this.ui.loggingBox.innerHTML = '';
+        this.ui.presenceBox.innerHTML = '';
 
         const removedIn = this.activityLogStore.clearByKind('dm-in') || 0;
         const removedOut = this.activityLogStore.clearByKind('dm-out') || 0;
