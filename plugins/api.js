@@ -7,6 +7,29 @@ class Api {
         this.maxRequestTimeout = 10000;
     }
 
+    async getProfile(uid) {
+        const token = this.helpers.getToken();
+
+        const body = new URLSearchParams({
+            token,
+            get_profile: String(uid),
+            cp: 'chat'
+        }).toString();
+
+        const res = await fetch('/system/box/profile.php', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': '*/*'
+            },
+            body
+        });
+
+        return await res.text();
+    }
+
     async searchUserNameRemote(uid) {
         if (!uid) {
             console.error(`[searchUserNameRemote] No uid provided`);

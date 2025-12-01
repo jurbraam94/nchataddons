@@ -1308,31 +1308,10 @@ class App {
     async openProfileOnHost(uid) {
         this.helpers.debug('openProfileOnHost called with uid:', uid);
 
-        const token = this.helpers.getToken();
-
-        const body = new URLSearchParams({
-            token,
-            get_profile: String(uid),
-            cp: 'chat'
-        }).toString();
-
-        const res = await fetch('/system/box/profile.php', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': '*/*'
-            },
-            body
-        });
-
-        const html = await res.text();
-
+        const profileHtmlResult = await this.api.getProfile(uid);
         const user = await this.userStore.getOrFetch(uid);
 
-        this.popups.createAndOpenPopupWithHtml(html, 'ca-profile-popup', user?.name || 'Profile')
-
+        this.popups.createAndOpenPopupWithHtml(profileHtmlResult, 'ca-profile-popup', user?.name || 'Profile')
     }
 
     buildBroadcastList() {
@@ -1524,7 +1503,6 @@ class App {
         s = new URL(s, location.origin).pathname;
         return s.indexOf('system/panel/user_list.php') !== -1;
     }
-
 
     _updateExistingUserMetadata(existingUserJsonFromStore, parsedUserJson, existingUserEl) {
         const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;

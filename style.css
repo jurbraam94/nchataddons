@@ -1655,3 +1655,8 @@ svg.svg-large {
     margin: 0;
     transform: scale(0.9);
 }
+
+#mprofilemenu .tpad15 {
+    padding-bottom: 0;
+    padding-top: 0;
+}
