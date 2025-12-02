@@ -194,7 +194,6 @@ class App {
         this.createOtherUsersContainer();
         this.createFemaleUsersContainer();
 
-
         this.buildPanel();
         this.buildMenuLogPanel();
 
@@ -1376,7 +1375,9 @@ class App {
         const content = document.createElement('div');
         content.className = 'ca-user-list-content';
         container.appendChild(content);
-        this.util.click(header, this._setExpanded, group, this.ui.femaleUserContainerGroup);
+
+        // Only pass the clicked group; logic will find the "other" group.
+        this.util.click(header, this._onUserListHeaderClick, group);
 
         return {
             group,
@@ -1390,6 +1391,39 @@ class App {
             content
         };
     }
+
+    _onUserListHeaderClick = (group) => {
+        if (!group) {
+            console.error("[CA] _onUserListHeaderClick: group is missing");
+            return;
+        }
+
+        // Determine the opposite container group
+        let otherGroup = null;
+
+        if (group === this.ui.femaleUserContainerGroup) {
+            otherGroup = this.ui.otherUserContainerGroup;
+        } else if (group === this.ui.otherUserContainerGroup) {
+            otherGroup = this.ui.femaleUserContainerGroup;
+        } else {
+            console.warn("[CA] _onUserListHeaderClick: group is not a known user container group", group);
+        }
+
+        if (!otherGroup) {
+            // Fallback: just toggle this one, don't enforce "always one open"
+            this.util.debug("[CA] Only one group available yet — toggling single group");
+            const isExpanded = this._isExpanded(group);
+
+            if (!isExpanded) {
+                this._expandContainer(group);
+            } else {
+                this._collapseContainer(group);
+            }
+            return;
+        }
+
+        this._setExpanded(group, otherGroup);
+    };
 
     createOtherUsersContainer = () => {
         const refs = this._createUserListContainer({
