@@ -80,77 +80,26 @@ class Util {
         this.verboseMode = verboseMode;
     }
 
-    _getCallerLocation = () => {
-        const err = new Error();
-
-        if (!err.stack) {
-            console.warn('_getCallerLocation: no stack available');
-            return '';
-        }
-
-        const lines = err.stack.split('\n');
-
-        // 0: "Error"
-        // 1: this debug() method
-        // 2: caller of debug()  -> what we want
-        const callerLine = lines[2] ? lines[2].trim() : '';
-
-        if (!callerLine) {
-            console.warn('_getCallerLocation: caller line missing in stack');
-            return '';
-        }
-
-        // Try to match: "at FuncName (http://.../file.js:573:23)"
-        let match = callerLine.match(/at\s+(.*?)\s+\((.*):(\d+):(\d+)\)/);
-
-        // If that fails, try: "at http://.../file.js:573:23"
-        if (!match) {
-            match = callerLine.match(/at\s+(.*):(\d+):(\d+)/);
-            if (!match) {
-                // As a fallback, just return the raw line (better than nothing)
-                return callerLine.replace(/^at\s+/, '');
-            }
-
-            const fullPath = match[1];
-            const line = match[2];
-
-            const file = fullPath.split('/').pop() || fullPath;
-
-            return `${file}:${line}`;
-        }
-
-        // match[1] = function name, match[2] = file url, match[3] = line, match[4] = col
-        const funcName = match[1];
-        const fullPath = match[2];
-        const line = match[3];
-
-        const file = fullPath.split('/').pop() || fullPath;
-
-        return `${file}:${line} ${funcName}`;
-    }
-
-
     debug = (...args) => {
         if (!this.debugMode) {
             return;
         }
 
-        const location = this._getCallerLocation();
-        const prefix = location ? `[DEBUG ${location}]` : '[DEBUG]';
-
-        console.log(prefix, ...args);
-    }
+        console.groupCollapsed('[DEBUG]', ...args);
+        console.trace();        // clickable location in DevTools
+        console.groupEnd();
+    };
 
     verbose = (...args) => {
         if (!this.verboseMode) {
             return;
         }
 
-        const location = this._getCallerLocation();
-        const prefix = location ? `[VERBOSE ${location}]` : '[VERBOSE]';
-
-        console.log(prefix, ...args);
-    }
+        console.groupCollapsed('[VERBOSE]');
+        console.log(...args);
+        console.trace();        // clickable location in DevTools
+        console.groupEnd();
+    };
 
 
     sleep = (ms) => {
@@ -425,39 +374,102 @@ class Util {
         });
     }
 
-    wrapFnWithEventPrevent = async (e, fn, ...params) => {
+    // Core wrapper: handles prevent/stop + event vs no-event
+    wrapClick = async (e, fn, withEvent, ...params) => {
+        if (!e) {
+            console.warn('wrapClick called without event object');
+            return;
+        }
+
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        return await fn(e, ...params);
+
+        if (typeof fn !== 'function') {
+            console.error('wrapClick: fn is not a function', fn);
+            return;
+        }
+
+        if (withEvent) {
+            // event as first argument
+            return await fn(e, ...params);
+        }
+
+        // no event passed to handler
+        return await fn(...params);
     };
 
-    onClickEl = (el, fn, ...params) => {
+// ---------- internal helpers (no duplication) ----------
+
+    _bindClick = (el, fn, withEvent, ...params) => {
         if (!(el instanceof Element)) {
-            throw new Error(`onClickEl: el is not an Element`);
+            console.error('_bindClick: el is not an Element', el);
+            return;
         }
 
-        el.addEventListener('click', async (e) =>
-            this.wrapFnWithEventPrevent(e, fn, ...params)
-        );
-    }
+        el.addEventListener('click', (e) => {
+            void this.wrapClick(e, fn, withEvent, ...params);
+        });
+    };
 
-    onClickElBySelector = (selector, fn, ...params) => {
+    _bindclickAll = (elList, fn, withEvent, ...params) => {
+        if (
+            !elList ||
+            (!Array.isArray(elList) &&
+                !(elList instanceof NodeList) &&
+                !(elList instanceof HTMLCollection))
+        ) {
+            console.error(
+                '_bindclickAll: elList is not a list of elements',
+                elList
+            );
+            return;
+        }
+
+        Array.from(elList).forEach((el) => this._bindClick(el, fn, withEvent, ...params));
+    };
+
+// ---------- public API (short, readable names) ----------
+
+// Single element, NO event passed
+    click = (el, fn, ...params) => {
+        this._bindClick(el, fn, false, ...params);
+    };
+
+// Single element, with Event as first arg
+    clickE = (el, fn, ...params) => {
+        this._bindClick(el, fn, true, ...params);
+    };
+
+// By selector, NO event
+    clickSel = (selector, fn, ...params) => {
         const el = this.qs(selector);
         if (!el) {
-            throw new Error(`onClickElBySelector: no element found for selector: ${selector}`);
+            console.error('clickSel: no element found for selector:', selector);
+            return;
         }
-        this.onClickEl(el, fn, ...params);
-    }
+        this.click(el, fn, ...params);
+    };
 
-    onClickElList = (elList, fn, ...params) => {
-        console.log(elList, typeof elList);
-        if (!Array.isArray(elList)) {
-            throw new Error(`onClickElList: elList is not a NodeList`);
+// By selector, with Event
+    clickSelE = (selector, fn, ...params) => {
+        const el = this.qs(selector);
+        if (!el) {
+            console.error('clickSelE: no element found for selector:', selector);
+            return;
         }
+        this.clickE(el, fn, ...params);
+    };
 
-        elList.forEach(el => this.onClickEl(el, fn, ...params));
-    }
+// List (NodeList/array), NO event
+    clickAll = (elList, fn, ...params) => {
+        this._bindclickAll(elList, fn, false, ...params);
+    };
+
+// List (NodeList/array), with Event
+    clickAllE = (elList, fn, ...params) => {
+        this._bindclickAll(elList, fn, true, ...params);
+    };
 
     qsa = (s, r) => {
         return Array.prototype.slice.call((r || document).querySelectorAll(s));

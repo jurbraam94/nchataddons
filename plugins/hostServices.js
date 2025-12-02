@@ -34,6 +34,9 @@ class HostServices {
         this._lastSendAt = 0;
         this.userRefreshInterval = 30000;
 
+        this.shouldIncludeFemaleUsers = true;
+        this.shouldIncludeOtherUsers
+
         this._xhrOpen = null;
         this._xhrSend = null;
 

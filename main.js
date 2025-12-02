@@ -171,11 +171,11 @@ class App {
         this.ui.caChatRight = document.createElement('div');
         const hostChatRight = this.util.qs(`#chat_right`);
         this.ui.caChatRight.innerHTML = hostChatRight.innerHTML;
-        this.ui.caChatRight.id = 'ca_chat_right';
+        this.ui.caChatRight.id = 'left-panel';
         this.ui.caChatRight.removeAttribute('style');
         hostChatRight.remove();
         const main_wrapper = document.createElement('div');
-        main_wrapper.id = 'main_wrapper';
+        main_wrapper.id = 'main-wrapper';
         document.body.prepend(main_wrapper);
         main_wrapper.appendChild(this.util.qs('#chat_head'));
         main_wrapper.appendChild(this.ui.globalChat);
@@ -227,7 +227,7 @@ class App {
         this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
 
         this._wireTextboxTrackers();
-        this.util.onClickElBySelector('#chat_logs_container', this.onClickGlobalChatHeaderProfile);
+        this.util.clickSelE('#chat_logs_container', this.onClickGlobalChatHeaderProfile);
         this.wireListOptionClicks();
         this._attachLogClickHandlers();
 
@@ -362,7 +362,7 @@ class App {
         refreshBtn.title = 'Refresh users';
         refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
 
-        this.util.onClickEl(refreshBtn, async () => {
+        this.util.click(refreshBtn, async () => {
             await this.onClickRefreshButton();
             refreshBtn.classList.remove('loading');
         });
@@ -372,7 +372,7 @@ class App {
         templatesBtn.title = 'Predefined messages';
         templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
 
-        this.util.onClickEl(templatesBtn, this.popups.openPredefinedPopup, null);
+        this.util.click(templatesBtn, this.popups.openPredefinedPopup, null);
 
         if (existingOption) {
             bar.insertBefore(refreshBtn, existingOption);
@@ -421,7 +421,7 @@ class App {
         ];
         boxes.forEach(box => {
             if (!box || box._caGenericWired) return;
-            this.util.onClickEl(box, this._onLogClickGeneric);
+            this.util.clickE(box, this._onLogClickGeneric);
             box._caGenericWired = true;
         });
     }
@@ -455,6 +455,21 @@ class App {
                 // Re-run sizing logic to clamp/unclamp & update arrow
                 this.ensureExpandButtonFor_(entry);
 
+                return;
+            }
+
+            if (action === 'delete-log') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const guid = entry.getAttribute('data-guid');
+                if (guid && this.activityLogStore.remove) {
+                    this.activityLogStore.remove(guid);
+                } else {
+                    console.warn('[CA] delete-log: no guid or ActivityLogStore.remove missing', {guid});
+                }
+                entry.remove();
                 return;
             }
 
@@ -538,7 +553,7 @@ class App {
 
         wrapper.appendChild(nameSpan);
 
-        this.util.onClickEl(this.util.qs('.user_item_avatar img.avav'), this.popups.openUserProfilePopupUsingHostEl, updatedUserJson.uid);
+        this.util.click(this.util.qs('.user_item_avatar img.avav'), this.popups.openUserProfilePopupUsingHostEl, updatedUserJson.uid);
 
         if (updatedUserJson?.age > 0) {
             const ageSpan = document.createElement('span');
@@ -817,7 +832,7 @@ class App {
         toggle.appendChild(checkedSvg);
         applyVisualState(include);
 
-        this.util.onClickEl(toggle, () => includeForBroadcast);
+        this.util.click(toggle, () => includeForBroadcast);
 
         userItemDataEl.appendChild(toggle);
     }
@@ -835,7 +850,7 @@ class App {
          <polyline points="3 7,12 13,21 7"></polyline>`
         ));
 
-        this.util.onClickEl(dmLink, () => this.popups.openAndRememberPrivateChat, user);
+        this.util.click(dmLink, this.popups.openAndRememberPrivateChat, user);
         userItemDataEl.appendChild(dmLink);
     }
 
@@ -887,9 +902,8 @@ class App {
     </div>
   `;
 
-
         mount.appendChild(panel);
-        this.util.onClickElList(this.util.qsa('.clear-logs', panel), () => this._onLogClearClick);
+        this.util.clickAllE(this.util.qsa('.clear-logs', panel), this._onLogClearClick);
         this._attachLogClickHandlers();
     }
 
@@ -1026,8 +1040,8 @@ class App {
         this.util.qs('#global_chat').appendChild(panelEl);
         this.ui.panel = panelEl;
         this.ui.panelNav = panelEl.querySelector('.ca-nav');
-        this.util.onClickElList(this.util.qsa('.clear-logs', panelEl), () => this._onLogClearClick);
-        this.util.onClickEl(this.ui.panelNav, this.onGlobalClickPanelNav);
+        this.util.clickAllE(this.util.qsa('.clear-logs', panelEl), this._onLogClearClick);
+        this.util.clickE(this.ui.panelNav, this.onGlobalClickPanelNav);
         this._setupResizableLogSections();
     }
 
@@ -1362,7 +1376,7 @@ class App {
         const content = document.createElement('div');
         content.className = 'ca-user-list-content';
         container.appendChild(content);
-        this.util.onClickEl(header, () => this._setExpanded, group, this.ui.femaleUserContainerGroup);
+        this.util.click(header, this._setExpanded, group, this.ui.femaleUserContainerGroup);
 
         return {
             group,
@@ -1490,8 +1504,10 @@ class App {
         label.appendChild(textSpan);
 
         checkbox.addEventListener("change",
-            /** @param {Event} e */
             (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 this.util.debug("[CA] Hide replied users:", checkbox.checked);
 
                 const target = e.target;
@@ -1551,10 +1567,59 @@ class App {
         });
     }
 
-    _setExpanded = (container) => {
-        container.classList.toggle('ca-expanded');
-        container.classList.toggle('ca-collapsed');
-    }
+    _setExpanded = (container, otherContainer) => {
+        if (!container || !otherContainer) {
+            console.error("_setExpanded: missing container or otherContainer");
+            return;
+        }
+
+        const isExpanded = this._isExpanded(container);
+        const otherExpanded = this._isExpanded(otherContainer);
+
+        // CASE 1: Clicked container is collapsed → expand it
+        if (!isExpanded) {
+            this._expandContainer(container);
+            this._collapseContainer(otherContainer);
+            return;
+        }
+
+        // CASE 2: Clicked container is expanded → collapse it
+        this._collapseContainer(container);
+
+        // Ensure always one container stays open
+        if (!otherExpanded) {
+            this._expandContainer(otherContainer);
+        }
+    };
+
+    _expandContainer = (container) => {
+        if (!container) {
+            console.error("_expandContainer: container is null");
+            return;
+        }
+
+        container.classList.add("ca-expanded");
+        container.classList.remove("ca-collapsed");
+    };
+
+    _collapseContainer = (container) => {
+        if (!container) {
+            console.error("_collapseContainer: container is null");
+            return;
+        }
+
+        container.classList.remove("ca-expanded");
+        container.classList.add("ca-collapsed");
+    };
+
+    _isExpanded = (container) => {
+        if (!container) {
+            console.error("_isExpanded: container is null");
+            return false;
+        }
+
+        return container.classList.contains("ca-expanded");
+    };
 
     _isStaffListView = () => {
         const titleEl =
@@ -1582,8 +1647,8 @@ class App {
         const usersBtn = this.util.qs('#users_option');
         const searchBtn = this.util.qs('#search_option');
 
-        [friendsBtn, searchBtn].forEach(btn => this.util.onClickEl(btn, () => this.toggleOriginalUserList, true));
-        this.util.onClickEl(usersBtn, () => this.toggleOriginalUserList, false);
+        [friendsBtn, searchBtn].forEach(btn => this.util.click(btn, this.toggleOriginalUserList, true));
+        this.util.click(usersBtn, this.toggleOriginalUserList, false);
     }
 
     updateFemaleUserCountEl = (count) => {

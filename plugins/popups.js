@@ -664,7 +664,7 @@ class Popups {
         const left = document.createElement('div');
         left.className = 'ca-host-private-header-left';
 
-        this.util.onClickEl(left, this.openUserProfilePopupUsingHostEl, uid);
+        this.util.clickE(left, this.openUserProfilePopupUsingHostEl, uid);
 
         const right = document.createElement('div');
         right.className = 'ca-host-private-header-right';

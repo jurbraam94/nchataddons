@@ -1166,7 +1166,7 @@ svg.svg-large {
     margin: 5px;
 }
 
-#main_wrapper {
+#main-wrapper {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -1213,7 +1213,7 @@ svg.svg-large {
     display: none;
 }
 
-#ca_chat_right {
+#left-panel {
     min-width: 250px;
     max-width: 300px;
     display: flex;
@@ -1222,7 +1222,7 @@ svg.svg-large {
 }
 
 @media screen and (max-width: 1101px) {
-    #ca_chat_right {
+    #left-panel {
         max-width: 270px;
     }
 
