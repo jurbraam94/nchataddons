@@ -714,21 +714,21 @@
     min-width: 38px;
 }
 
-.ca-log-dot {
+.ca-log-dot, .ca-system-log-dot {
     font-size: 12px;
     line-height: 1;
     min-width: 10px;
 }
 
-.ca-log-dot-green {
+.ca-log-dot.ca-log-dot-green {
     color: #15e315;
 }
 
-.ca-log-dot-red {
+.ca-log-dot.ca-log-dot-red {
     color: #dd1212;
 }
 
-.ca-log-dot-gray {
+.ca-log-dot.ca-log-dot-gray, .ca-system-log-dot.ca-log-dot-gray {
     color: #818183;
 }
 

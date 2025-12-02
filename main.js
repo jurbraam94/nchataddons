@@ -1899,7 +1899,7 @@ class App {
                      data-uid="${String(user.uid)}"${guidAttr}>
                     <span class="ca-log-ts">${displayTs}</span>
                     <div class="${this.sel.raw.log.classes.ca_log_cell}">
-                        <span class="${this.sel.raw.log.classes.ca_log_dot} ${this.sel.raw.log.classes.ca_log_dot_gray}">
+                        <span class="${user.uid === 'system' ? 'ca-system-log-dot' : this.sel.raw.log.classes.ca_log_dot} ${this.sel.raw.log.classes.ca_log_dot_gray}">
                             ●
                         </span>
                     </div>
@@ -1917,7 +1917,7 @@ class App {
 
         const logEntryEl = this.util.createElementFromString(entryHTML);
 
-        if (kind !== 'event') {
+        if (user.uid !== 'system') {
             this.setLogDotLoggedInStatusForElement(this.util.qs(`${this.sel.log.classes.ca_log_dot}`, logEntryEl), user.isLoggedIn);
         }
 
