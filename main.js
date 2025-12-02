@@ -1036,7 +1036,7 @@ class App {
     async processPrivateConversationMessages(privateConversation, lastPCountProcessed) {
         console.log('Fetch private messages for conversation', privateConversation.uid, '— unread:', privateConversation.unread);
 
-        const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid, params);
+        const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid);
 
         if (!fetchedConversationPrivateMessages) {
             console.warn('Empty response for conversation', privateConversation.uid);
@@ -1239,6 +1239,7 @@ class App {
         XMLHttpRequest.prototype.send = function (...sendArgs) {
             const reqId = this._ca_reqId;
             const label = this._ca_label;
+            let params;
 
             if (label && reqId != null && self.helpers && typeof self.helpers.verbose === 'function') {
                 self.helpers.verbose(`[NetworkTap][${label}#${reqId}] send`, sendArgs);
@@ -1257,18 +1258,7 @@ class App {
             // Only chat log posts get body modification / context updates
             if (self.isChatLogUrl(this._ca_url) && body != null && typeof body === 'string') {
                 try {
-                    const params = new URLSearchParams(body);
-
-                    // Force preload=1 on *every* chat_log.php call
-                    // const oldPreload = params.get('preload');
-                    // params.set('preload', '1');
-                    //
-                    // // Optional: log if we changed something
-                    // if (oldPreload !== '1' && self.helpers && typeof self.helpers.debug === 'function') {
-                    //     self.helpers.verbose(
-                    //         `[NetworkTap][${label}#${reqId}] Forcing preload=1 on chat_log body (was: ${oldPreload})`
-                    //     );
-                    // }
+                    params = new URLSearchParams(body);
 
                     // Update chat context from the (now modified) body, but still respect priv=1
                     const isPrivateSend = params.get('priv') === '1';
@@ -1437,7 +1427,7 @@ class App {
         const text = String(content || '');
 
         if (kind === 'event') {
-            const m = text.match(/^\[USER_UPDATE]\s+(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
+            const m = text.match(/(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
 
             if (m) {
                 const userName = m[1] || '';
