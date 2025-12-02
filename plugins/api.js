@@ -7,7 +7,7 @@ class Api {
         this.maxRequestTimeout = 10000;
     }
 
-    async getProfile(uid) {
+    getProfile = async (uid) => {
         const token = this.util.getToken();
 
         const body = new URLSearchParams({
@@ -30,7 +30,7 @@ class Api {
         return await res.text();
     }
 
-    async searchUserNameRemote(uid) {
+    searchUserNameRemote = async (uid) => {
         if (!uid) {
             console.error(`[searchUserNameRemote] No uid provided`);
             return null
@@ -58,7 +58,7 @@ class Api {
         return await response.text();
     }
 
-    async fetchPrivateNotify() {
+    fetchPrivateNotify = async () => {
         const body = new URLSearchParams({
             token: this.util.getToken(),
             cp: 'chat'
@@ -76,7 +76,7 @@ class Api {
         return await res.text();
     }
 
-    async fetchChatLog(body) {
+    fetchChatLog = async (body) => {
         body = new URLSearchParams({
             token: this.util.getToken(),
             ...body
@@ -94,7 +94,7 @@ class Api {
         return await res.json();
     }
 
-    async refreshUserList() {
+    refreshUserList = async () => {
         const body = new URLSearchParams({
             token: this.util.getToken(),
         }).toString();
@@ -112,7 +112,7 @@ class Api {
         return await res.text();
     }
 
-    sendPrivateMessage(target, content) {
+    sendPrivateMessage = (target, content) => {
         const token = this.util.getToken();
         if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
 
@@ -146,7 +146,7 @@ class Api {
         }, 10000);
     }
 
-    _withTimeout(startFetchFn, ms = this.maxRequestTimeout) {
+    _withTimeout = (startFetchFn, ms = this.maxRequestTimeout) => {
         const ac = new AbortController();
         const t = setTimeout(() => ac.abort(), ms);
         return startFetchFn(ac.signal)
@@ -154,7 +154,7 @@ class Api {
             .finally(() => clearTimeout(t));
     }
 
-    async searchUserRemoteByUsername(username) {
+    searchUserRemoteByUsername = async (username) => {
         if (!username) {
             console.error(`[RemoteSearch] No username provided`);
             return null

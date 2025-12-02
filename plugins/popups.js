@@ -43,7 +43,7 @@ class Popups {
         this._wirePrivateEmojiEsc();
     }
 
-    openAndRememberPrivateChat({uid, name, avatar}) {
+    openAndRememberPrivateChat = ({uid, name, avatar}) => {
         if (!uid || !name || !avatar) {
             console.error('[CA] open-dm: could not fetch user for uid', uid, name, avatar);
             return;
@@ -55,7 +55,7 @@ class Popups {
         this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
     }
 
-    _wirePrivateEmojiEsc() {
+    _wirePrivateEmojiEsc = () => {
         if (window._caPrivateEmojiEscWired) {
             return;
         }
@@ -95,7 +95,7 @@ class Popups {
     /**
      * Wire a global Escape key handler to close the top-most open CA popup.
      */
-    _wireGlobalEsc() {
+    _wireGlobalEsc = () => {
         if (this._escWired) {
             return;
         }
@@ -139,7 +139,7 @@ class Popups {
         });
     }
 
-    _wireHostEmojiKeyboard() {
+    _wireHostEmojiKeyboard = () => {
         document.addEventListener('keydown', (e) => {
             if (!e) {
                 console.error('[CA] document keydown: event missing');
@@ -170,7 +170,7 @@ class Popups {
         });
     }
 
-    openUserManagementPopup() {
+    openUserManagementPopup = () => {
         const popup = this.UserManagementPopup();
 
         if (!popup) {
@@ -183,7 +183,7 @@ class Popups {
         this.util.installLogImageHoverPreview([popup]);
     }
 
-    UserManagementPopup() {
+    UserManagementPopup = () => {
         const bodyHtml = `
 <div class="ca-uer-management-popup-root" id="ca-users-table-root">
   <div class="ca-users-toolbar">
@@ -243,7 +243,7 @@ class Popups {
         return popup;
     }
 
-    _wireUserManagementPopup(popup) {
+    _wireUserManagementPopup = (popup) => {
         const searchInput = popup.querySelector('#ca-users-search');
         const onlyFemalesCheckbox = popup.querySelector('#ca-users-only-females');
         const onlyOnlineCheckbox = popup.querySelector('#ca-users-only-online'); // NEW
@@ -401,7 +401,7 @@ class Popups {
 
     // ---------- z-index & focus ----------
 
-    bringToFront(popupEl) {
+    bringToFront = (popupEl) => {
         if (!(popupEl instanceof HTMLElement)) {
             console.warn('[Popups] bringToFront called without HTMLElement');
             return;
@@ -417,7 +417,7 @@ class Popups {
         popupEl.classList.add('ca-popup-active');
     }
 
-    _wireFocus(popup) {
+    _wireFocus = (popup) => {
         if (!popup || popup.dataset.caFocusWired === '1') {
             return;
         }
@@ -434,7 +434,7 @@ class Popups {
      * Create a draggable CA popup with header + body.
      * Returns the popup HTMLElement (or null on error).
      */
-    ensurePopup({id, title, bodyHtml}) {
+    ensurePopup = ({id, title, bodyHtml}) => {
         if (!id) {
             console.error('[Popups] ensurePopup called without id');
             return null;
@@ -529,7 +529,7 @@ class Popups {
      * Just ensures the popup is “shown”.
      * (You can keep any class-based styling you had.)
      */
-    togglePopup(id) {
+    togglePopup = (id) => {
         const popup = document.getElementById(id);
         if (!popup) {
             console.error('[Popups] togglePopup: popup not found:', id);
@@ -540,7 +540,7 @@ class Popups {
         this.bringToFront(popup);
     }
 
-    safeSet(obj, key, value) {
+    safeSet = (obj, key, value) => {
         if (typeof obj?.[key] === 'undefined') {
             console.error(`key ${key} is not defined in object`, obj);
             return false;
@@ -549,7 +549,7 @@ class Popups {
         return true;
     }
 
-    safeCall(obj, key, ...args) {
+    safeCall = (obj, key, ...args) => {
         if (typeof obj?.[key] !== 'function') {
             console.error(`Function ${key} is not defined in object`, obj);
             return false;
@@ -572,7 +572,7 @@ class Popups {
         this.createAndOpenPopupWithHtml(profileEl, 'ca-profile-popup', this.util.qs(`.pro_name`, profileEl)?.innerText || 'User profile');
     }
 
-    overwriteHostMethods() {
+    overwriteHostMethods = () => {
         this.hostGetProfileOriginal = window.getProfile.bind(window);
         window.getProfile = async (uid) => {
             await this.openUserProfilePopupUsingHostEl(uid);
@@ -592,7 +592,7 @@ class Popups {
         }
     }
 
-    openPrivateInCaPopup({uid, name, avatar}) {
+    openPrivateInCaPopup = ({uid, name, avatar}) => {
         this.util.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
         this.settingsStore.setLastDmUid(uid);
 
@@ -733,7 +733,7 @@ class Popups {
         appendIfExists(privateOptMenu);
     }
 
-    openBroadcastModal() {
+    openBroadcastModal = () => {
         const broadcastPopupEl = this.createBroadcastPopup();
         const broadcastSendEl = broadcastPopupEl.querySelector('#ca-bc-send');
 
@@ -767,7 +767,7 @@ class Popups {
         this.togglePopup('ca-broadcast-popup');
     }
 
-    createBroadcastPopup() {
+    createBroadcastPopup = () => {
         const bodyHtml = `
                   <textarea 
                     id="ca-bc-msg" 
@@ -804,27 +804,27 @@ class Popups {
         });
     }
 
-    printModalStatus(message) {
+    printModalStatus = (message) => {
         const statusEl = this.util.qs('#ca-specific-status');
         statusEl.textContent = message;
         return statusEl;
     }
 
-    printModalErrorStatus(errorMessage) {
+    printModalErrorStatus = (errorMessage) => {
         const el = this.printModalStatus(errorMessage);
         el.classList.add('error');
         el.classList.remove('success');
         console.warn(errorMessage);
     }
 
-    printModalSuccessStatus(successMessage) {
+    printModalSuccessStatus = (successMessage) => {
         const el = this.printModalStatus(successMessage);
         el.classList.add('success');
         el.classList.remove('error');
         console.log(successMessage);
     }
 
-    openSendMessageModal() {
+    openSendMessageModal = () => {
         const pop = this.createSpecificPopup();
         this.util.qs('#ca-specific-status', pop).textContent = '';
         this.util.qs('#ca-specific-send', pop).addEventListener('click', async () => {
@@ -853,7 +853,7 @@ class Popups {
         this.togglePopup('ca-specific-popup');
     }
 
-    openSettingsPopup() {
+    openSettingsPopup = () => {
         const popup = this.createSettingsPopup();
         if (!popup) {
             console.error('[CA] openSettingsPopup: popup not created');
@@ -906,7 +906,7 @@ class Popups {
         this.togglePopup('ca-settings-popup');
     }
 
-    createAndOpenPopupWithHtml(html, id, title) {
+    createAndOpenPopupWithHtml = (html, id, title) => {
         if (!id) {
             console.error('[Popups] createAndOpenPopupWithHtml called without id');
             return null;
@@ -971,7 +971,7 @@ class Popups {
         return popup;
     }
 
-    createSettingsPopup() {
+    createSettingsPopup = () => {
         const bodyHtml = `
               <div class="ca-section">
                 <div class="ca-section-title">
@@ -999,7 +999,7 @@ class Popups {
         });
     }
 
-    createSpecificPopup() {
+    createSpecificPopup = () => {
         const bodyHtml = `
               <div class="ca-row">
                 <input 
@@ -1043,7 +1043,7 @@ class Popups {
         });
     }
 
-    openCloudflarePopup() {
+    openCloudflarePopup = () => {
         const bodyHtml = `
       <p style="margin-bottom:8px;">
         Cloudflare is blocking the chat requests (HTTP 403).<br>
@@ -1079,7 +1079,7 @@ class Popups {
     /**
      * This is your existing “predefined messages” popup, moved out of App.
      */
-    createPredefinedMessagesPopup() {
+    createPredefinedMessagesPopup = () => {
         const bodyHtml = `
       <div class="ca-predefined-messages-editor">
         <div class="ca-predefined-messages-editor-header">
@@ -1237,7 +1237,7 @@ class Popups {
         return popup;
     }
 
-    _appendPredefinedToBox(template, box) {
+    _appendPredefinedToBox = (template, box) => {
         if (!template || !template.text) {
             console.warn('[CA] _appendPredefinedToBox: empty template');
             return;
@@ -1269,7 +1269,7 @@ class Popups {
         box.focus();
     }
 
-    _getActiveTextBox() {
+    _getActiveTextBox = () => {
         if (!this.activeTextInput) {
             console.warn('[CA] No active text box to insert template into');
             return null;
@@ -1278,7 +1278,7 @@ class Popups {
         return this.activeTextInput;
     }
 
-    _appendPredefinedToActiveBox(template) {
+    _appendPredefinedToActiveBox = (template) => {
         const box = this._getActiveTextBox();
 
         if (!box) {
@@ -1289,7 +1289,7 @@ class Popups {
         this._appendPredefinedToBox(template, box);
     }
 
-    _fillPredefinedSelect(selectEl) {
+    _fillPredefinedSelect = (selectEl) => {
         if (!selectEl) {
             console.error('[CA] _fillPredefinedSelect: missing element');
             return;
@@ -1309,12 +1309,12 @@ class Popups {
         });
     }
 
-    _refreshAllPredefinedSelects() {
+    _refreshAllPredefinedSelects = () => {
         const selects = this.util.qsa('.ca-predefined-messages-select');
         selects.forEach((sel) => this._fillPredefinedSelect(sel));
     }
 
-    _renderPredefinedList(popup) {
+    _renderPredefinedList = (popup) => {
         const listEl = popup.querySelector('#ca-predefined-messages-list');
         const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
         const textInput = popup.querySelector('#ca-predefined-messages-text');
@@ -1426,7 +1426,7 @@ class Popups {
         });
     }
 
-    _renderUserManagementPopup(popup) {
+    _renderUserManagementPopup = (popup) => {
         if (!popup) {
             console.error('[UsersPopup] _render called without popup');
             return;
@@ -1469,7 +1469,7 @@ class Popups {
         }
     }
 
-    _renderSummary(popup, allUsers, filteredUsers) {
+    _renderSummary = (popup, allUsers, filteredUsers) => {
         const el = popup.querySelector('#ca-users-summary');
         if (!el) {
             console.error('[UsersPopup] _renderSummary: #ca-users-summary not found');
@@ -1516,7 +1516,7 @@ class Popups {
             `Females: ${totalFemales} (online: ${totalFemalesOnline})`;
     }
 
-    _renderColumnSelector(popup, columns) {
+    _renderColumnSelector = (popup, columns) => {
         const root = popup.querySelector('#ca-users-column-selector');
         if (!root) {
             console.error('[UsersPopup] _renderColumnSelector: selector root not found');
@@ -1569,7 +1569,7 @@ class Popups {
         });
     }
 
-    _renderTable(popup, users, columns) {
+    _renderTable = (popup, users, columns) => {
         const table = popup.querySelector('#ca-users-table');
         if (!table) {
             console.error('[UsersPopup] _renderTable: table not found');
@@ -1723,7 +1723,7 @@ class Popups {
         });
     }
 
-    _renderPagination(popup, totalPages) {
+    _renderPagination = (popup, totalPages) => {
         const root = popup.querySelector('#ca-users-pagination');
         if (!root) {
             return;
@@ -1758,7 +1758,7 @@ class Popups {
 
     // ---------- filtering + sorting ----------
 
-    _filterUsers(users) {
+    _filterUsers = (users) => {
         const query = this.state.query;
         const onlyFemales = !!this.state.onlyFemales;
         const onlyOnline = !!this.state.onlyOnline; // NEW
@@ -1793,7 +1793,7 @@ class Popups {
     }
 
 
-    _toggleSort(sortKey) {
+    _toggleSort = (sortKey) => {
         if (!sortKey) {
             return;
         }
@@ -1806,7 +1806,7 @@ class Popups {
         }
     }
 
-    _sortUsers(users) {
+    _sortUsers = (users) => {
         const key = this.state.sortKey;
         const dir = this.state.sortDir === 'desc' ? -1 : 1;
 
@@ -1842,7 +1842,7 @@ class Popups {
         return out;
     }
 
-    _computeColumns(users) {
+    _computeColumns = (users) => {
         const base = new Set(['avatar', 'uid', 'name', 'age', 'country']);
 
         const extra = new Set();
@@ -1922,7 +1922,7 @@ class Popups {
 
     // ---------- inline edit ----------
 
-    _startInlineUserCellEdit(td, uid, colKey, popup) {
+    _startInlineUserCellEdit = (td, uid, colKey, popup) => {
         const originalText = td.textContent || '';
         td.innerHTML = '';
 
@@ -1984,7 +1984,7 @@ class Popups {
 
     // ---------- actions (delete/edit-json) ----------
 
-    _handleDeleteUser(uid, popup) {
+    _handleDeleteUser = (uid, popup) => {
         if (!uid) {
             console.error('[UsersPopup] _handleDeleteUser: missing uid');
             return;
@@ -1996,7 +1996,7 @@ class Popups {
         this.util.installLogImageHoverPreview([popup]);
     }
 
-    _handleEditUserJson(uid, popup) {
+    _handleEditUserJson = (uid, popup) => {
         const user = this.userStore.get(uid);
         if (!user) {
             console.error('[UsersPopup] _handleEditUserJson: user not found for uid', uid);
@@ -2033,7 +2033,7 @@ class Popups {
         this.util.installLogImageHoverPreview([popup]);
     }
 
-    _loadColumnPrefs() {
+    _loadColumnPrefs = () => {
         const raw = this.settingsStore.getUserManagerVisibleColumnPrefs();
 
         if (!raw) {
@@ -2054,7 +2054,7 @@ class Popups {
         }
     }
 
-    _isColumnVisible(colKey) {
+    _isColumnVisible = (colKey) => {
         if (!colKey) {
             return false;
         }
@@ -2076,7 +2076,7 @@ class Popups {
 
     // ---------- util ----------
 
-    _formatCellValue(v) {
+    _formatCellValue = (v) => {
         if (v === null || v === undefined) {
             return '—';
         }

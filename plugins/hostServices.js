@@ -48,7 +48,7 @@ class HostServices {
         }
     }
 
-    async init() {
+    init = async () => {
         this.removeAds(document);
         await this.restoreLog();
 
@@ -61,7 +61,7 @@ class HostServices {
         await this.restoreLastDmFromStore();
     }
 
-    _removeSuperBotMethods() {
+    _removeSuperBotMethods = () => {
         window.sendSuperbotMain = () => {
             const message = `!!! Prevented a call to superbot main method.`;
             console.error(message);
@@ -74,7 +74,7 @@ class HostServices {
         };
     }
 
-    async syncUsersFromDom(currentOnlineUserEls) {
+    syncUsersFromDom = async (currentOnlineUserEls) => {
         // Build the "maybe logged out" map without creating an extra array via .map()
         const maybeLoggedOutMap = new Map();
         const loggedInUsers = this.userStore.getAllLoggedIn();
@@ -224,7 +224,7 @@ class HostServices {
 
     }
 
-    async processUserListResponse(html) {
+    processUserListResponse = async (html) => {
         if (typeof html !== "string" || html.trim() === "") {
             console.error("[processUserListResponse] HTML response is empty or not a string");
             return;
@@ -266,7 +266,7 @@ class HostServices {
         this.userParsingInProgress = false;
     }
 
-    updateExistingUserMetadata(existingUserJsonFromStore, parsedUserJson, existingUserEl) {
+    updateExistingUserMetadata = (existingUserJsonFromStore, parsedUserJson, existingUserEl) => {
         const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
         let hasUpdatedUser = false;
         const updatedExistingUserJson = {
@@ -342,7 +342,7 @@ class HostServices {
     }
 
 
-    async fetchPrivateMessagesForUid(uid) {
+    fetchPrivateMessagesForUid = async (uid) => {
         let bodyObj = {};
         if (!uid) {
             console.error('[CA] fetchPrivateMessagesForUid called without uid');
@@ -393,7 +393,7 @@ class HostServices {
         }
     }
 
-    processNewIncomingPrivateMessage(newPrivateConversationMessage, user) {
+    processNewIncomingPrivateMessage = (newPrivateConversationMessage, user) => {
         console.log(`New incoming private message ${newPrivateConversationMessage.logId} for user ${user.uid}`, newPrivateConversationMessage);
         this.logLine(
             'dm-in',
@@ -408,7 +408,7 @@ class HostServices {
         }
     }
 
-    async processFetchedPrivateConversationMessages(privateConversationMessages, fromUid, lastPCountProcessed) {
+    processFetchedPrivateConversationMessages = async (privateConversationMessages, fromUid, lastPCountProcessed) => {
         let newMessages = 0;
         let skippedMessages = 0;
         let skippedReasons = '';
@@ -525,7 +525,7 @@ class HostServices {
         }
     }
 
-    async processPrivateConversationMessages(privateConversation, lastPCountProcessed) {
+    processPrivateConversationMessages = async (privateConversation, lastPCountProcessed) => {
         console.log('Fetch private messages for conversation', privateConversation.uid, '— unread:', privateConversation.unread);
 
         const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid);
@@ -543,7 +543,7 @@ class HostServices {
         );
     }
 
-    handleLoggedInStatus(user) {
+    handleLoggedInStatus = (user) => {
         if (this.isInitialLoad) {
             return;
         }
@@ -567,7 +567,7 @@ class HostServices {
         this.util.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
     }
 
-    async restoreLastDmFromStore() {
+    restoreLastDmFromStore = async () => {
         const uid = this.settingsStore.getLastDmUid();
         if (!uid) {
             this.util.debug('There was no uid for a last dm');
@@ -577,7 +577,7 @@ class HostServices {
         this.popups.openAndRememberPrivateChat(await this.userStore.getOrFetch(uid));
     }
 
-    parsePrivateConversationsHtmlResponse(html) {
+    parsePrivateConversationsHtmlResponse = (html) => {
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
@@ -603,7 +603,7 @@ class HostServices {
         return out;
     }
 
-    async processPrivateConversationsList(lastPCountProcessed) {
+    processPrivateConversationsList = async (lastPCountProcessed) => {
         const privateConversationsHtmlResponse = await this.api.fetchPrivateNotify();
         const privateConversationsToProcess = this.parsePrivateConversationsHtmlResponse(privateConversationsHtmlResponse);
 
@@ -624,7 +624,7 @@ class HostServices {
         }
     }
 
-    validatePrivateChatLog(privateConversationMessage, lastPrivateReadId) {
+    validatePrivateChatLog = (privateConversationMessage, lastPrivateReadId) => {
         const initialFetch = lastPrivateReadId === 0;
         console.log(`Comparing from uid ${privateConversationMessage.user_id} with own id ${user_id}`)
         if (String(privateConversationMessage.user_id) === String(user_id)) {
@@ -647,7 +647,7 @@ class HostServices {
         return {accepted: true, logId: privateConversationMessage.log_id, reason: 'ok'};
     }
 
-    async caProcessChatPayload(txt, fromUid, lastPCountProcessed) {
+    caProcessChatPayload = async (txt, fromUid, lastPCountProcessed) => {
         if (!txt || typeof txt !== 'string' || txt.trim() === '') {
             console.warn('Empty or invalid chat payload response');
             return;
@@ -676,7 +676,7 @@ class HostServices {
         }
     }
 
-    caUpdateChatCtxFromBody(searchParams) {
+    caUpdateChatCtxFromBody = (searchParams) => {
         if (this.caUpdateChatCtxFromBody._initialized) {
             this.util.verbose(`CHAT_CTX already initialized`);
             return;
@@ -696,7 +696,7 @@ class HostServices {
         this.caUpdateChatCtxFromBody._initialized = true;
     }
 
-    stopOnError(exception) {
+    stopOnError = (exception) => {
         if (!exception) {
             console.error('[CA] stopOnError called without an exception object');
             this.destroy();
@@ -757,7 +757,7 @@ class HostServices {
         console.error('=================================================');
     }
 
-    sortPrivateConversationsByUnreadDescThenNameAsc(a, b) {
+    sortPrivateConversationsByUnreadDescThenNameAsc = (a, b) => {
         const unreadA = Number(a.unread) || 0;
         const unreadB = Number(b.unread) || 0;
 
@@ -773,7 +773,7 @@ class HostServices {
         return 0;
     }
 
-    isMessageNewer(logDateStr) {
+    isMessageNewer = (logDateStr) => {
         const watermark = this.settingsStore.getGlobalWatermark();
         if (!watermark) {
             console.warn(`.isMessageNewer() - watermark not found`);
@@ -798,7 +798,7 @@ class HostServices {
         return isNewer;
     }
 
-    normalizeBodyToQuery(body) {
+    normalizeBodyToQuery = (body) => {
         if (!body) return '';
         if (typeof body === 'string') return body;
         if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
@@ -813,11 +813,11 @@ class HostServices {
         return '';
     }
 
-    parseLogDateToNumber(logDateStr) {
+    parseLogDateToNumber = (logDateStr) => {
         return this.activityLogStore.parseLogDateToNumber?.(logDateStr) ?? 0;
     }
 
-    logEventLine(content, user) {
+    logEventLine = (content, user) => {
         if (!user) {
             user = this.userStore.get('system') || {
                 uid: 'system',
@@ -829,7 +829,7 @@ class HostServices {
         this.logLine('event', content, user);
     }
 
-    logLine(kind, content, user, guid) {
+    logLine = (kind, content, user, guid) => {
         const ts = this.util.getTimeStampInWebsiteFormat();
         const entry = {
             ts,
@@ -844,7 +844,7 @@ class HostServices {
         this.saveLogEntry(entry.ts, entry.kind, entry.content, entry.uid, entry.guid);
     }
 
-    saveLogEntry(ts, kind, content, uid, guid) {
+    saveLogEntry = (ts, kind, content, uid, guid) => {
         if (kind === 'login' || kind === 'logout') return;
         const entry = {
             ts, kind, content, uid, guid,
@@ -853,7 +853,7 @@ class HostServices {
         this.activityLogStore.set(entry);
     }
 
-    async restoreLog() {
+    restoreLog = async () => {
         const logs = this.activityLogStore.list({order: 'asc'}) || [];
 
         for (const log of logs) {
@@ -863,28 +863,28 @@ class HostServices {
         }
     }
 
-    isChatLogUrl(u) {
+    isChatLogUrl = (u) => {
         if (!u) return false;
         let s = String(u);
         s = new URL(s, location.origin).pathname;
         return s.indexOf('system/action/chat_log.php') !== -1;
     }
 
-    isUserListUrl(u) {
+    isUserListUrl = (u) => {
         if (!u) return false;
         let s = String(u);
         s = new URL(s, location.origin).pathname;
         return s.indexOf('system/panel/user_list.php') !== -1;
     }
 
-    isPrivateProcessUrl(u) {
+    isPrivateProcessUrl = (u) => {
         if (!u) return false;
         let s = String(u);
         s = new URL(s, location.origin).pathname;
         return s.indexOf('system/action/private_process.php') !== -1;
     }
 
-    buildBroadcastList() {
+    buildBroadcastList = () => {
         const out = [];
         const loggedInFemaleUsers = this.userStore.getAllLoggedInFemales();
 
@@ -906,7 +906,7 @@ class HostServices {
         return out;
     }
 
-    async _runBroadcast(to, text) {
+    _runBroadcast = async (to, text) => {
         const batchSize = 10;
         const secondsBetweenSends = [2000, 5000];
         const secondsBetweenBatches = [10000, 20000];
@@ -946,7 +946,7 @@ class HostServices {
         return {ok, fail};
     }
 
-    async processPrivateSendResponse(data) {
+    processPrivateSendResponse = async (data) => {
         if (data?.code !== 1) {
             console.error(`[PrivateSend] Could not parse response from native message send:`, data);
             return null;
@@ -1001,7 +1001,7 @@ class HostServices {
         return true;
     }
 
-    sendWithThrottle(id, text, minGapMs = 3500) {
+    sendWithThrottle = (id, text, minGapMs = 3500) => {
         const now = Date.now();
         const wait = Math.max(0, minGapMs - (now - this._lastSendAt));
         return new Promise(r => setTimeout(r, wait))
@@ -1020,7 +1020,7 @@ class HostServices {
             });
     }
 
-    removeAds(root) {
+    removeAds = (root) => {
         const scope = root && root.querySelectorAll ? root : document;
         this.util.qsa('.coo-widget').forEach(e => e.remove());
         const links = scope.querySelectorAll('a[href*="bit.ly"]');
@@ -1032,7 +1032,7 @@ class HostServices {
         });
     }
 
-    _installAudioAutoplayGate() {
+    _installAudioAutoplayGate = () => {
         if (this._audioGate.installed) return;
 
         const proto = (typeof HTMLAudioElement !== 'undefined' && HTMLAudioElement.prototype) ? HTMLAudioElement.prototype : null;
@@ -1080,7 +1080,7 @@ class HostServices {
         gate.installed = true;
     }
 
-    _uninstallAudioAutoplayGate() {
+    _uninstallAudioAutoplayGate = () => {
         const gate = this._audioGate;
         if (!gate.installed) return;
 
@@ -1098,7 +1098,7 @@ class HostServices {
         if (gate.pending) gate.pending.clear();
     }
 
-    installNetworkTaps() {
+    installNetworkTaps = () => {
         this.util.debug('Installing network taps (fetch/XHR interceptors)');
 
         if (!this._xhrOpen) this._xhrOpen = XMLHttpRequest.prototype.open;
@@ -1271,7 +1271,7 @@ class HostServices {
         };
     }
 
-    uninstallNetworkTaps() {
+    uninstallNetworkTaps = () => {
         if (this._xhrOpen) {
             XMLHttpRequest.prototype.open = this._xhrOpen;
             this._xhrOpen = null;
@@ -1282,7 +1282,7 @@ class HostServices {
         }
     }
 
-    installPrivateSendInterceptor() {
+    installPrivateSendInterceptor = () => {
         if (!this._pp_xhrOpen) this._pp_xhrOpen = XMLHttpRequest.prototype.open;
         if (!this._pp_xhrSend) this._pp_xhrSend = XMLHttpRequest.prototype.send;
 
@@ -1315,7 +1315,7 @@ class HostServices {
         };
     }
 
-    uninstallPrivateSendInterceptor() {
+    uninstallPrivateSendInterceptor = () => {
         if (this._pp_xhrOpen) {
             XMLHttpRequest.prototype.open = this._pp_xhrOpen;
             this._pp_xhrOpen = null;
@@ -1326,10 +1326,10 @@ class HostServices {
         }
     }
 
-    startClearEventLogLoop({
-                               intervalMs = 30 * 60 * 1000,
-                               runImmediately = true
-                           } = {}) {
+    startClearEventLogLoop = ({
+                                  intervalMs = 30 * 60 * 1000,
+                                  runImmediately = true
+                              } = {}) => {
         this.stopClearEventLogLoop();
 
         const clearEvents = () => {
@@ -1345,10 +1345,10 @@ class HostServices {
         this._clearEventsTimerId = setInterval(clearEvents, intervalMs);
     }
 
-    async startRefreshUsersLoop({
-                                    intervalMs = this.userRefreshInterval,
-                                    runImmediately = true
-                                } = {}) {
+    startRefreshUsersLoop = async ({
+                                       intervalMs = this.userRefreshInterval,
+                                       runImmediately = true
+                                   } = {}) => {
         this.stopRefreshUsersLoop();
 
         this._refreshUsersIntervalMs = intervalMs;
@@ -1362,26 +1362,26 @@ class HostServices {
         }, this._refreshUsersIntervalMs);
     }
 
-    async refreshUserList() {
+    refreshUserList = async () => {
         this.util.verbose('========== START REFRESHING AND PARSING NEW USER LIST ==========t');
         await this.processUserListResponse(await this.api.refreshUserList());
     }
 
-    stopClearEventLogLoop() {
+    stopClearEventLogLoop = () => {
         if (this._clearEventsTimerId) {
             clearInterval(this._clearEventsTimerId);
             this._clearEventsTimerId = null;
         }
     }
 
-    stopRefreshUsersLoop() {
+    stopRefreshUsersLoop = () => {
         if (this._refreshUsersTimerId) {
             clearInterval(this._refreshUsersTimerId);
             this._refreshUsersTimerId = null;
         }
     }
 
-    destroy() {
+    destroy = () => {
         console.warn(`Destroying ChatApp UI and util.`);
         this.uninstallNetworkTaps();
         this.uninstallPrivateSendInterceptor();

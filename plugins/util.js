@@ -14,12 +14,12 @@ class Util {
         }
     }
 
-    init({verboseMode, debugMode}) {
+    init = ({verboseMode, debugMode}) => {
         this.verboseMode = verboseMode;
         this.debugMode = debugMode;
     }
 
-    logSummarySingle(label, value) {
+    logSummarySingle = (label, value) => {
         if (!value) return;
         this.logStyled('', [
             {text: `${label}: `, style: 'color:#d1d5db;font-weight:bold'},
@@ -27,11 +27,11 @@ class Util {
         ]);
     }
 
-    hasPressedEscapeEvent(e) {
+    hasPressedEscapeEvent = (e) => {
         return (e.key !== 'Escape' && e.key !== 'Esc');
     }
 
-    logStyled(label, segments, labelStyle = 'color:#9cf; font-weight:bold') {
+    logStyled = (label, segments, labelStyle = 'color:#9cf; font-weight:bold') => {
         const parts = [];
         const styles = [];
 
@@ -52,7 +52,7 @@ class Util {
         console.log(parts.join(''), ...styles);
     }
 
-    logSummaryDouble(label, plus, minus) {
+    logSummaryDouble = (label, plus, minus) => {
         if (!plus && !minus) return;
 
         const labelColor = label.toLowerCase().includes('female')
@@ -72,15 +72,15 @@ class Util {
         ]);
     }
 
-    setDebugMode(debugMode) {
+    setDebugMode = (debugMode) => {
         this.debugMode = debugMode;
     }
 
-    setVerboseMode(verboseMode) {
+    setVerboseMode = (verboseMode) => {
         this.verboseMode = verboseMode;
     }
 
-    _getCallerLocation() {
+    _getCallerLocation = () => {
         const err = new Error();
 
         if (!err.stack) {
@@ -130,7 +130,7 @@ class Util {
     }
 
 
-    debug(...args) {
+    debug = (...args) => {
         if (!this.debugMode) {
             return;
         }
@@ -141,7 +141,7 @@ class Util {
         console.log(prefix, ...args);
     }
 
-    verbose(...args) {
+    verbose = (...args) => {
         if (!this.verboseMode) {
             return;
         }
@@ -153,15 +153,15 @@ class Util {
     }
 
 
-    sleep(ms) {
+    sleep = (ms) => {
         return new Promise(r => setTimeout(r, ms));
     }
 
-    randBetween(minMs, maxMs) {
+    randBetween = (minMs, maxMs) => {
         return Math.floor(minMs + Math.random() * (maxMs - minMs));
     }
 
-    toHourMinuteSecondFormat(ts) {
+    toHourMinuteSecondFormat = (ts) => {
         const s = String(ts || '').trim();
         if (!s) return '';
         if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
@@ -170,11 +170,11 @@ class Util {
     }
 
 
-    extractUserId(el) {
+    extractUserId = (el) => {
         return el.getAttribute('data-id') || null;
     }
 
-    extractUsername(el) {
+    extractUsername = (el) => {
         const v = el.getAttribute('data-name');
         if (v) {
             return v.trim();
@@ -193,7 +193,7 @@ class Util {
         return parts[0];
     }
 
-    extractAvatar(el) {
+    extractAvatar = (el) => {
         const img = this.qs('.user_item_avatar img', {
             root: el,
             ignoreWarning: true
@@ -205,31 +205,31 @@ class Util {
         return src ? src.trim() : '';
     }
 
-    extractGender(el) {
+    extractGender = (el) => {
         return el.getAttribute('data-gender') || null;
     }
 
-    extractIsFemale(el) {
+    extractIsFemale = (el) => {
         return el.getAttribute('data-gender') === this.FEMALE_CODE
     }
 
-    extractRank(el) {
+    extractRank = (el) => {
         return el.getAttribute('data-rank') || '';
     }
 
-    extractAge(el) {
+    extractAge = (el) => {
         return el.getAttribute('data-age') || '';
     }
 
-    extractCountry(el) {
+    extractCountry = (el) => {
         return el.getAttribute('data-country') || '';
     }
 
-    extractMood(el) {
+    extractMood = (el) => {
         return this.qs(`.list_mood`, el).innerHTML;
     }
 
-    extractUserInfoFromEl(userEl) {
+    extractUserInfoFromEl = (userEl) => {
         if (!userEl) {
             throw new Error(`no element is passed`);
         }
@@ -247,7 +247,7 @@ class Util {
         }
     }
 
-    buildSvgIconString(className, svgInnerHTML, small = true) {
+    buildSvgIconString = (className, svgInnerHTML, small = true) => {
         return `<svg class="${className} ${small ? 'svg-small' : 'svg-large'}"
                  viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         ${svgInnerHTML}
@@ -260,7 +260,7 @@ class Util {
      * @param {boolean} [small]
      * @returns {SVGElement | null}
      */
-    renderSvgIconWithClass(className, svgInnerHTML, small = true) {
+    renderSvgIconWithClass = (className, svgInnerHTML, small = true) => {
         const el = this.createElementFromString(
             this.buildSvgIconString(className, svgInnerHTML, small)
         );
@@ -278,7 +278,7 @@ class Util {
         return el;
     }
 
-    scrollToBottom(targetContainer) {
+    scrollToBottom = (targetContainer) => {
         if (!targetContainer) {
             console.warn('scrollToBottom: No target container provided');
             return;
@@ -288,14 +288,14 @@ class Util {
         });
     }
 
-    timeHHMM() {
+    timeHHMM = () => {
         const d = new Date();
         const hh = String(d.getHours()).padStart(2, '0');
         const mm = String(d.getMinutes()).padStart(2, '0');
         return `${hh}:${mm}`;
     }
 
-    timeHHMMSS() {
+    timeHHMMSS = () => {
         const d = new Date();
         const hh = String(d.getHours()).padStart(2, '0');
         const mm = String(d.getMinutes()).padStart(2, '0');
@@ -303,14 +303,14 @@ class Util {
         return `${hh}:${mm}:${ss}`;
     }
 
-    getTimeStampInWebsiteFormat() {
+    getTimeStampInWebsiteFormat = () => {
         const d = new Date();
         const DD = String(d.getDate()).padStart(2, '0');
         const MM = String(d.getMonth() + 1).padStart(2, '0');
         return `${DD}/${MM} ${this.timeHHMM()}`;
     }
 
-    parseUserSearchHTML(html) {
+    parseUserSearchHTML = (html) => {
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         const nodes = tmp.querySelectorAll('.user_item[data-id]');
@@ -324,14 +324,14 @@ class Util {
         return out;
     }
 
-    createElementFromString(htmlString) {
+    createElementFromString = (htmlString) => {
         const template = document.createElement("div");
         template.innerHTML = htmlString.trim();
 
         return template.firstChild;
     }
 
-    getToken() {
+    getToken = () => {
         if (typeof window.utk !== 'undefined' && window.utk) return window.utk;
         const inp = this.qs('input[name="token"]');
         if (inp?.value) return inp.value;
@@ -344,7 +344,7 @@ class Util {
         return null;
     }
 
-    escapeHTML(s) {
+    escapeHTML = (s) => {
         return String(s)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -353,21 +353,21 @@ class Util {
             .replace(/'/g, '&#039;');
     }
 
-    escapeAttr(s) {
+    escapeAttr = (s) => {
         return String(s).replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
     }
 
-    trim(s) {
+    trim = (s) => {
         return String(s || '').replace(/^\s+|\s+$/g, '');
     }
 
-    qs(
+    qs = (
         selector,
         options = {}
-    ) {
+    ) => {
         let root = document;
         let elementType = HTMLElement;
         let ignoreWarning = false;
@@ -392,7 +392,7 @@ class Util {
         return el;
     }
 
-    qsInput(selector, options) {
+    qsInput = (selector, options) => {
         const opts = (options instanceof HTMLElement || options instanceof Document)
             ? {root: options}
             : (options || {});
@@ -403,7 +403,7 @@ class Util {
         });
     }
 
-    qsTextarea(selector, options) {
+    qsTextarea = (selector, options) => {
         const opts = (options instanceof HTMLElement || options instanceof Document)
             ? {root: options}
             : (options || {});
@@ -414,7 +414,7 @@ class Util {
         });
     }
 
-    qsForm(selector, options) {
+    qsForm = (selector, options) => {
         const opts = (options instanceof HTMLElement || options instanceof Document)
             ? {root: options}
             : (options || {});
@@ -432,7 +432,7 @@ class Util {
         return await fn(e, ...params);
     };
 
-    onClickEl(el, fn, ...params) {
+    onClickEl = (el, fn, ...params) => {
         if (!(el instanceof Element)) {
             throw new Error(`onClickEl: el is not an Element`);
         }
@@ -442,7 +442,7 @@ class Util {
         );
     }
 
-    onClickElBySelector(selector, fn, ...params) {
+    onClickElBySelector = (selector, fn, ...params) => {
         const el = this.qs(selector);
         if (!el) {
             throw new Error(`onClickElBySelector: no element found for selector: ${selector}`);
@@ -450,7 +450,7 @@ class Util {
         this.onClickEl(el, fn, ...params);
     }
 
-    onClickElList(elList, fn, ...params) {
+    onClickElList = (elList, fn, ...params) => {
         console.log(elList, typeof elList);
         if (!Array.isArray(elList)) {
             throw new Error(`onClickElList: elList is not a NodeList`);
@@ -459,11 +459,11 @@ class Util {
         elList.forEach(el => this.onClickEl(el, fn, ...params));
     }
 
-    qsa(s, r) {
+    qsa = (s, r) => {
         return Array.prototype.slice.call((r || document).querySelectorAll(s));
     }
 
-    installLogImageHoverPreview(containers) {
+    installLogImageHoverPreview = (containers) => {
         const filteredContainers = containers.filter(Boolean);
         if (!filteredContainers.length) {
             console.warn('[CA] installLogImageHoverPreview: no containers found to wire');

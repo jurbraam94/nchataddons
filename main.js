@@ -128,7 +128,7 @@ class App {
         this.sel.raw = {};
     }
 
-    buildRawTree() {
+    buildRawTree = () => {
         const seen = new WeakSet();
 
         const strip = (s) => {
@@ -163,7 +163,7 @@ class App {
         this.sel.raw = walk(this.sel) || {};
     }
 
-    async init(options = {}) {
+    init = async (options = {}) => {
         this.options = options || {};
 
         this.buildRawTree(this.sel, this.sel.raw);
@@ -267,7 +267,7 @@ class App {
         return this;
     }
 
-    setAndPersistDebugMode(debugMode) {
+    setAndPersistDebugMode = (debugMode) => {
         this.settingsStore.setDebugMode(debugMode);
         this.util.setDebugMode(debugMode);
         console.log(
@@ -278,7 +278,7 @@ class App {
         this.util.debug('[DEBUG] Debug logs are now visible');
     }
 
-    setAndPersistVerboseMode(verboseMode) {
+    setAndPersistVerboseMode = (verboseMode) => {
         this.settingsStore.setVerboseMode(verboseMode);
         this.util.setVerboseMode(verboseMode);
         console.log(
@@ -289,7 +289,7 @@ class App {
         this.util.verbose('[DEBUG] Debug logs are now visible');
     }
 
-    _wireTextboxTrackers() {
+    _wireTextboxTrackers = () => {
         document.addEventListener("focusin", (event) => {
             const target = event.target;
 
@@ -339,12 +339,12 @@ class App {
         await this.popups.openUserProfilePopupUsingHostEl(uid);
     }
 
-    async onClickRefreshButton() {
+    onClickRefreshButton = async () => {
         await this.hostServices.refreshUserList();
         this.hostServices.logEventLine(`Manually refreshed user list on ${this.util.timeHHMMSS()}`);
     }
 
-    appendCustomActionsToBar() {
+    appendCustomActionsToBar = () => {
         const bar = document.getElementById('right_panel_bar');
 
         if (!bar) {
@@ -383,7 +383,7 @@ class App {
         }
     }
 
-    buildLogHTML(kind, content, user) {
+    buildLogHTML = (kind, content, user) => {
         const text = String(content || '');
 
         if (kind === 'event') {
@@ -410,7 +410,7 @@ class App {
         return `<span class="ca-log-text-main">${this.util.escapeHTML(text)}</span>`;
     }
 
-    _attachLogClickHandlers() {
+    _attachLogClickHandlers = () => {
         const boxes = [
             this.ui.sentMessagesBox,
             this.ui.messagesWrapper,
@@ -508,7 +508,7 @@ class App {
         }
     }
 
-    onClickDeleteLog(guid, logEntry) {
+    onClickDeleteLog = (guid, logEntry) => {
         //const guid = entry.getAttribute('data-guid');
         if (guid && this.activityLogStore.remove) {
             this.activityLogStore.remove(guid);
@@ -518,13 +518,13 @@ class App {
         logEntry.remove();
     }
 
-    decodeHTMLEntities(s) {
+    decodeHTMLEntities = (s) => {
         const txt = document.createElement('textarea');
         txt.innerHTML = String(s);
         return txt.value;
     }
 
-    cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson) {
+    cloneAndRenderNewUserElement = (parsedUserItemEl, updatedUserJson) => {
         const containerContent = this.util.qs(
             `.ca-user-list-content`,
             updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer
@@ -563,7 +563,7 @@ class App {
         containerContent.appendChild(parsedUserItemEl);
     }
 
-    updateUserItemElement(fetchedUserJson, existingUserEl) {
+    updateUserItemElement = (fetchedUserJson, existingUserEl) => {
         if (!existingUserEl) {
             console.error('[updateUser] No .user_item found for uid:', fetchedUserJson.uid);
             return null;
@@ -610,7 +610,7 @@ class App {
         return existingUserEl;
     }
 
-    applyUserDomChanges(existingUserEl, updatedUserJson, changedKeys) {
+    applyUserDomChanges = (existingUserEl, updatedUserJson, changedKeys) => {
         for (const key of changedKeys) {
 
             if (key === "name") {
@@ -654,7 +654,7 @@ class App {
         return existingUserEl;
     }
 
-    setLogDotsLoggedInStatusForUid(uid, isLoggedIn) {
+    setLogDotsLoggedInStatusForUid = (uid, isLoggedIn) => {
         const selector = `.ca-log-entry[data-uid="${uid}"] ${this.sel.log.classes.ca_log_dot}`;
         const logDots = this.util.qsa(selector);
 
@@ -663,7 +663,7 @@ class App {
         });
     }
 
-    setLogDotLoggedInStatusForElement(dotEl, isLoggedIn) {
+    setLogDotLoggedInStatusForElement = (dotEl, isLoggedIn) => {
         dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_green);
         dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_red);
         dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_gray);
@@ -679,7 +679,7 @@ class App {
         }
     }
 
-    findUserElById(uid) {
+    findUserElById = (uid) => {
         if (!uid) {
             console.error(`.findUserElementById: id is empty`);
             return null;
@@ -687,7 +687,7 @@ class App {
         return this.util.qs(`.user_item[data-id="${uid}"]`, this.ui.userContainersWrapper);
     }
 
-    updateProfileChip(uid, userEl) {
+    updateProfileChip = (uid, userEl) => {
         const unreadReceivedMessagesCount = this.activityLogStore.getUnreadReceivedMessageCountByUserUid(uid);
         const sentMessagesCount = this.activityLogStore.getAllSentMessagesCountByUserId(uid);
         this.util.verbose('Updating profile chip for:', userEl, unreadReceivedMessagesCount, sentMessagesCount);
@@ -731,7 +731,7 @@ class App {
         }
     }
 
-    updateProfileChipByUid(uid) {
+    updateProfileChipByUid = (uid) => {
         const userEl = this.findUserElById(uid);
 
         if (!userEl) {
@@ -742,7 +742,7 @@ class App {
         this.updateProfileChip(uid, userEl);
     }
 
-    _createChipForUserItem(userEl) {
+    _createChipForUserItem = (userEl) => {
         let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
 
         if (!userEl.classList.contains('chataddons-sent')) {
@@ -759,7 +759,7 @@ class App {
         return chip;
     }
 
-    ensureBroadcastCheckbox(userItemDataEl, user) {
+    ensureBroadcastCheckbox = (userItemDataEl, user) => {
         let include = false;
         include = !!(user.isIncludedForBroadcast);
 
@@ -822,7 +822,7 @@ class App {
         userItemDataEl.appendChild(toggle);
     }
 
-    ensureDmLink(userItemDataEl, user) {
+    ensureDmLink = (userItemDataEl, user) => {
         const dmLink = document.createElement('a');
         dmLink.href = '#';
         dmLink.className = 'ca-dm-from-userlist ca-log-action';
@@ -839,7 +839,7 @@ class App {
         userItemDataEl.appendChild(dmLink);
     }
 
-    buildMenuLogPanel() {
+    buildMenuLogPanel = () => {
         const mount = this.util.qs('#my_menu .bcell_mid');
         mount.innerHTML = "";
         if (!mount) {
@@ -893,7 +893,7 @@ class App {
         this._attachLogClickHandlers();
     }
 
-    buildPanel() {
+    buildPanel = () => {
         const panelEl = document.createElement('section');
         panelEl.id = this.sel.raw.rightPanel;
         panelEl.classList.add('ca-panel');
@@ -1031,7 +1031,7 @@ class App {
         this._setupResizableLogSections();
     }
 
-    _setupResizableLogSections() {
+    _setupResizableLogSections = () => {
         const panel = this.ui.panel;
 
         if (!panel) {
@@ -1171,7 +1171,7 @@ class App {
         });
     }
 
-    _updateStorageToggleUi(mode = 'allow') {
+    _updateStorageToggleUi = (mode = 'allow') => {
         const el = document.getElementById('ca-nav-storage-toggle');
         if (!el) {
             console.error('[CA] _updateStorageToggleUi: #ca-nav-storage-toggle not found');
@@ -1215,7 +1215,7 @@ class App {
         el.replaceChild(svgEl, el.firstChild);
     }
 
-    handleStorageToggleClick() {
+    handleStorageToggleClick = () => {
         const prevMode = this.settingsStore.getWriteStorageMode() || 'allow';
         let nextMode;
 
@@ -1278,7 +1278,7 @@ class App {
         }
     }
 
-    handleLogContainersElClear() {
+    handleLogContainersElClear = () => {
         this.ui.sentMessagesBox.innerHTML = '';
         this.ui.unrepliedMessageBox.innerHTML = '';
         this.ui.repliedMessageBox.innerHTML = '';
@@ -1295,7 +1295,7 @@ class App {
         this.hostServices.logEventLine(`Logs cleared at ${this.util.timeHHMMSS()}`);
     }
 
-    _createUserListContainer(options) {
+    _createUserListContainer = (options) => {
         const {
             wrapperEl,
             containerId,
@@ -1377,7 +1377,7 @@ class App {
         };
     }
 
-    createOtherUsersContainer() {
+    createOtherUsersContainer = () => {
         const refs = this._createUserListContainer({
             wrapperEl: this.ui.userContainersWrapper,
             containerId: this.sel.raw.users.otherUsersContainer,
@@ -1403,7 +1403,7 @@ class App {
         this.ui.otherUsersContainer = refs.container;
     }
 
-    createFemaleUsersContainer() {
+    createFemaleUsersContainer = () => {
         const refs = this._createUserListContainer({
             wrapperEl: this.ui.userContainersWrapper,
             containerId: this.sel.raw.users.femaleUsersContainer,
@@ -1432,7 +1432,7 @@ class App {
         this.util.verbose('Created female users container');
     }
 
-    renderAndWireIncludeOtherUsersInParsing(elToAppendTo) {
+    renderAndWireIncludeOtherUsersInParsing = (elToAppendTo) => {
         const label = document.createElement('label');
         label.style.marginLeft = '8px';
 
@@ -1474,7 +1474,7 @@ class App {
         elToAppendTo.appendChild(label);
     }
 
-    renderAndWireHideRepliedToggle(elToAppendTo, targetContainer) {
+    renderAndWireHideRepliedToggle = (elToAppendTo, targetContainer) => {
         const label = document.createElement('label');
         label.style.marginLeft = '8px';
 
@@ -1516,7 +1516,7 @@ class App {
         elToAppendTo.appendChild(label);
     }
 
-    renderAndWireEnableBroadcastCheckbox(elToAppendTo, targetContainer) {
+    renderAndWireEnableBroadcastCheckbox = (elToAppendTo, targetContainer) => {
         const label = document.createElement('label');
 
         const checkbox = document.createElement('input');
@@ -1544,19 +1544,19 @@ class App {
         elToAppendTo.appendChild(label);
     }
 
-    applyHideRepliedUseritemEls(hide) {
+    applyHideRepliedUseritemEls = (hide) => {
         const repliedEls = this.util.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
         repliedEls.forEach((el) => {
             el.style.display = hide ? 'none' : '';
         });
     }
 
-    _setExpanded(container) {
+    _setExpanded = (container) => {
         container.classList.toggle('ca-expanded');
         container.classList.toggle('ca-collapsed');
     }
 
-    _isStaffListView() {
+    _isStaffListView = () => {
         const titleEl =
             this.util.qs('#menu_title, .menu_title, .title, .btitle, #page_title, .page_title') ||
             null;
@@ -1564,20 +1564,20 @@ class App {
         return txt.includes('staff list');
     }
 
-    _setHeadersVisible(visible) {
+    _setHeadersVisible = (visible) => {
         const headers = this.util.qsa('.ca-user-list-header');
         headers.forEach(h => {
             h["style"].display = visible ? '' : 'none';
         });
     }
 
-    toggleOriginalUserList(visible) {
+    toggleOriginalUserList = (visible) => {
         this.util.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
         this.util.qs(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
         this.util.qs(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
     }
 
-    wireListOptionClicks() {
+    wireListOptionClicks = () => {
         const friendsBtn = this.util.qs('#friends_option');
         const usersBtn = this.util.qs('#users_option');
         const searchBtn = this.util.qs('#search_option');
@@ -1586,18 +1586,18 @@ class App {
         this.util.onClickEl(usersBtn, () => this.toggleOriginalUserList, false);
     }
 
-    updateFemaleUserCountEl(count) {
+    updateFemaleUserCountEl = (count) => {
         this.util.verbose('Updating female user count:', count);
         const headerCounter = this.util.qs(this.sel.users.femaleUserCount);
         headerCounter.textContent = `${count}`;
     }
 
-    updateOtherUsersCountEl(count) {
+    updateOtherUsersCountEl = (count) => {
         const headerCounter = this.util.qs(this.sel.users.otherUserCount);
         headerCounter.textContent = `${count}`;
     }
 
-    _boxesForKinds(kinds) {
+    _boxesForKinds = (kinds) => {
         const boxes = new Set();
         const hasOut = kinds.includes('dm-out');
         const hasInReplied = kinds.includes('dm-in-replied');
@@ -1674,7 +1674,7 @@ class App {
         console.log(`[LOG] Section cleared: kinds=[${kinds.join(', ')}], removed=${totalRemoved}`);
     }
 
-    isVisuallyTruncated_(el) {
+    isVisuallyTruncated_ = (el) => {
         const style = window.getComputedStyle(el);
 
         const clampVal =
@@ -1696,7 +1696,7 @@ class App {
         return el.scrollWidth > el.clientWidth + 1;
     }
 
-    createExpandIndicator_() {
+    createExpandIndicator_ = () => {
         const exp = document.createElement("span");
         exp.className = "ca-expand-indicator";
         exp.title = "Click to expand/collapse";
@@ -1708,7 +1708,7 @@ class App {
         return exp;
     }
 
-    ensureExpandButtonFor_(logEntryEl) {
+    ensureExpandButtonFor_ = (logEntryEl) => {
         const logEntryTextEl = logEntryEl.querySelector(`${this.sel.log.classes.ca_log_text}`);
         const ind = logEntryEl.querySelector(`.${this.sel.raw.log.classes.ca_expand_indicator}`);
         const expanded = logEntryTextEl.classList.contains("ca-text-expanded");
@@ -1735,7 +1735,7 @@ class App {
         ind.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
 
-    renderLogEntry(activityLog, user) {
+    renderLogEntry = (activityLog, user) => {
         if (!activityLog || !user || !user.uid) {
             console.error('renderLogEntry: Invalid args', {entry: activityLog, user});
             return;
@@ -1867,7 +1867,7 @@ class App {
         this.util.scrollToBottom(targetContainer);
     }
 
-    userLinkHTML(user) {
+    userLinkHTML = (user) => {
         return `<a href="#"
             class="${this.sel.raw.log.classes.ca_user_link}"
             title="Open profile"
@@ -1879,7 +1879,7 @@ class App {
           </a>`;
     }
 
-    processReadStatusForLogsEls(logs) {
+    processReadStatusForLogsEls = (logs) => {
         for (const log of logs) {
             this.util.debug(`Processing read status for log ${log.guid}`);
             const el = this.util.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
@@ -1889,7 +1889,7 @@ class App {
         this.util.scrollToBottom(this.ui.repliedMessageBox);
     }
 
-    destroy() {
+    destroy = () => {
         console.warn(`Destroying ChatApp UI and util.`);
         this.hostServices.destroy();
     }

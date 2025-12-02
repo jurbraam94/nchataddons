@@ -19,115 +19,115 @@ class SettingsStore {
         this.util = util;
     }
 
-    setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
+    setUserManagerVisibleColumnPrefs = (userManagerVisibleColumnPrefs) => {
         this.store.set(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, userManagerVisibleColumnPrefs);
     }
 
-    getUserManagerVisibleColumnPrefs() {
+    getUserManagerVisibleColumnPrefs = () => {
         return this.store.get(this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY, {
             parseJson: true
         });
     }
 
-    getWriteStorageMode(mode) {
+    getWriteStorageMode = (mode) => {
         return this.store._writeStorageMode(mode);
     }
 
-    setWriteStorageMode(mode) {
+    setWriteStorageMode = (mode) => {
         this.store._writeStorageMode(mode);
     }
 
-    getLastDmUid() {
+    getLastDmUid = () => {
         return this.store.get(this.LAST_DM_UID_KEY) || '';
     }
 
-    setLastDmUid(lastDmUid) {
+    setLastDmUid = (lastDmUid) => {
         this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
     }
 
-    getLastPrivateReadId() {
+    getLastPrivateReadId = () => {
         return Number(this.store.get(this.LAST_PRIVATE_READ_KEY)) || 0;
     }
 
-    setLastPrivateReadId(lastPrivateReadd) {
+    setLastPrivateReadId = (lastPrivateReadd) => {
         this.store.set(this.LAST_PRIVATE_READ_KEY, String(lastPrivateReadd));
     }
 
-    getPCountProcessed() {
+    getPCountProcessed = () => {
         return this.store.get(this.PCOUNT_PROCESSED_KEY) || 0;
     }
 
-    setPCountProcessed(pCountProcessed) {
+    setPCountProcessed = (pCountProcessed) => {
         this.store.set(this.PCOUNT_PROCESSED_KEY, String(pCountProcessed));
     }
 
-    clearLastDmUid() {
+    clearLastDmUid = () => {
         this.store.set(this.LAST_DM_UID_KEY, '');
     }
 
-    getShowBroadcastSelectionBoxes() {
+    getShowBroadcastSelectionBoxes = () => {
         return this.store.getBool(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, {
             default: false
         });
     }
 
-    setShowBroadcastSelectionBoxes(showBroadcastSelectionBoxes) {
+    setShowBroadcastSelectionBoxes = (showBroadcastSelectionBoxes) => {
         this.store.set(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, String(showBroadcastSelectionBoxes));
     }
 
-    getShouldIncludeOthers() {
+    getShouldIncludeOthers = () => {
         return this.store.getBool(this.SHOULD_INCLUDE_OTHER_USERS_KEY, {
             default: true
         });
     }
 
-    setShouldIncludeOthers(shouldIncludeOthers) {
+    setShouldIncludeOthers = (shouldIncludeOthers) => {
         this.store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
     }
 
-    getHideReplied() {
+    getHideReplied = () => {
         return this.store.getBool(this.SHOULD_HIDE_REPLIED_USERS_KEY, {
             default: false
         });
     }
 
-    setHideReplied(hideReplied) {
+    setHideReplied = (hideReplied) => {
         this.store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
     }
 
-    getGlobalWatermark() {
+    getGlobalWatermark = () => {
         return this.store.get(this.GLOBAL_WATERMARK_KEY, {
             default: this.util.getTimeStampInWebsiteFormat()
         });
     }
 
-    getDebugMode() {
+    getDebugMode = () => {
         return this.store.getCookie(this.DEBUG_COOKIE) === 'true' ||
             this.store.get(this.DEBUG_MODE_KEY) === 'true';
     }
 
-    getVerboseMode() {
+    getVerboseMode = () => {
         return this.store.getCookie(this.VERBOSE_COOKIE) === 'true' ||
             this.store.get(this.VERBOSE_MODE_KEY) === 'true' || false;
     }
 
-    setDebugMode(isEnabled) {
+    setDebugMode = (isEnabled) => {
         this.store.setCookie(this.DEBUG_COOKIE, String(isEnabled));
         this.store.set(this.DEBUG_MODE_KEY, isEnabled);
     }
 
-    setVerboseMode(isEnabled) {
+    setVerboseMode = (isEnabled) => {
         this.store.setCookie(this.VERBOSE_COOKIE, String(isEnabled));
         this.store.set(this.VERBOSE_MODE_KEY, isEnabled);
     }
 
-    savePredefinedMessages(list) {
+    savePredefinedMessages = (list) => {
         const arr = Array.isArray(list) ? list : [];
         this.predefinedMessages = arr;
         this.store.setPersisted(this.PREDEFINED_MESSAGES_KEY, arr);
     }
 
-    getPredefinedMessages() {
+    getPredefinedMessages = () => {
         if (Array.isArray(this.predefinedMessages) && this.predefinedMessages.length > 0) {
             return this.predefinedMessages;
         }
@@ -147,7 +147,7 @@ class KeyValueStore {
         this.storage = this._chooseStorage(StorageMode) || localStorage;
     }
 
-    _clearOwnLocalStorage() {
+    _clearOwnLocalStorage = () => {
         console.warn(
             'CLEARING LOCALSTORAGE AND NOT PERSISTING ANY SETTINGS BECAUSE WIPE LOCAL STORAGE IS ENABLED'
         );
@@ -159,23 +159,23 @@ class KeyValueStore {
         });
     }
 
-    _writeStorageMode(mode) {
+    _writeStorageMode = (mode) => {
         this.setCookie(this.STORAGE_COOKIE, mode);
         this.storage = this._chooseStorage(mode);
     }
 
-    _chooseStorage(mode) {
+    _chooseStorage = (mode) => {
         if (mode === 'block') return new NullStorage();
         return localStorage;
     }
 
-    setCookie(name, value, days = 400) {
+    setCookie = (name, value, days = 400) => {
         const d = new Date();
         d.setDate(d.getDate() + days);
         document.cookie = `${name}=${encodeURIComponent(value)}; path=/; expires=${d.toUTCString()}; SameSite=Lax`;
     }
 
-    getCookie(name) {
+    getCookie = (name) => {
         const m = document.cookie.match(
             new RegExp(
                 "(?:^|; )" +
@@ -187,34 +187,34 @@ class KeyValueStore {
     }
 
 
-    _readStorageMode() {
+    _readStorageMode = () => {
         const v = (this.getCookie(this.STORAGE_COOKIE) || 'allow').toLowerCase();
         return (v === 'wipe' || v === 'block') ? v : 'allow';
     }
 
-    has(key) {
+    has = (key) => {
         return this.storage.getItem(key) !== null;
     }
 
-    getBool(
+    getBool = (
         key,
         {
             prefix = this.STORAGE_KEY_PREFIX,
             default: defaultIfMissing
         } = {}
-    ) {
+    ) => {
         const val = this.get(key, {prefix, default: defaultIfMissing});
         return val === true;
     }
 
-    get(
+    get = (
         key,
         {
             prefix = this.STORAGE_KEY_PREFIX,
             default: defaultIfMissing = undefined,
             parseJson = true
         } = {}
-    ) {
+    ) => {
         const storageKey = `${prefix}.${key}`;
         const raw = this.storage.getItem(storageKey);
 
@@ -249,21 +249,21 @@ class KeyValueStore {
     }
 
 
-    getPersisted(key) {
+    getPersisted = (key) => {
         return this.get(key, {prefix: this.PERSIST_STORAGE_KEY_PREFIX});
     }
 
-    set(key, value, prefix = this.STORAGE_KEY_PREFIX) {
+    set = (key, value, prefix = this.STORAGE_KEY_PREFIX) => {
         const toStore = (typeof value === "string") ? value : JSON.stringify(value ?? {});
         this.storage.setItem(`${prefix}.${key}`, toStore);
         return true;
     }
 
-    setPersisted(key, value) {
+    setPersisted = (key, value) => {
         this.set(key, value, this.PERSIST_STORAGE_KEY_PREFIX);
     }
 
-    delete(key) {
+    delete = (key) => {
         if (!this.storage) {
             console.error('[KeyValueStore] delete: storage is not available');
             return false;
@@ -288,22 +288,22 @@ class ActivityLogStore {
         this.util = util;
     }
 
-    getAllOnlineWomen() {
+    getAllOnlineWomen = () => {
         return this.list().filter(user => user.isFemale && user.online);
     }
 
     // ---- storage util (arrays only) ----
-    _getAll() {
+    _getAll = () => {
         const raw = this.store.get(this.ACTIVITY_LOG_KEY);
         return Array.isArray(raw) ? raw : [];
     }
 
-    _save(changedLog) {
+    _save = (changedLog) => {
         this._saveAll([changedLog])
         return changedLog;
     }
 
-    _saveAll(changedLogs) {
+    _saveAll = (changedLogs) => {
         if (!Array.isArray(changedLogs)) {
             throw new Error('changedLogs expects an array');
         }
@@ -323,7 +323,7 @@ class ActivityLogStore {
         return changedLogs;
     }
 
-    parseLogDateToNumber(logDateStr) {
+    parseLogDateToNumber = (logDateStr) => {
         if (!logDateStr || typeof logDateStr !== 'string') return 0;
 
         const parts = logDateStr.trim().split(/[\s\/:]+/);
@@ -339,7 +339,7 @@ class ActivityLogStore {
         return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
     }
 
-    list({order = 'desc'} = {}) {
+    list = ({order = 'desc'} = {}) => {
         const arr = [...this._getAll()];
         arr.sort((a, b) => {
             const ta = this.parseLogDateToNumber(a?.ts);
@@ -349,11 +349,11 @@ class ActivityLogStore {
         return arr;
     }
 
-    get(guid) {
+    get = (guid) => {
         return this._getAll().find(log => String(log.guid) === String(guid)) || null;
     }
 
-    getAllByUserUid(uid, onlyUnread = false, alsoFromSelf = false) {
+    getAllByUserUid = (uid, onlyUnread = false, alsoFromSelf = false) => {
         const result = this._getAll().filter(
             log => String(log.uid) === String(uid)
                 && (!onlyUnread || log.unread)
@@ -363,33 +363,33 @@ class ActivityLogStore {
         return result;
     }
 
-    hasSentMessageToUser(uid) {
+    hasSentMessageToUser = (uid) => {
         return this.getAllSentMessagesByUserId(uid).length > 0;
     }
 
-    getAllReceivedMessagesByUserId(uid, onlyUnread = false) {
+    getAllReceivedMessagesByUserId = (uid, onlyUnread = false) => {
         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-in`);
     }
 
-    getAllSentMessagesByUserId(uid, onlyUnread = false) {
+    getAllSentMessagesByUserId = (uid, onlyUnread = false) => {
         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-out`);
     }
 
-    getUnreadReceivedMessageCountByUserUid(uid) {
+    getUnreadReceivedMessageCountByUserUid = (uid) => {
         return this.getAllReceivedMessagesByUserId(uid, true).length;
     }
 
-    getAllSentMessagesCountByUserId(uid) {
+    getAllSentMessagesCountByUserId = (uid) => {
         return this.getAllSentMessagesByUserId(uid).length;
     }
 
-    has({guid, uid}) {
+    has = ({guid, uid}) => {
         const e = this.get(guid);
         return !!(e && (!uid || String(e.uid) === String(uid)));
     }
 
     // Merge a single patch with existing (NO SAVE)
-    _mergeLog(changedLog) {
+    _mergeLog = (changedLog) => {
         if (!changedLog || !changedLog.guid) {
             throw new Error('_mergeOne requires changedLog.guid');
         }
@@ -397,7 +397,7 @@ class ActivityLogStore {
         return existing ? {...existing, ...changedLog} : changedLog;
     }
 
-    _MergeLogs(changedLogs) {
+    _MergeLogs = (changedLogs) => {
         if (!Array.isArray(changedLogs)) {
             throw new Error('_mergeMany expects an array');
         }
@@ -411,7 +411,7 @@ class ActivityLogStore {
         return mergedLogsResult;
     }
 
-    set(changedLog) {
+    set = (changedLog) => {
         if (!changedLog || !changedLog.guid) {
             throw new Error('set() requires changedLog.guid');
         }
@@ -421,7 +421,7 @@ class ActivityLogStore {
         return mergedLogResult;
     }
 
-    setAll(changedLogs) {
+    setAll = (changedLogs) => {
         if (!Array.isArray(changedLogs)) {
             console.error(`ChangedLogs needs to be an array, got ${typeof changedLogs}`);
             return null;
@@ -432,7 +432,7 @@ class ActivityLogStore {
         return mergedList;
     }
 
-    MarkReadUntilChatLogId(uid, lastPrivateReadId) {
+    MarkReadUntilChatLogId = (uid, lastPrivateReadId) => {
         if (!uid || lastPrivateReadId === undefined) {
             console.error(`Uid ${uid} or lastPrivateReadId ${lastPrivateReadId} is invalid`);
             return [];
@@ -448,7 +448,7 @@ class ActivityLogStore {
         return this.setAll(allUnreadMessagesForUid);
     }
 
-    remove(guid) {
+    remove = (guid) => {
         if (!guid) return false;
         const all = this._getAll();
         const next = all.filter(l => String(l.guid) !== String(guid));
@@ -456,7 +456,7 @@ class ActivityLogStore {
         return next.length !== all.length;
     }
 
-    clearByKind(kind) {
+    clearByKind = (kind) => {
         if (!kind) return 0;
         const all = this._getAll();
         const next = all.filter(l => l?.kind !== kind);
@@ -464,11 +464,11 @@ class ActivityLogStore {
         return all.length - next.length;
     }
 
-    clearEvents() {
+    clearEvents = () => {
         return this.clearByKind('event');
     }
 
-    clear() {
+    clear = () => {
         this.store.set(this.ACTIVITY_LOG_KEY, []);
     }
 }
@@ -758,7 +758,7 @@ class UserStore {
         }
     }
 
-    _deleteUserByUid(uid) {
+    _deleteUserByUid = (uid) => {
         if (uid == null) {
             console.error('[UserStore] _deleteUserByUid: uid is null/undefined');
             return false;
@@ -783,21 +783,21 @@ class UserStore {
         return true;
     }
 
-    remove(uid) {
+    remove = (uid) => {
         return this._deleteUserByUid(uid);
     }
 
     // ---- storage util (arrays only) ----
-    _getAll() {
+    _getAll = () => {
         const raw = this.store.get(this.USERS_KEY);
         return Array.isArray(raw) ? raw : [];
     }
 
-    getLastPrivateReadId(uid) {
+    getLastPrivateReadId = (uid) => {
         return this.get(uid)?.lastPrivateReadId;
     }
 
-    setLastPrivateReadId(uid, lastPrivateReadId) {
+    setLastPrivateReadId = (uid, lastPrivateReadId) => {
         const u = this.get(uid);
         if (!u) {
             console.error(`User ${uid} not found, cannot set lastPrivateReadId`);
@@ -808,11 +808,11 @@ class UserStore {
         return this.set(updated);
     }
 
-    getLastPCountProcessed(uid) {
+    getLastPCountProcessed = (uid) => {
         return this.get(uid)?.lastPCountProcessed;
     }
 
-    setLastPCountProcessed(uid, lastPCountProcessed) {
+    setLastPCountProcessed = (uid, lastPCountProcessed) => {
         const u = this.get(uid);
         if (!u) {
             console.error(`User ${uid} not found, cannot set lastPCountProcessed`);
@@ -823,7 +823,7 @@ class UserStore {
         return this.set(updated);
     }
 
-    _save(userToEdit) {
+    _save = (userToEdit) => {
         if (!userToEdit?.uid) {
             throw new Error('_save requires user.uid');
         }
@@ -845,7 +845,7 @@ class UserStore {
         return userToEdit;
     }
 
-    _saveAll(usersToEdit) {
+    _saveAll = (usersToEdit) => {
         if (!Array.isArray(usersToEdit)) {
             throw new Error('_saveAll expects an array');
         }
@@ -897,23 +897,23 @@ class UserStore {
     }
 
     // ---- API (array) ----
-    list() {
+    list = () => {
         return [...this._getAll()];
     }
 
-    get(uid) {
+    get = (uid) => {
         return this._getAll().find(u => String(u.uid) === String(uid)) || null;
     }
 
-    getByName(name) {
+    getByName = (name) => {
         return this._getAll().find(u => String(u.name) === String(name)) || null;
     }
 
-    has(uid) {
+    has = (uid) => {
         return !!this.get(uid);
     }
 
-    _mergeUser(newUser) {
+    _mergeUser = (newUser) => {
         if (!newUser || newUser.uid == null) {
             throw new Error('_mergeUser requires patch.uid');
         }
@@ -932,7 +932,7 @@ class UserStore {
         };
     }
 
-    set(user) {
+    set = (user) => {
         if (!user || user.uid == null) {
             throw new Error('set() requires user.uid')
         }
@@ -942,7 +942,7 @@ class UserStore {
         return this._save(merged);
     }
 
-    isLoggedIn(uid) {
+    isLoggedIn = (uid) => {
         const isLoggedIn = this.get(uid)?.isLoggedIn;
 
         if (isLoggedIn === undefined) {
@@ -951,7 +951,7 @@ class UserStore {
         return !!(this.get(uid)?.isLoggedIn);
     }
 
-    getAllLoggedIn() {
+    getAllLoggedIn = () => {
         return this.list().filter(u => {
             if (u.isLoggedIn === true) {
                 return true;
@@ -961,15 +961,15 @@ class UserStore {
         });
     }
 
-    getAllLoggedInFemales() {
+    getAllLoggedInFemales = () => {
         return this.getAllLoggedIn().filter(u => u.isFemale);
     }
 
-    getMalesLoggedIn() {
+    getMalesLoggedIn = () => {
         return this.getAllLoggedIn().filter(u => !u.isFemale);
     }
 
-    async getOrFetch(id) {
+    getOrFetch = async (id) => {
         let user = this.get(id);
         if (!user) {
             const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
@@ -986,7 +986,7 @@ class UserStore {
         return user || null;
     }
 
-    async getOrFetchByName(name) {
+    getOrFetchByName = async (name) => {
         let user = this.getByName(name);
 
         if (!user) {
@@ -1010,13 +1010,13 @@ class UserStore {
         return user || null;
     }
 
-    includeUserForBroadcast(uid, include) {
+    includeUserForBroadcast = (uid, include) => {
         if (uid == null) return null;
         const u = this.get(uid) || {uid: String(uid)};
         return this.set({...u, isIncludedForBroadcast: !!include});
     }
 
-    async isIncludedForBroadcast(uid) {
+    isIncludedForBroadcast = async (uid) => {
         if (uid == null || uid === '') {
             console.error(`isIncludedForBroadcast requires uid`);
             return null;
@@ -1032,7 +1032,7 @@ class UserStore {
         return user.isIncludedForBroadcast;
     }
 
-    clear() {
+    clear = () => {
         if (!this.store || !this.USERS_KEY) {
             console.error('[UserStore] clear: kv or cacheKey missing');
             return;
@@ -1050,20 +1050,20 @@ class UserStore {
 
 /** Storage shim that never persists anything (Block mode) */
 class NullStorage {
-    getItem(_) {
+    getItem = (_) => {
         return null;
     }
 
-    setItem(_, __) {
+    setItem = (_, __) => {
     }
 
-    removeItem(_) {
+    removeItem = (_) => {
     }
 
-    clear() {
+    clear = () => {
     }
 
-    key(_) {
+    key = (_) => {
         return null;
     }
 
