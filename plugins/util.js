@@ -80,12 +80,78 @@ class Util {
         this.verboseMode = verboseMode;
     }
 
-    debug(...args) {
+    _getCallerLocation() {
+        const err = new Error();
 
-        if (this.debugMode) {
-            console.log('[DEBUG]', ...args);
+        if (!err.stack) {
+            console.warn('_getCallerLocation: no stack available');
+            return '';
         }
-    };
+
+        const lines = err.stack.split('\n');
+
+        // 0: "Error"
+        // 1: this debug() method
+        // 2: caller of debug()  -> what we want
+        const callerLine = lines[2] ? lines[2].trim() : '';
+
+        if (!callerLine) {
+            console.warn('_getCallerLocation: caller line missing in stack');
+            return '';
+        }
+
+        // Try to match: "at FuncName (http://.../file.js:573:23)"
+        let match = callerLine.match(/at\s+(.*?)\s+\((.*):(\d+):(\d+)\)/);
+
+        // If that fails, try: "at http://.../file.js:573:23"
+        if (!match) {
+            match = callerLine.match(/at\s+(.*):(\d+):(\d+)/);
+            if (!match) {
+                // As a fallback, just return the raw line (better than nothing)
+                return callerLine.replace(/^at\s+/, '');
+            }
+
+            const fullPath = match[1];
+            const line = match[2];
+
+            const file = fullPath.split('/').pop() || fullPath;
+
+            return `${file}:${line}`;
+        }
+
+        // match[1] = function name, match[2] = file url, match[3] = line, match[4] = col
+        const funcName = match[1];
+        const fullPath = match[2];
+        const line = match[3];
+
+        const file = fullPath.split('/').pop() || fullPath;
+
+        return `${file}:${line} ${funcName}`;
+    }
+
+
+    debug(...args) {
+        if (!this.debugMode) {
+            return;
+        }
+
+        const location = this._getCallerLocation();
+        const prefix = location ? `[DEBUG ${location}]` : '[DEBUG]';
+
+        console.log(prefix, ...args);
+    }
+
+    verbose(...args) {
+        if (!this.verboseMode) {
+            return;
+        }
+
+        const location = this._getCallerLocation();
+        const prefix = location ? `[VERBOSE ${location}]` : '[VERBOSE]';
+
+        console.log(prefix, ...args);
+    }
+
 
     sleep(ms) {
         return new Promise(r => setTimeout(r, ms));
@@ -103,12 +169,6 @@ class Util {
         return s;
     }
 
-    verbose(...args) {
-
-        if (this.verboseMode) {
-            console.log('[VERBOSE]', ...args);
-        }
-    };
 
     extractUserId(el) {
         return el.getAttribute('data-id') || null;
@@ -369,7 +429,34 @@ class Util {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        return await fn(...params);
+        return await fn(e, ...params);
+    };
+
+    onClickEl(el, fn, ...params) {
+        if (!(el instanceof Element)) {
+            throw new Error(`onClickEl: el is not an Element`);
+        }
+
+        el.addEventListener('click', async (e) =>
+            this.wrapFnWithEventPrevent(e, fn, ...params)
+        );
+    }
+
+    onClickElBySelector(selector, fn, ...params) {
+        const el = this.qs(selector);
+        if (!el) {
+            throw new Error(`onClickElBySelector: no element found for selector: ${selector}`);
+        }
+        this.onClickEl(el, fn, ...params);
+    }
+
+    onClickElList(elList, fn, ...params) {
+        console.log(elList, typeof elList);
+        if (!Array.isArray(elList)) {
+            throw new Error(`onClickElList: elList is not a NodeList`);
+        }
+
+        elList.forEach(el => this.onClickEl(el, fn, ...params));
     }
 
     qsa(s, r) {

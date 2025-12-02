@@ -38,6 +38,15 @@ class App {
             });
         }
 
+        // Now UsersPopup gets injected dependencies
+        this.popups = new Popups({
+            app: this,
+            settingsStore: this.settingsStore,
+            util: this.util,
+            userStore: this.userStore,
+            api: this.api
+        });
+
         this.hostServices = new HostServices({
             app: this,
             util: this.util,
@@ -218,7 +227,7 @@ class App {
         this._updateStorageToggleUi(this.settingsStore.getWriteStorageMode());
 
         this._wireTextboxTrackers();
-        this._wireGlobalChatHeaderProfileClick();
+        this.util.onClickElBySelector('#chat_logs_container', this.onClickGlobalChatHeaderProfile);
         this.wireListOptionClicks();
         this._attachLogClickHandlers();
 
@@ -242,15 +251,6 @@ class App {
                 dmSendBtn.click();
                 dmTextarea.value = "";
             }
-        });
-
-        // Now UsersPopup gets injected dependencies
-        this.popups = new Popups({
-            app: this,
-            settingsStore: this.settingsStore,
-            util: this.util,
-            userStore: this.userStore,
-            api: this.api
         });
 
         this.util.init({
@@ -311,34 +311,32 @@ class App {
         });
     }
 
-    _wireGlobalChatHeaderProfileClick() {
-        this.util.qs('#chat_logs_container').addEventListener('click', async (e) => {
-            // Don’t hijack image/lightbox or menu clicks
-            if (e.target.closest('a[data-fancybox], .chat_image, .logs_menu')) {
-                return;
-            }
+    onClickGlobalChatHeaderProfile = async (e) => {
+        // Don’t hijack image/lightbox or menu clicks
+        if (e.target.closest('a[data-fancybox], .chat_image, .logs_menu')) {
+            return;
+        }
 
-            // Find the whole chat row
-            const logItem = e.target.closest('.chat_log');
-            if (!logItem) {
-                return;
-            }
+        // Find the whole chat row
+        const logItem = e.target.closest('.chat_log');
+        if (!logItem) {
+            return;
+        }
 
-            // Always resolve UID from the avatar in that row
-            const avatarEl = logItem.querySelector('.chat_avatar');
-            if (!avatarEl) {
-                console.warn('[App] No .chat_avatar found inside .chat_log');
-                return;
-            }
+        // Always resolve UID from the avatar in that row
+        const avatarEl = logItem.querySelector('.chat_avatar');
+        if (!avatarEl) {
+            console.warn('[App] No .chat_avatar found inside .chat_log');
+            return;
+        }
 
-            const uid = avatarEl.getAttribute('data-id');
-            if (!uid) {
-                console.warn('[App] .chat_avatar has no data-id');
-                return;
-            }
+        const uid = avatarEl.getAttribute('data-id');
+        if (!uid) {
+            console.warn('[App] .chat_avatar has no data-id');
+            return;
+        }
 
-            await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost.bind(this), uid);
-        });
+        await this.popups.openUserProfilePopupUsingHostEl(uid);
     }
 
     async onClickRefreshButton() {
@@ -363,7 +361,8 @@ class App {
         refreshBtn.classList.add('panel_option', 'panel_option_refresh');
         refreshBtn.title = 'Refresh users';
         refreshBtn.innerHTML = '<i class="fa fa-sync"></i>';
-        refreshBtn.addEventListener('click', async () => {
+
+        this.util.onClickEl(refreshBtn, async () => {
             await this.onClickRefreshButton();
             refreshBtn.classList.remove('loading');
         });
@@ -373,10 +372,7 @@ class App {
         templatesBtn.title = 'Predefined messages';
         templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
 
-        templatesBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            this.popups.openPredefinedPopup(null);
-        });
+        this.util.onClickEl(templatesBtn, this.popups.openPredefinedPopup, null);
 
         if (existingOption) {
             bar.insertBefore(refreshBtn, existingOption);
@@ -425,14 +421,15 @@ class App {
         ];
         boxes.forEach(box => {
             if (!box || box._caGenericWired) return;
-            box.addEventListener('click', (e) => this._onLogClickGeneric(e));
+            this.util.onClickEl(box, this._onLogClickGeneric);
             box._caGenericWired = true;
         });
     }
 
-    async _onLogClickGeneric(e) {
+    _onLogClickGeneric = async (e) => {
         const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
         if (!entry) {
+            console.warn('[CA] _onLogClickGeneric: no entry found');
             return;
         }
 
@@ -440,11 +437,6 @@ class App {
         const isSystem = (uid === 'system');
 
         this.util.verbose('Log entry clicked:', {entry, uid, isSystem});
-        const userLinkEl = e.target.closest?.(this.sel.raw.log.classes.ca_user_link);
-        if (userLinkEl && uid && !isSystem) {
-            await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost, uid);
-            return;
-        }
 
         const actionEl = e.target.closest?.('[data-action]');
         if (actionEl) {
@@ -466,23 +458,8 @@ class App {
                 return;
             }
 
-            if (action === 'delete-log') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-
-                const guid = entry.getAttribute('data-guid');
-                if (guid && this.activityLogStore.remove) {
-                    this.activityLogStore.remove(guid);
-                } else {
-                    console.warn('[CA] delete-log: no guid or ActivityLogStore.remove missing', {guid});
-                }
-                entry.remove();
-                return;
-            }
-
             if (action === 'open-profile') {
-                await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost, uid);
+                await this.popups.openUserProfilePopupUsingHostEl(uid);
                 return;
             }
 
@@ -527,30 +504,18 @@ class App {
         }
 
         if (uid && !isSystem) {
-            await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost, uid);
+            await this.popups.openUserProfilePopupUsingHostEl(uid);
         }
     }
 
-    buildBroadcastList() {
-        const out = [];
-        const loggedInFemaleUsers = this.userStore.getAllLoggedInFemales();
-
-        loggedInFemaleUsers.forEach((femaleUser) => {
-            const uid = femaleUser.uid;
-
-            if (this.activityLogStore.hasSentMessageToUser(uid)) {
-                console.log(`Skipping message to ${femaleUser.name} (already replied)`);
-                return;
-            }
-
-            if (femaleUser.isIncludedForBroadcast) {
-                out.push(femaleUser);
-            } else {
-                console.log('Skipping user:', uid, 'due to exclusion');
-            }
-        });
-
-        return out;
+    onClickDeleteLog(guid, logEntry) {
+        //const guid = entry.getAttribute('data-guid');
+        if (guid && this.activityLogStore.remove) {
+            this.activityLogStore.remove(guid);
+        } else {
+            console.warn('[CA] delete-log: no guid or ActivityLogStore.remove missing', {guid});
+        }
+        logEntry.remove();
     }
 
     decodeHTMLEntities(s) {
@@ -573,17 +538,7 @@ class App {
 
         wrapper.appendChild(nameSpan);
 
-        nameSpan.addEventListener('click', async (e) => {
-            await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost, updatedUserJson.uid)
-        });
-
-        this.util.qs('.user_item_avatar img.avav', parsedUserItemEl).addEventListener(
-            'click',
-            async (e) => {
-                await this.util.wrapFnWithEventPrevent(e, this.popups.openProfileOnHost, updatedUserJson.uid)
-            },
-            true
-        );
+        this.util.onClickEl(this.util.qs('.user_item_avatar img.avav'), this.popups.openUserProfilePopupUsingHostEl, updatedUserJson.uid);
 
         if (updatedUserJson?.age > 0) {
             const ageSpan = document.createElement('span');
@@ -849,22 +804,20 @@ class App {
             }
         };
 
-        toggle.appendChild(uncheckedSvg);
-        toggle.appendChild(checkedSvg);
-        applyVisualState(include);
-
-        toggle.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-
+        const includeForBroadcast = () => {
             const currentlyIncluded = toggle.dataset.caIncluded === '1';
             const nextInclude = !currentlyIncluded;
 
             applyVisualState(nextInclude);
             this.userStore.includeUserForBroadcast(user.uid, nextInclude);
             this.util.debug(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
-        });
+        }
+
+        toggle.appendChild(uncheckedSvg);
+        toggle.appendChild(checkedSvg);
+        applyVisualState(include);
+
+        this.util.onClickEl(toggle, () => includeForBroadcast);
 
         userItemDataEl.appendChild(toggle);
     }
@@ -882,13 +835,7 @@ class App {
          <polyline points="3 7,12 13,21 7"></polyline>`
         ));
 
-        dmLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            this.popups.openAndRememberPrivateChat(user);
-        });
-
+        this.util.onClickEl(dmLink, () => this.popups.openAndRememberPrivateChat, user);
         userItemDataEl.appendChild(dmLink);
     }
 
@@ -942,7 +889,7 @@ class App {
 
 
         mount.appendChild(panel);
-        this.util.qsa('.clear-logs', panel).forEach(el => el.addEventListener('click', this._onLogClearClick));
+        this.util.onClickElList(this.util.qsa('.clear-logs', panel), () => this._onLogClearClick);
         this._attachLogClickHandlers();
     }
 
@@ -1079,8 +1026,8 @@ class App {
         this.util.qs('#global_chat').appendChild(panelEl);
         this.ui.panel = panelEl;
         this.ui.panelNav = panelEl.querySelector('.ca-nav');
-        this.util.qsa('.clear-logs', panelEl).forEach(el => el.addEventListener('click', this._onLogClearClick));
-        this._wirePanelNav();
+        this.util.onClickElList(this.util.qsa('.clear-logs', panelEl), () => this._onLogClearClick);
+        this.util.onClickEl(this.ui.panelNav, this.onGlobalClickPanelNav);
         this._setupResizableLogSections();
     }
 
@@ -1286,53 +1233,49 @@ class App {
         this.hostServices.logEventLine(`Storage mode set to ${nextMode} at ${this.util.timeHHMM()}`);
     }
 
-    _wirePanelNav() {
-        this.ui.panelNav.addEventListener('click', (e) => {
-            const link = e.target.closest('.ca-dm-link[data-action]');
-            if (!link) {
-                return;
-            }
+    onGlobalClickPanelNav = (e) => {
+        const link = e.target.closest('.ca-dm-link[data-action]');
+        if (!link) {
+            return;
+        }
 
-            const action = String(link.dataset.action || '').toLowerCase();
-            e.preventDefault();
+        const action = String(link.dataset.action || '').toLowerCase();
 
-            switch (action) {
-                case 'broadcast':
-                    this.util.verbose('Nav: broadcast clicked');
-                    this.popups.openBroadcastModal();
-                    break;
+        switch (action) {
+            case 'broadcast':
+                this.util.verbose('Nav: broadcast clicked');
+                this.popups.openBroadcastModal();
+                break;
 
-                case 'send-message':
-                    this.util.verbose('Nav: send-specific clicked');
-                    this.popups.openSendMessageModal();
-                    break;
+            case 'send-message':
+                this.util.verbose('Nav: send-specific clicked');
+                this.popups.openSendMessageModal();
+                break;
 
-                case 'clear-all-logs':
-                    this.util.verbose('Nav: clear-all-logs clicked');
-                    this.handleLogContainersElClear();
-                    break;
+            case 'clear-all-logs':
+                this.util.verbose('Nav: clear-all-logs clicked');
+                this.handleLogContainersElClear();
+                break;
 
-                case 'storage-toggle':
-                    this.util.verbose('Nav: storage-toggle clicked');
-                    this.handleStorageToggleClick();
-                    break;
+            case 'storage-toggle':
+                this.util.verbose('Nav: storage-toggle clicked');
+                this.handleStorageToggleClick();
+                break;
 
-                case 'open-settings':
-                    this.util.verbose('Nav: settings clicked');
-                    this.popups.openSettingsPopup();
-                    break;
+            case 'open-settings':
+                this.util.verbose('Nav: settings clicked');
+                this.popups.openSettingsPopup();
+                break;
 
-                case 'open-users':
-                    this.util.verbose('Nav: users clicked');
-                    this.popups.openUserManagementPopup();
-                    break;
+            case 'open-users':
+                this.util.verbose('Nav: users clicked');
+                this.popups.openUserManagementPopup();
+                break;
 
-                default:
-                    console.warn('[CA] _wirePanelNav: unhandled data-action:', action);
-                    break;
-            }
-
-        });
+            default:
+                console.warn('[CA] _wirePanelNav: unhandled data-action:', action);
+                break;
+        }
     }
 
     handleLogContainersElClear() {
@@ -1419,8 +1362,7 @@ class App {
         const content = document.createElement('div');
         content.className = 'ca-user-list-content';
         container.appendChild(content);
-
-        header.addEventListener('click', this._setExpanded.bind(this, group));
+        this.util.onClickEl(header, () => this._setExpanded, group, this.ui.femaleUserContainerGroup);
 
         return {
             group,
@@ -1550,6 +1492,7 @@ class App {
         checkbox.addEventListener("change",
             /** @param {Event} e */
             (e) => {
+                this.util.debug("[CA] Hide replied users:", checkbox.checked);
 
                 const target = e.target;
 
@@ -1639,15 +1582,8 @@ class App {
         const usersBtn = this.util.qs('#users_option');
         const searchBtn = this.util.qs('#search_option');
 
-        [friendsBtn, searchBtn].forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.toggleOriginalUserList(true);
-            });
-        });
-
-        usersBtn.addEventListener('click', () => {
-            this.toggleOriginalUserList(false);
-        });
+        [friendsBtn, searchBtn].forEach(btn => this.util.onClickEl(btn, () => this.toggleOriginalUserList, true));
+        this.util.onClickEl(usersBtn, () => this.toggleOriginalUserList, false);
     }
 
     updateFemaleUserCountEl(count) {
@@ -1966,4 +1902,6 @@ if (!text.includes("Verifieer dat u een mens bent")) {
 } else {
     console.warn("Human verification page detected — not initializing.");
 }
-app.init().catch(console.error);
+app.init().then(() => {
+    console.log("ChatApp initialized.");
+});

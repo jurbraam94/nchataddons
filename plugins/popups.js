@@ -237,13 +237,13 @@ class Popups {
 
         if (!popup.dataset.caUsersPopupWired) {
             popup.dataset.caUsersPopupWired = '1';
-            this._wirePopup(popup);
+            this._wireUserManagementPopup(popup);
         }
 
         return popup;
     }
 
-    _wirePopup(popup) {
+    _wireUserManagementPopup(popup) {
         const searchInput = popup.querySelector('#ca-users-search');
         const onlyFemalesCheckbox = popup.querySelector('#ca-users-only-females');
         const onlyOnlineCheckbox = popup.querySelector('#ca-users-only-online'); // NEW
@@ -340,7 +340,7 @@ class Popups {
                 }
 
                 if (action === 'open-profile') {
-                    await this.app.openProfileOnHost(uid);
+                    await this.app.openUserProfilePopupUsingHostEl(uid);
                     return;
                 }
 
@@ -558,7 +558,7 @@ class Popups {
         return true;
     }
 
-    openProfileOnHost = async (uid) => {
+    openUserProfilePopupUsingHostEl = async (uid) => {
         this.util.debug('openProfileOnHost called with uid:', uid);
 
         if (!uid || uid === 'system') {
@@ -575,7 +575,7 @@ class Popups {
     overwriteHostMethods() {
         this.hostGetProfileOriginal = window.getProfile.bind(window);
         window.getProfile = async (uid) => {
-            await this.openProfileOnHost(uid);
+            await this.openUserProfilePopupUsingHostEl(uid);
         };
         this.util.debug('[CA] Overridden window.getProfile with CA profile popup');
 
@@ -664,9 +664,7 @@ class Popups {
         const left = document.createElement('div');
         left.className = 'ca-host-private-header-left';
 
-        left.addEventListener('click', async (e) => {
-            await this.util.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
-        });
+        this.util.onClickEl(left, this.openUserProfilePopupUsingHostEl, uid);
 
         const right = document.createElement('div');
         right.className = 'ca-host-private-header-right';
@@ -749,7 +747,7 @@ class Popups {
                 return;
             }
 
-            const broadcastReceiveList = this.app.buildBroadcastList();
+            const broadcastReceiveList = this.util.buildBroadcastList();
 
             if (!broadcastReceiveList.length) {
                 this.app.logEventLine('[BROADCAST] No new recipients for this message (after exclusions/rank filter).');
@@ -1158,7 +1156,7 @@ class Popups {
     /**
      * This is basically your old App.openPredefinedPopup, but here.
      */
-    openPredefinedPopup(wrapper, prefilledText = null) {
+    openPredefinedPopup = (wrapper, prefilledText = null) => {
         const popup = this.createPredefinedMessagesPopup();
 
         if (!(popup instanceof HTMLElement)) {
@@ -1196,7 +1194,7 @@ class Popups {
             });
         }
 
-        this.app._renderPredefinedList(popup);
+        this._renderPredefinedList(popup);
 
         resetBtn.addEventListener('click', () => {
             this.app.predefinedEditIndex = null;

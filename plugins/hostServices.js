@@ -884,6 +884,28 @@ class HostServices {
         return s.indexOf('system/action/private_process.php') !== -1;
     }
 
+    buildBroadcastList() {
+        const out = [];
+        const loggedInFemaleUsers = this.userStore.getAllLoggedInFemales();
+
+        loggedInFemaleUsers.forEach((femaleUser) => {
+            const uid = femaleUser.uid;
+
+            if (this.activityLogStore.hasSentMessageToUser(uid)) {
+                console.log(`Skipping message to ${femaleUser.name} (already replied)`);
+                return;
+            }
+
+            if (femaleUser.isIncludedForBroadcast) {
+                out.push(femaleUser);
+            } else {
+                console.log('Skipping user:', uid, 'due to exclusion');
+            }
+        });
+
+        return out;
+    }
+
     async _runBroadcast(to, text) {
         const batchSize = 10;
         const secondsBetweenSends = [2000, 5000];
