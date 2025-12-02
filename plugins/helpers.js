@@ -184,7 +184,7 @@ class Helpers {
     }
 
     getToken() {
-        if (typeof utk !== 'undefined' && utk) return utk;
+        if (typeof window.utk !== 'undefined' && window.utk) return window.utk;
         const inp = this.qs('input[name="token"]');
         if (inp?.value) return inp.value;
         const sc = this.qsa('script');
@@ -277,6 +277,12 @@ class Helpers {
         });
     }
 
+    wrapFnWithEventPrevent = async (e, fn, ...params) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return await fn(...params);
+    }
 
     qsa(s, r) {
         return Array.prototype.slice.call((r || document).querySelectorAll(s));
@@ -284,7 +290,6 @@ class Helpers {
 
     installLogImageHoverPreview(containers) {
         const filteredContainers = containers.filter(Boolean);
-        console.log(containers);
         if (!filteredContainers.length) {
             console.warn('[CA] installLogImageHoverPreview: no containers found to wire');
         }

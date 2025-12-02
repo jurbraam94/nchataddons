@@ -1,9 +1,10 @@
 class Popups {
-    constructor({app, settingsStore, helpers, userStore}) {
+    constructor({app, settingsStore, helpers, userStore, api}) {
         this.app = app;
         this.settingsStore = settingsStore;
         this.helpers = helpers;
         this.userStore = userStore;
+        this.api = api;
 
         this.state = {
             page: 1,
@@ -29,9 +30,14 @@ class Popups {
         };
 
         this._escWired = false;
+        this.hostOpenPrivateOriginal = null;
+        this.hostGetProfileOriginal = null;
+
+        this.activeTextInput = null;
 
         this._loadColumnPrefs();
         this._wireGlobalEsc();   // 👈 add this
+        this.overwriteHostMethods();
     }
 
     /**
@@ -89,7 +95,7 @@ class Popups {
             return;
         }
 
-        this.renderUserManagementPopup(popup);
+        this._renderUserManagementPopup(popup);
         this.togglePopup('ca-uer-management-popup');
         this.helpers.installLogImageHoverPreview([popup]);
     }
@@ -170,7 +176,7 @@ class Popups {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -180,7 +186,7 @@ class Popups {
             onlyOnlineCheckbox.addEventListener('change', () => {
                 this.state.onlyOnline = !!onlyOnlineCheckbox.checked;
                 this.state.page = 1;
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -189,7 +195,7 @@ class Popups {
             searchInput.addEventListener('input', () => {
                 this.state.query = String(searchInput.value || '').trim().toLowerCase();
                 this.state.page = 1;
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         } else {
@@ -200,7 +206,7 @@ class Popups {
             onlyFemalesCheckbox.addEventListener('change', () => {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -222,7 +228,7 @@ class Popups {
                 }
 
                 this.state.page = pageNum;
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
         }
@@ -234,7 +240,7 @@ class Popups {
                 e.preventDefault();
                 const sortKey = String(thSortable.getAttribute('data-sort-key') || '').trim();
                 this._toggleSort(sortKey);
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
                 return;
             }
@@ -261,7 +267,7 @@ class Popups {
                         console.error('[UsersPopup] open-dm: could not fetch user for uid', uid);
                         return;
                     }
-                    this.app.applyLegacyAndOpenDm(user);
+                    this.openPrivateInCaPopup(user);
                     return;
                 }
 
@@ -449,6 +455,201 @@ class Popups {
 
         popup.classList.add('ca-popup-open');
         this.bringToFront(popup);
+    }
+
+    safeSet(obj, key, value) {
+        if (typeof obj?.[key] === 'undefined') {
+            console.error(`key ${key} is not defined in object`, obj);
+            return false;
+        }
+        obj[key] = value;
+        return true;
+    }
+
+    safeCall(obj, key, ...args) {
+        if (typeof obj?.[key] !== 'function') {
+            console.error(`Function ${key} is not defined in object`, obj);
+            return false;
+        }
+        obj[key](...args);
+        return true;
+    }
+
+    openProfileOnHost = async (uid) => {
+        this.helpers.debug('openProfileOnHost called with uid:', uid);
+
+        if (!uid || uid === 'system') {
+            this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+            return;
+        }
+
+        const profileHtmlResult = await this.api.getProfile(uid);
+        const profileEl = document.createElement("div");
+        profileEl.innerHTML = profileHtmlResult.trim();
+        this.createAndOpenPopupWithHtml(profileEl, 'ca-profile-popup', this.helpers.qs(`.pro_name`, profileEl)?.innerText || 'User profile');
+    }
+
+    overwriteHostMethods() {
+        this.hostGetProfileOriginal = window.getProfile.bind(window);
+        window.getProfile = async (uid) => {
+            await this.openProfileOnHost(uid);
+        };
+        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+
+        if (typeof window.openPrivate === 'function') {
+            this.hostOpenPrivateOriginal = window.openPrivate.bind(window);
+
+            window.openPrivate = (uid, name, avatar) => {
+                this.openPrivateInCaPopup({uid, name, avatar});
+            };
+
+            this.helpers.debug('[CA] Overridden window.openPrivate with CA private popup');
+        } else {
+            console.warn('[CA] window.openPrivate is not a function; cannot override private chat popup');
+        }
+    }
+
+    openPrivateInCaPopup({uid, name, avatar}) {
+        this.helpers.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
+        this.settingsStore.setLastDmUid(uid);
+
+        if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
+        if (!this.safeSet(window, 'privReload', 1)) throw Error('Failed to set privReload');
+        if (!this.safeSet(window, 'lastPriv', 0)) throw Error('Failed to set lastPriv');
+        if (!this.safeCall(window, 'closeList')) throw Error('Failed to call closeList');
+        if (!this.safeCall(window, 'hideModal')) throw Error('Failed to call hideModal');
+        if (!this.safeCall(window, 'hideOver')) throw Error('Failed to call hideOver');
+
+        // Let the host build/update its own DOM first
+        this.hostOpenPrivateOriginal(uid, name, avatar);
+
+        /** @type {HTMLElement|null} */
+        const privateCenter = document.getElementById('private_center');
+        const privateTop = privateCenter.querySelector('#private_top');
+        const privateContent = document.getElementById('private_content');
+        const privInput = document.getElementById('priv_input');
+        const privInputExtra = document.getElementById('priv_input_extra');
+        const pquoteController = document.getElementById('pquote_controller');
+        const privateEmoticon = document.getElementById('private_emoticon');
+        const privateProgress = document.getElementById('private_progress');
+        const privateOptMenu = document.getElementById('private_opt');
+        const popupId = 'ca-host-private-popup';
+
+        const layoutHtml = `
+      <div class="ca-private-layout">
+        <div class="ca-private-messages-slot" id="ca-private-messages-slot"></div>
+        <div class="ca-private-footer-slot" id="ca-private-footer-slot"></div>
+      </div>
+    `;
+
+        const popup = this.createAndOpenPopupWithHtml(
+            layoutHtml,
+            popupId,
+            name ? `Private chat with ${name}` : 'Private chat'
+        );
+
+        this.app.ui.caPrivateMessagesSlot = this.helpers.qs('#ca-private-messages-slot', popup);
+
+        if (!(popup instanceof HTMLElement)) {
+            console.error('[CA] openPrivateInCaPopup: popup not created for id', popupId);
+            return;
+        }
+
+        const popupHeader = popup.querySelector('.ca-popup-header');
+        const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
+        const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
+
+        closeBtn.addEventListener('click', () => this.settingsStore.setLastDmUid(''));
+
+        if (titleSpan) {
+            titleSpan.remove();
+        }
+
+        const oldHeaders = popupHeader.querySelectorAll('.ca-host-private-header-inner');
+        if (oldHeaders && oldHeaders.length > 0) {
+            oldHeaders.forEach((el) => {
+                if (el && el.parentNode === popupHeader) {
+                    popupHeader.removeChild(el);
+                }
+            });
+        }
+
+        // Build our own header content from the host DOM
+        const headerInner = document.createElement('div');
+        headerInner.className = 'ca-host-private-header-inner';
+
+        const left = document.createElement('div');
+        left.className = 'ca-host-private-header-left';
+
+        left.addEventListener('click', async (e) => {
+            await this.helpers.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
+        });
+
+        const right = document.createElement('div');
+        right.className = 'ca-host-private-header-right';
+
+        // Avatar
+        const hostAvatarWrap = privateTop && privateTop.querySelector('#private_av_wrap');
+        if (hostAvatarWrap instanceof HTMLElement) {
+            const avatarClone = hostAvatarWrap.cloneNode(true);
+            avatarClone.removeAttribute('id');
+
+            const img = avatarClone.querySelector('#private_av');
+            if (img instanceof HTMLElement) {
+                img.removeAttribute('id');
+            }
+
+            left.appendChild(avatarClone);
+        }
+
+        // Username
+        const hostName = privateTop && privateTop.querySelector('#private_name');
+        if (hostName instanceof HTMLElement) {
+            const nameClone = hostName.cloneNode(true);
+            nameClone.removeAttribute('id');
+            left.appendChild(nameClone);
+        } else {
+            const span = document.createElement('span');
+            span.textContent = name || '';
+            left.appendChild(span);
+        }
+
+        // Settings (cog)
+        const hostSettings = privateTop && privateTop.querySelector('#private_min');
+        if (hostSettings instanceof HTMLElement) {
+            const settingsClone = hostSettings.cloneNode(true);
+            settingsClone.removeAttribute('id');
+            right.appendChild(settingsClone);
+        }
+
+        headerInner.appendChild(left);
+        headerInner.appendChild(right);
+
+        // Insert our header content before the close button
+        popupHeader.insertBefore(headerInner, closeBtn);
+
+        const messagesSlot = popup.querySelector('#ca-private-messages-slot');
+        if (!messagesSlot.contains(privateContent)) {
+            messagesSlot.innerHTML = '';
+            messagesSlot.appendChild(privateContent);
+        }
+
+        const footerSlot = popup.querySelector('#ca-private-footer-slot');
+
+        footerSlot.innerHTML = '';
+
+        const appendIfExists = (el) => {
+            if (el instanceof HTMLElement) {
+                footerSlot.appendChild(el);
+            }
+        };
+
+        appendIfExists(privInputExtra);
+        appendIfExists(pquoteController);
+        appendIfExists(privateProgress);
+        appendIfExists(privInput);
+        appendIfExists(privateEmoticon);
+        appendIfExists(privateOptMenu);
     }
 
     openBroadcastModal() {
@@ -955,7 +1156,196 @@ class Popups {
         return popup;
     }
 
-    renderUserManagementPopup(popup) {
+    _appendPredefinedToBox(template, box) {
+        if (!template || !template.text) {
+            console.warn('[CA] _appendPredefinedToBox: empty template');
+            return;
+        }
+
+        if (!box) {
+            console.error('[CA] _appendPredefinedToBox: target box not found');
+            return;
+        }
+
+        const current = box.value || '';
+        let next = current;
+
+        if (current && !current.endsWith('\n')) {
+            next += '\n\n';
+        }
+
+        next += template.text;
+
+        box.value = next;
+
+        try {
+            const evt = new Event('input', {bubbles: true});
+            box.dispatchEvent(evt);
+        } catch (err) {
+            console.warn('[CA] _appendPredefinedToBox: failed to dispatch input event', err);
+        }
+
+        box.focus();
+    }
+
+    _getActiveTextBox() {
+        if (!this.activeTextInput) {
+            console.warn('[CA] No active text box to insert template into');
+            return null;
+        }
+
+        return this.activeTextInput;
+    }
+
+    _appendPredefinedToActiveBox(template) {
+        const box = this._getActiveTextBox();
+
+        if (!box) {
+            console.warn('[CA] No active textbox found when trying to insert template');
+            return;
+        }
+
+        this._appendPredefinedToBox(template, box);
+    }
+
+    _fillPredefinedSelect(selectEl) {
+        if (!selectEl) {
+            console.error('[CA] _fillPredefinedSelect: missing element');
+            return;
+        }
+
+        const list = this.settingsStore.getPredefinedMessages();
+        selectEl.innerHTML = '';
+        const def = document.createElement('option');
+        def.value = '';
+        def.textContent = 'Select predefined message…';
+        selectEl.appendChild(def);
+        list.forEach((tpl, index) => {
+            const opt = document.createElement('option');
+            opt.value = String(index);
+            opt.textContent = tpl.subject || `Template ${index + 1}`;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    _refreshAllPredefinedSelects() {
+        const selects = this.helpers.qsa('.ca-predefined-messages-select');
+        selects.forEach((sel) => this._fillPredefinedSelect(sel));
+    }
+
+    _renderPredefinedList(popup) {
+        const listEl = popup.querySelector('#ca-predefined-messages-list');
+        const subjectInput = popup.querySelector('#ca-predefined-messages-subject');
+        const textInput = popup.querySelector('#ca-predefined-messages-text');
+        const indexInput = popup.querySelector('#ca-predefined-messages-index');
+
+        if (!listEl || !subjectInput || !textInput || !indexInput) {
+            console.error('[CA] _renderPredefinedList: missing elements');
+            return;
+        }
+
+        const list = this.settingsStore.getPredefinedMessages();
+        listEl.innerHTML = '';
+
+        list.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'ca-predefined-messages-item';
+
+            const titleRow = document.createElement('div');
+            titleRow.className = 'ca-predefined-messages-title-row';
+
+            const title = document.createElement('strong');
+            title.textContent = item.subject || `Template ${index + 1}`;
+
+            const actions = document.createElement('div');
+            actions.className = 'ca-predefined-messages-actions';
+
+            const insertLink = document.createElement('a');
+            insertLink.href = "#";
+            insertLink.className = 'ca-log-action ca-insert-link';
+            insertLink.title = "Paste into active text field";
+
+            insertLink.appendChild(
+                this.helpers.renderSvgIconWithClass(
+                    "lucide lucide-corner-down-left",
+                    `<polyline points="9 10 4 15 9 20"></polyline>
+     <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
+                )
+            );
+
+            insertLink.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                this._appendPredefinedToActiveBox(item);
+            });
+
+            const editLink = document.createElement('a');
+            editLink.href = "#";
+            editLink.className = 'ca-log-action ca-edit-link';
+            editLink.title = "Edit template";
+            editLink.appendChild(
+                this.helpers.renderSvgIconWithClass(
+                    "lucide lucide-lucide-pencil",
+                    `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
+                )
+            );
+            editLink.addEventListener('click', (ev) => {
+                ev.preventDefault();
+
+                this.predefinedEditIndex = index;
+                indexInput.value = String(index);
+                subjectInput.value = item.subject || '';
+                textInput.value = item.text || '';
+
+                const editorRoot = popup.querySelector('.ca-predefined-messages-editor');
+                const toggleBtn = popup.querySelector('#ca-predefined-messages-toggle');
+
+                if (editorRoot && editorRoot.classList.contains('ca-predefined-editor-collapsed')) {
+                    editorRoot.classList.remove('ca-predefined-editor-collapsed');
+                    if (toggleBtn) {
+                        toggleBtn.textContent = 'Hide editor';
+                    }
+                }
+
+                subjectInput.focus();
+            });
+
+            const deleteLink = document.createElement('a');
+            deleteLink.href = "#";
+            deleteLink.className = 'ca-log-action ca-del-link';
+            deleteLink.title = "Delete template";
+            deleteLink.appendChild(
+                this.helpers.renderSvgIconWithClass(
+                    "lucide lucide-x",
+                    `<line x1="18" y1="6" x2="6" y2="18"></line>
+     <line x1="6" y1="6" x2="18" y2="18"></line>`
+                )
+            );
+
+            deleteLink.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                const current = this.settingsStore.getPredefinedMessages().slice();
+                current.splice(index, 1);
+                this.settingsStore.savePredefinedMessages(current);
+                this._renderPredefinedList(popup);
+                this._refreshAllPredefinedSelects();
+            });
+
+            actions.appendChild(insertLink);
+            actions.appendChild(editLink);
+            actions.appendChild(deleteLink);
+            titleRow.appendChild(title);
+            titleRow.appendChild(actions);
+
+            const preview = document.createElement('div');
+            preview.className = 'ca-predefined-messages-preview';
+            preview.textContent = (item.text || '').slice(0, 80);
+            li.appendChild(titleRow);
+            li.appendChild(preview);
+            listEl.appendChild(li);
+        });
+    }
+
+    _renderUserManagementPopup(popup) {
         if (!popup) {
             console.error('[UsersPopup] _render called without popup');
             return;
@@ -1085,7 +1475,7 @@ class Popups {
                 this.state.visibleColumns = nextVisible;
                 this.helpers.debug(`Persisting visible columns:`, JSON.stringify(this.state.visibleColumns));
                 this.settingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
-                this.renderUserManagementPopup(popup);
+                this._renderUserManagementPopup(popup);
                 this.helpers.installLogImageHoverPreview([popup]);
             });
 
@@ -1487,7 +1877,7 @@ class Popups {
             }
 
             this.userStore.set(updated);
-            this.renderUserManagementPopup(popup);
+            this._renderUserManagementPopup(popup);
             this.helpers.installLogImageHoverPreview([popup]);
         };
 
@@ -1521,7 +1911,7 @@ class Popups {
 
         this.userStore.remove(uid);
 
-        this.renderUserManagementPopup(popup);
+        this._renderUserManagementPopup(popup);
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
@@ -1558,7 +1948,7 @@ class Popups {
             : {...user, ...parsed};
 
         this.userStore.set(merged);
-        this.renderUserManagementPopup(popup);
+        this._renderUserManagementPopup(popup);
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
