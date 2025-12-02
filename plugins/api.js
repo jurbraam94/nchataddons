@@ -79,9 +79,6 @@ class Api {
     async fetchChatLog(body) {
         body = new URLSearchParams({
             token: this.helpers.getToken(),
-            cp: 'chat',
-            fload: '1',
-            preload: '0',
             ...body
         }).toString();
         const res = await fetch('/system/action/chat_log.php?timestamp=234284923', {
@@ -94,7 +91,7 @@ class Api {
             body
         });
 
-        return await res.text();
+        return await res.json();
     }
 
     async refreshUserList() {

@@ -82,7 +82,7 @@ class Popups {
     }
 
     openUserManagementPopup() {
-        const popup = this.createUserManagementPopup();
+        const popup = this.UserManagementPopup();
 
         if (!popup) {
             console.error('[UsersPopup] open: popup not created');
@@ -94,7 +94,7 @@ class Popups {
         this.helpers.installLogImageHoverPreview([popup]);
     }
 
-    createUserManagementPopup() {
+    UserManagementPopup() {
         const bodyHtml = `
 <div class="ca-uer-management-popup-root" id="ca-users-table-root">
   <div class="ca-users-toolbar">

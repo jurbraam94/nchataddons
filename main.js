@@ -803,7 +803,7 @@ class App {
         const affectedLogs =
             this.activityLogStore.MarkReadUntilChatLogId(
                 uid,
-                dmSentToUser.parsedDmInUpToLog
+                dmSentToUser.lastPrivateReadId
             );
 
         if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
@@ -859,7 +859,7 @@ class App {
         }
     }
 
-    caParsePrivateNotify(html) {
+    parsePrivateConversationsHtmlResponse(html) {
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         const nodes = tmp.querySelectorAll('.fmenu_item.fmuser.priv_mess');
@@ -869,15 +869,16 @@ class App {
             const info = el.querySelector('.fmenu_name.gprivate');
             if (!info) continue;
             const id = (info.getAttribute('data') || '').trim();
-            const name = (info.getAttribute('value') || '').trim();
-            const av = (info.getAttribute('data-av') || '').trim();
             const cntEl = el.querySelector('.ulist_notify .pm_notify');
             let unread = 0;
             if (cntEl) {
                 const t = (cntEl.textContent || '').trim();
                 unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
             }
-            out.push({uid: id, name, avatar: av, unread});
+            if (id && id.length) {
+                out.push({uid: Number(id), unread: unread});
+            }
+
         }
         tmp.innerHTML = '';
         this.helpers.debug('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
@@ -945,50 +946,42 @@ class App {
         console.error('=================================================');
     }
 
-    async fetchPrivateMessagesForUid(user, params) {
-        if (!user || !user.uid) {
-            console.error('[CA] fetchPrivateMessagesForUid called with invalid user.uid:', user && user.uid);
-            return '';
+    async fetchPrivateMessagesForUid(uid) {
+        let bodyObj = {};
+        if (!uid) {
+            console.error('[CA] fetchPrivateMessagesForUid called without uid');
+            return [];
         }
-
-        let bodyObj;
 
         try {
             bodyObj = {
+                cp: 'chat',
+                fload: '1',
+                preload: '1',
                 caction: String(this.state.CHAT_CTX.caction),
-                last: params?.get('last'),
-                priv: String(user.uid),
-                lastp: user.parsedDmInUpToLog,
-                pcount: params?.get('pcount'),
+                last: 99999999999999, //prevents regular chat messages to be fetched too.
+                priv: uid,
+                lastp: this.userStore.getLastPrivateReadId(uid),
+                pcount: this.userStore.getLastPCountProcessed(uid),
                 room: String(this.state.CHAT_CTX.room),
                 notify: String(this.state.CHAT_CTX.notify),
                 curset: String(this.state.CHAT_CTX.curset)
             };
 
-            this.helpers.verbose('[CA] fetchPrivateMessagesForUid body for uid=', user.uid, ' -> ', bodyObj);
-
-            return await this.api.fetchChatLog(bodyObj);
+            console.log('[CA] fetchPrivateMessagesForUid body -> ', bodyObj);
+            const result = await this.api.fetchChatLog(bodyObj);
+            console.log(result);
+            return result;
         } catch (e) {
             // Attach a readable label for the error handler
             e._ca_loopLabel = 'FETCH_PRIVATE_MESSAGES_FOR_UID';
 
-            // Snapshot params in a log-friendly way
-            let paramsSnapshot = null;
-            if (params instanceof URLSearchParams) {
-                paramsSnapshot = {};
-                for (const [k, v] of params.entries()) {
-                    paramsSnapshot[k] = v;
-                }
-            } else if (params) {
-                paramsSnapshot = params;
-            }
-
             // Attach rich context for stopOnError to print
             e._ca_context = {
-                function: 'fetchPrivateMessagesForUid',
+                function: 'f etchPrivateMessagesForUid',
                 user: {
-                    uid: user.uid,
-                    parsedDmInUpToLog: user.parsedDmInUpToLog
+                    lastPrivateReadId: this.userStore.getLastPrivateReadId(uid),
+                    pcount: this.userStore.getLastPCountProcessed(uid)
                 },
                 chatCtx: {
                     caction: this.state?.CHAT_CTX?.caction,
@@ -996,8 +989,7 @@ class App {
                     notify: this.state?.CHAT_CTX?.notify,
                     curset: this.state?.CHAT_CTX?.curset
                 },
-                bodyObj,           // may be undefined if it failed before assignment
-                params: paramsSnapshot
+                bodyObj,
             };
 
             this.stopOnError(e);
@@ -1005,93 +997,115 @@ class App {
         }
     }
 
-    processSinglePrivateChatLog(privateChatLog, user, initialFetch, currentHighestLogId) {
-        if (privateChatLog.user_id === String(user_id)) {
-            return {accepted: false, logId: privateChatLog.log_id, reason: 'from myself'};
+    async processPrivateConversationsList(lastPCountProcessed) {
+        const privateConversationsHtmlResponse = await this.api.fetchPrivateNotify();
+        const privateConversationsToProcess = this.parsePrivateConversationsHtmlResponse(privateConversationsHtmlResponse);
+
+        privateConversationsToProcess.sort(this.sortPrivateConversationsByUnreadDescThenNameAsc)
+            .filter(pc => (Number(pc.unread) || 0) > 0);
+        this.helpers.debug('Sorted private conversations:', privateConversationsToProcess);
+        this.helpers.verbose('Private conversations returned:', privateConversationsToProcess.length, privateConversationsToProcess);
+
+        if (!privateConversationsToProcess.length) {
+            console.log('None of the conversations has potential new messages');
+            return;
         }
 
-        if (initialFetch && !this.isMessageNewer(privateChatLog.log_date)) {
-            this.helpers.debug(
-                `Initial fetch: skipping old message ${privateChatLog.log_id} for uid ${user.uid}; ` +
-                `watermark=${this.settingsStore.getGlobalWatermark()}`
-            );
-            return {accepted: false, logId: privateChatLog.log_id, reason: 'too old'};
-        }
+        this.helpers.debug('Fetching', privateConversationsToProcess.length, 'private conversations' + (privateConversationsToProcess.length !== 1 ? 's' : ''), 'with potential new messages.');
 
-        if (privateChatLog.log_id <= currentHighestLogId) {
-            return {accepted: false, logId: privateChatLog.log_id, reason: 'already shown'};
+        for (const privateConversation of privateConversationsToProcess) {
+            await this.processPrivateConversationMessages(privateConversation, lastPCountProcessed);
         }
+    }
 
+    processNewIncomingPrivateMessage(newPrivateConversationMessage, user) {
+        console.log(`New incoming private message ${newPrivateConversationMessage.logId} for user ${user.uid}`, newPrivateConversationMessage);
         this.logLine(
             'dm-in',
-            this.decodeHTMLEntities(privateChatLog?.log_content),
+            this.decodeHTMLEntities(newPrivateConversationMessage?.log_content),
             user,
-            privateChatLog.log_id
+            newPrivateConversationMessage.log_id
         );
         if (user.isLoggedIn) {
             this.updateProfileChipByUid(user.uid);
         } else {
             this.helpers.verbose('[CA] Skipping profile chip update for uid', user.uid, 'because user is not logged in');
         }
-        return {accepted: true, logId: privateChatLog.log_id, reason: 'ok'};
     }
 
-    async caProcessPrivateLogResponse(user, privateChatLogs) {
-        let parsedDmInUpToLog = Number(user.parsedDmInUpToLog) || 0;
-        const initialFetch = parsedDmInUpToLog === 0;
-        let newMessages = 0;
-        let skipped = '';
-        const hasLogs = Array.isArray(privateChatLogs) && privateChatLogs.length > 0;
+    async processPrivateConversationMessages(privateConversation, lastPCountProcessed) {
+        console.log('Fetch private messages for conversation', privateConversation.uid, '— unread:', privateConversation.unread);
 
-        if (hasLogs) {
-            for (const privateChatLog of privateChatLogs) {
-                const res = this.processSinglePrivateChatLog(
-                    privateChatLog,
-                    user,
-                    initialFetch,
-                    parsedDmInUpToLog
+        const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid, params);
+
+        if (!fetchedConversationPrivateMessages) {
+            console.warn('Empty response for conversation', privateConversation.uid);
+        }
+
+        const privateConversationMessages =
+            (Array.isArray(fetchedConversationPrivateMessages?.pload) && fetchedConversationPrivateMessages?.pload?.length ? fetchedConversationPrivateMessages.pload :
+                (Array.isArray(fetchedConversationPrivateMessages?.plogs) ? fetchedConversationPrivateMessages.plogs : []));
+
+        await this.processFetchedPrivateConversationMessages(
+            privateConversationMessages, privateConversation.uid, lastPCountProcessed,
+        );
+    }
+
+    async processFetchedPrivateConversationMessages(privateConversationMessages, fromUid, lastPCountProcessed) {
+        let newMessages = 0;
+        let skippedMessages = 0;
+        let skippedReasons = '';
+        let user = await this.userStore.getOrFetch(fromUid);
+        let lastPrivateReadId = user.lastPrivateReadId;
+
+        if (privateConversationMessages.length > 0) {
+            for (const privateConversationMessage of privateConversationMessages) {
+                const validationResult = this.validatePrivateChatLog(
+                    privateConversationMessage,
+                    lastPrivateReadId
                 );
 
-                if (!res.accepted) {
-                    skipped += `Skipped ${res.logId}: ${res.reason}\n`;
+                if (!validationResult.accepted) {
+                    skippedReasons += `Skipped ${validationResult.logId}: ${validationResult.reason}\n`;
+                    skippedMessages++;
                     continue;
                 }
 
-                console.log(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
+                this.processNewIncomingPrivateMessage(privateConversationMessage, user);
 
-                if (res.logId > parsedDmInUpToLog) {
-                    parsedDmInUpToLog = res.logId;
+                if (validationResult.logId > lastPrivateReadId) {
+                    lastPrivateReadId = validationResult.logId;
                 }
 
                 newMessages++;
             }
+
             this.scrollToBottom(this.ui.caPrivateMessagesSlot);
         } else {
             console.log(`No new private chat logs for user ${user.uid}`);
         }
 
-        const updatedUser = {...user};
-        let shouldSave = false;
+        const updatedUser = {
+            ...user,
+            lastPCountProcessed: lastPCountProcessed
+        };
 
         if (newMessages > 0) {
-            if (parsedDmInUpToLog > (user.parsedDmInUpToLog || 0)) {
-                updatedUser.parsedDmInUpToLog = parsedDmInUpToLog;
-                this.helpers.debug(
-                    `[PrivateChat] Setting parsedDmInUpToLog for user ${user.uid} to ${parsedDmInUpToLog}`
+            if (lastPrivateReadId > (user.lastPrivateReadId)) {
+                updatedUser.lastPrivateReadId = lastPrivateReadId;
+                this.helpers.verbose(
+                    `[PrivateChat] Setting lastPrivateReadId for user ${user.uid} to ${lastPrivateReadId}`
                 );
-                shouldSave = true;
             }
 
-            if (updatedUser.noNewPrivateDmTries) {
-                updatedUser.noNewPrivateDmTries = 0;
-                shouldSave = true;
+            if (updatedUser.privateDmFetchRetries) {
+                updatedUser.privateDmFetchRetries = 0;
             }
-            this.scrollToBottom(this.ui.caPrivateMessagesSlot);
-        } else {
-            const prevTries = Number(user.noNewPrivateDmTries) || 0;
+
+        } else if (skippedMessages === 0) { // There were no messages at all
+            const prevTries = Number(user.privateDmFetchRetries) || 0;
             const tries = prevTries + 1;
-            updatedUser.noNewPrivateDmTries = tries;
-            shouldSave = true;
+            updatedUser.privateDmFetchRetries = tries;
 
             console.warn(
                 `[PrivateChat] No messages accepted for uid ${user.uid} (attempt ${tries})`
@@ -1100,164 +1114,58 @@ class App {
             // --- RECOVERY + KILLSWITCH LOGIC ---
 
             if (tries >= 3) {
-                const hadNonZeroParsedBefore = (user.parsedDmInUpToLog || 0) > 0;
+                const hadNonZeroParsedBefore = (user.lastPrivateReadId || 0) > 0;
 
                 if (hadNonZeroParsedBefore) {
-                    // Stage 1: we had a non-zero parsedDmInUpToLog, but repeatedly nothing
+                    // Stage 1: we had a non-zero lastPrivateReadId, but repeatedly nothing
                     // parsed; reset to 0 to trigger a full history reload on next loop.
-                    updatedUser.parsedDmInUpToLog = 0;
+                    updatedUser.lastPrivateReadId = 0;
                     console.warn(
                         `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid}; ` +
-                        `resetting complete chat history (setting parsedDmInUpToLog to 0)`
+                        `resetting complete chat history (setting lastPrivateReadId to 0)`
                     );
                 } else {
-                    // Stage 2: we are ALREADY at parsedDmInUpToLog === 0 and still
-                    // getting nothing accepted after multiple tries -> hard abort.
-                    console.error(
-                        `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with parsedDmInUpToLog already 0. ` +
-                        `Aborting private DM polling via killswitch.`
-                    );
-
-                    const err = new Error(
-                        `[PrivateChat] Repeatedly failed to parse any private DM logs for uid ${user.uid} ` +
-                        `even from parsedDmInUpToLog=0 (attempts=${tries}).`
-                    );
-
-                    // Label for our global error handler
-                    err._ca_loopLabel = 'PRIVATE_DM_POLL_LOOP';
-
-                    // Attach rich context for stopOnError()
-                    err._ca_context = {
-                        function: 'caProcessPrivateLogResponse',
-                        uid: user.uid,
-                        initialFetch,
-                        attemptsWithoutMessages: tries,
-                        parsedDmInUpToLogBefore: user.parsedDmInUpToLog || 0,
-                        parsedDmInUpToLogAfter: updatedUser.parsedDmInUpToLog || 0,
-                        hasLogs,
-                        privateChatLogsLength: hasLogs ? privateChatLogs.length : 0,
-                        // Keep this small – we don't want to flood logs with full history
-                        sampleLogs: hasLogs ? privateChatLogs.slice(0, 3) : []
-                    };
-
-                    this.stopOnError(err);
-                    // Hard abort: don't continue processing this user any further
+                    // // Stage 2: we are ALREADY at lastPrivateReadId === 0 and still
+                    // // getting nothing accepted after multiple tries -> hard abort.
+                    // console.error(
+                    //     `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with lastPrivateReadId already 0. ` +
+                    //     `Aborting private DM polling via killswitch.`
+                    // );
+                    //
+                    // const err = new Error(
+                    //     `[PrivateChat] Repeatedly failed to parse any private DM logs for uid ${user.uid} ` +
+                    //     `even from lastPrivateReadId=0 (attempts=${tries}).`
+                    // );
+                    //
+                    // // Label for our global error handler
+                    // err._ca_loopLabel = 'PRIVATE_DM_POLL_LOOP';
+                    //
+                    // // Attach rich context for stopOnError()
+                    // err._ca_context = {
+                    //     function: 'ca ProcessPrivateLogResponse',
+                    //     uid: user.uid,
+                    //     initialFetch,
+                    //     attemptsWithoutMessages: tries,
+                    //     lastPrivateReadIdBefore: user.lastPrivateReadId || 0,
+                    //     lastPrivateReadIdAfter: updatedUser.lastPrivateReadId || 0,
+                    //     hasLogs,
+                    //     privateChatLogsLength: hasLogs ? privateChatLogs.length : 0,
+                    //     // Keep this small – we don't want to flood logs with full history
+                    //     sampleLogs: hasLogs ? privateChatLogs.slice(0, 3) : []
+                    // };
+                    //
+                    // this.stopOnError(err);
+                    // // Hard abort: don't continue processing this user any further
                     return;
                 }
             }
         }
 
-        if (shouldSave) {
-            this.userStore.set(updatedUser);
+        this.userStore.set(updatedUser);
+
+        if (skippedReasons.length > 0) {
+            this.helpers.debug(skippedReasons);
         }
-
-        if (skipped.length > 0) {
-            this.helpers.debug(skipped);
-        }
-    }
-
-    async handleChatLogPlogs(plogs) {
-        for (const privateChatLog of plogs) {
-            const user = await this.userStore.getOrFetch(privateChatLog.user_id);
-            if (!user) {
-                console.error('[handleChatLogPlogs] Could not resolve user for uid:', privateChatLog.user_id);
-                continue;
-            }
-
-            const initialFetch = user.parsedDmInUpToLog === 0;
-            this.helpers.verbose(`Processing new plog for user ${user.uid} (initial fetch: ${initialFetch})`);
-            this.helpers.verbose(privateChatLog);
-            const res = this.processSinglePrivateChatLog(privateChatLog, user, initialFetch, user.parsedDmInUpToLog);
-            if (res.accepted) {
-                this.helpers.debug(`New message ${res.logId} for user ${user.uid}`, privateChatLog);
-                this.userStore.setParsedDmInUpToLog(user.uid, res.logId);
-            } else {
-                this.helpers.debug(`Private chat log ${privateChatLog.log_id} for user ${user.uid} was skipped. Reason: ${res.reason}`);
-            }
-            this.scrollToBottom(this.ui.caPrivateMessagesSlot);
-        }
-    }
-
-    async caProcessChatPayload(txt, params) {
-        if (!txt || typeof txt !== 'string' || txt.trim() === '') {
-            console.warn('Empty or invalid chat payload response');
-            return;
-        }
-
-        const data = this.toChatLogResponse(JSON.parse(String(txt)));
-
-        if (Array.isArray(data.plogs) && data.plogs.length > 0) {
-            await this.handleChatLogPlogs(data.plogs);
-            return;
-        }
-
-        const pico = Number(data && data.pico);
-
-        if (data.pload?.length > 0 && params?.get('preload') === 1) {
-            const user = await this.userStore.getOrFetch(params.get('priv'));
-            await this.caProcessPrivateLogResponse(user, data.pload);
-        }
-
-        if (!Number.isFinite(pico) || pico < 1 || (data.pload?.length > 0) || (data.plogs?.length > 0)) {
-            return;
-        }
-
-        this.helpers.debug('Private messages count (pico):', pico, '— checking for new messages');
-        const privateConversations = this.caParsePrivateNotify(await this.api.fetchPrivateNotify());
-
-        privateConversations.sort((a, b) => {
-            const au = a.unread || 0, bu = b.unread || 0;
-            if (bu !== au) return bu - au;
-            const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
-            return an < bn ? -1 : an > bn ? 1 : 0;
-        });
-        await this.handlePrivateConversationsList(privateConversations, params);
-    }
-
-    async handlePrivateConversationsList(privateConversations, params) {
-        privateConversations = Array.isArray(privateConversations) ? privateConversations : [];
-        this.helpers.verbose('Private conversations returned:', privateConversations.length, privateConversations);
-        const privateChatsToFetch = privateConversations
-            .filter(pc => pc.unread > 0)
-            .map(it => ({uid: String(it.uid), unread: Number(it.unread) || 0}));
-
-        if (!privateChatsToFetch.length) {
-            console.log('None of the conversations has new messages');
-            return;
-        }
-
-        this.helpers.debug('Fetching', privateChatsToFetch.length, 'conversation' + (privateChatsToFetch.length !== 1 ? 's' : ''), 'with new messages');
-
-        for (const privateChat of privateChatsToFetch) {
-            await this.handlePrivateChat(privateChat, params);
-        }
-    }
-
-    async handlePrivateChat(privateChat, params) {
-        console.log('Fetch private message for conversation', privateChat.uid, '— unread:', privateChat.unread);
-
-        const user = await this.userStore.getOrFetch(privateChat.uid);
-        if (!user) {
-            console.error('[caProcessChatPayload] Could not resolve user for uid and aborting the fetch or private messages:', privateChat.uid);
-            return null;
-        }
-
-        const rawPrivateChatLogResponse = await this.fetchPrivateMessagesForUid(user, params);
-
-        if (!rawPrivateChatLogResponse || typeof rawPrivateChatLogResponse !== 'string') {
-            console.warn('Empty response for conversation', user.uid);
-        }
-
-        const privateChatLogResponse = this.toPrivateChatLogResponse(JSON.parse(String(rawPrivateChatLogResponse)));
-
-        const privateChatLogs =
-            (Array.isArray(privateChatLogResponse?.pload) && privateChatLogResponse?.pload?.length ? privateChatLogResponse.pload :
-                (Array.isArray(privateChatLogResponse?.plogs) ? privateChatLogResponse.plogs : []));
-
-        await this.caProcessPrivateLogResponse(
-            user,
-            privateChatLogs
-        );
     }
 
     installNetworkTaps() {
@@ -1277,8 +1185,18 @@ class App {
             const originalUrl = String(url || '');
             let modifiedUrl = originalUrl;
 
-            const isChat = self.isChatLogUrl(originalUrl);
-            const isUserList = self.isUserListUrl(originalUrl);
+            // Be a bit defensive: try both relative and absolute forms
+            let isChat;
+            let isUserList;
+            try {
+                const abs = new URL(originalUrl, window.location.href).toString();
+                isChat = self.isChatLogUrl(originalUrl) || self.isChatLogUrl(abs);
+                isUserList = self.isUserListUrl(originalUrl) || self.isUserListUrl(abs);
+            } catch (e) {
+                isChat = self.isChatLogUrl(originalUrl);
+                isUserList = self.isUserListUrl(originalUrl);
+            }
+
             const shouldTap = isChat || isUserList;
 
             if (!shouldTap) {
@@ -1322,6 +1240,10 @@ class App {
             const reqId = this._ca_reqId;
             const label = this._ca_label;
 
+            if (label && reqId != null && self.helpers && typeof self.helpers.verbose === 'function') {
+                self.helpers.verbose(`[NetworkTap][${label}#${reqId}] send`, sendArgs);
+            }
+
             // If this XHR wasn't "tapped" in open(), just pass through.
             // (No chat/userlist processing, no extra logging.)
             if (!label || reqId == null) {
@@ -1332,31 +1254,50 @@ class App {
             let qs = null;
             const body = sendArgs[0];
 
-            // Only chat log posts get body inspection / context updates
-            if (self.isChatLogUrl(this._ca_url) && body != null) {
-                if (typeof body === 'string') {
-                    if (body.indexOf('priv=1') > -1) {
-                        try {
-                            qs = new URLSearchParams(body);
-                            self.caUpdateChatCtxFromBody(qs);
-                        } catch (e) {
-                            e._ca_loopLabel = 'XHR_SEND_INTERCEPT_BODY_PARSE';
-                            e._ca_context = {
-                                requestId: reqId,
-                                label,
-                                url: this._ca_url,
-                                bodySnippet: String(body).slice(0, 200)
-                            };
-                            self.stopOnError(e);
-                            return;
-                        }
+            // Only chat log posts get body modification / context updates
+            if (self.isChatLogUrl(this._ca_url) && body != null && typeof body === 'string') {
+                try {
+                    const params = new URLSearchParams(body);
+
+                    // Force preload=1 on *every* chat_log.php call
+                    // const oldPreload = params.get('preload');
+                    // params.set('preload', '1');
+                    //
+                    // // Optional: log if we changed something
+                    // if (oldPreload !== '1' && self.helpers && typeof self.helpers.debug === 'function') {
+                    //     self.helpers.verbose(
+                    //         `[NetworkTap][${label}#${reqId}] Forcing preload=1 on chat_log body (was: ${oldPreload})`
+                    //     );
+                    // }
+
+                    // Update chat context from the (now modified) body, but still respect priv=1
+                    const isPrivateSend = params.get('priv') === '1';
+
+                    if (!isPrivateSend) {
+                        self.caUpdateChatCtxFromBody(params);
                     }
-                } else {
-                    console.warn(
-                        `[PrivateSend][${label}#${reqId}] Unexpected body type for chat log request`,
-                        body
-                    );
+
+                    // Replace the outgoing body and keep qs for downstream
+                    const newBody = params.toString();
+                    qs = params;
+                    sendArgs[0] = newBody;
+
+                } catch (e) {
+                    e._ca_loopLabel = 'XHR_SEND_INTERCEPT_BODY_PARSE';
+                    e._ca_context = {
+                        requestId: reqId,
+                        label,
+                        url: this._ca_url,
+                        bodySnippet: String(body).slice(0, 200)
+                    };
+                    self.stopOnError(e);
+                    return;
                 }
+            } else if (self.isChatLogUrl(this._ca_url) && body != null && typeof body !== 'string') {
+                console.warn(
+                    `[PrivateSend][${label}#${reqId}] Unexpected body type for chat log request`,
+                    body
+                );
             }
 
             this.addEventListener('readystatechange', async function () {
@@ -1372,7 +1313,7 @@ class App {
                 try {
                     if (this.readyState === 4 && this.status === 200 && this.responseText) {
                         if (self.isChatLogUrl(responseUrl)) {
-                            await self.caProcessChatPayload(this.responseText, qs, {
+                            await self.caProcessChatPayload(this.responseText, params?.get('priv'), params?.get('pcount'), {
                                 requestId: evtReqId,
                                 label: evtLabel
                             });
@@ -1411,6 +1352,74 @@ class App {
 
             return self._xhrSend.apply(this, sendArgs);
         };
+    }
+
+    sortPrivateConversationsByUnreadDescThenNameAsc(a, b) {
+        const unreadA = Number(a.unread) || 0;
+        const unreadB = Number(b.unread) || 0;
+
+        if (unreadB !== unreadA) {
+            return unreadB - unreadA;
+        }
+
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return 0;
+    }
+
+    async caProcessChatPayload(txt, fromUid, lastPCountProcessed) {
+        if (!txt || typeof txt !== 'string' || txt.trim() === '') {
+            console.warn('Empty or invalid chat payload response');
+            return;
+        }
+
+        const data = JSON.parse(String(txt));
+        const pico = data?.pico ? Number(data.pico) : 0;
+
+        // If the response already contained new private messages
+        if (data.pload?.length > 0) {
+            console.log(`Pload count: ${data.pload?.length || 0}, start processing private messages..`);
+            await this.processFetchedPrivateConversationMessages(
+                data.pload, fromUid, lastPCountProcessed
+            );
+        } else if (data.plogs?.length > 0) {
+            console.log(`Plogs count: ${data.pload?.length || 0}, start processing private messages..`);
+            await this.processFetchedPrivateConversationMessages(
+                data.plogs, fromUid, lastPCountProcessed
+            );
+        } else if (pico > 0) {
+            console.log(`Unread private messages ("pico") count from the private messages website menu: ${pico}. Start parsing  the users from this menu and then the messages.`);
+            // Otherwise start fetching all private messages from the host website
+            await this.processPrivateConversationsList(lastPCountProcessed);
+        } else {
+            this.helpers.verbose('No pload or plogs (new private messages) in chat payload response, skipping processing..');
+        }
+    }
+
+    validatePrivateChatLog(privateConversationMessage, lastPrivateReadId) {
+        const initialFetch = lastPrivateReadId === 0;
+        console.log(`Comparing from uid ${privateConversationMessage.user_id} with own id ${user_id}`)
+        if (String(privateConversationMessage.user_id) === String(user_id)) {
+            return {accepted: false, logId: privateConversationMessage.log_id, reason: 'from myself'};
+        }
+
+        this.helpers.verbose(
+            `Initial fetch: skipping old message ${privateConversationMessage.log_id} for uid ${privateConversationMessage.log_id}; ` +
+            `watermark=${this.settingsStore.getGlobalWatermark()}`
+        );
+
+        if (initialFetch && !this.isMessageNewer(privateConversationMessage.log_date)) {
+            return {accepted: false, logId: privateConversationMessage.log_id, reason: 'too old'};
+        }
+
+        if (privateConversationMessage.log_id <= lastPrivateReadId) {
+            return {accepted: false, logId: privateConversationMessage.log_id, reason: 'already shown'};
+        }
+
+        return {accepted: true, logId: privateConversationMessage.log_id, reason: 'ok'};
     }
 
     uninstallNetworkTaps() {
@@ -2419,47 +2428,6 @@ class App {
 
         this.helpers.verbose(`CHAT_CTX is initialized`, this.state.CHAT_CTX);
         this.caUpdateChatCtxFromBody._initialized = true;
-    }
-
-    toPrivLogItem(x) {
-        const o = x && typeof x === 'object' ? x : {};
-        return {
-            log_id: String(o.log_id ?? ''),
-            log_date: String(o.log_date ?? ''),
-            user_id: String(o.user_id ?? ''),
-            user_name: String(o.user_name ?? ''),
-            user_tumb: String(o.user_tumb ?? ''),
-            log_content: String(o.log_content ?? '')
-        };
-    }
-
-    toChatLogResponse(x) {
-        const o = x && typeof x === 'object' ? x : {};
-        const picoNum = Number.isFinite(o.pico) ? o.pico :
-            (typeof o.pico === 'string' ? (Number(o.pico) || 0) : 0);
-        const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
-        const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
-
-        if (pload.length || plogs.length) {
-            this.helpers.verbose(`pload:`, pload, `plogs:`, plogs);
-        }
-        return {
-            last: typeof o.last === 'string' ? o.last : '',
-            pico: picoNum,
-            pload,
-            plogs
-        };
-    }
-
-    toPrivateChatLogResponse(jsonResponse) {
-        const o = jsonResponse && typeof jsonResponse === 'object' ? jsonResponse : {};
-        const pload = Array.isArray(o.pload) ? o.pload.map(this.toPrivLogItem.bind(this)) : [];
-        const plogs = Array.isArray(o.plogs) ? o.plogs.map(this.toPrivLogItem.bind(this)) : [];
-        return {
-            last: typeof o.last === 'string' ? o.last : '',
-            pload,
-            plogs
-        };
     }
 
     ToHourMinuteSecondFormat(ts) {
@@ -3710,6 +3678,10 @@ class App {
     }
 
     scrollToBottom(targetContainer) {
+        if (!targetContainer) {
+            console.warn('scrollToBottom: No target container provided');
+            return;
+        }
         requestAnimationFrame(() => {
             targetContainer.scrollTop = targetContainer.scrollHeight;
         });
@@ -3853,7 +3825,6 @@ class App {
 
     async restoreLastDmFromStore() {
         const uid = this.settingsStore.getLastDmUid();
-        console.log(uid, typeof uid)
         if (!uid) {
             this.helpers.debug('There was no uid for a last dm');
             return;

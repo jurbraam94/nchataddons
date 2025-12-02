@@ -13,6 +13,8 @@ class SettingsStore {
         this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY = `shouldShowBroadcastCheckboxes`;
         this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY = `userManagerVisibleColumns`;
         this.LAST_DM_UID_KEY = `lastDmUid`;
+        this.LAST_PRIVATE_READ_KEY = `lastPrivateReadId`;
+        this.PCOUNT_PROCESSED_KEY = `pcountProcessed`;
 
 
         this.store = keyValueStore;
@@ -43,6 +45,22 @@ class SettingsStore {
 
     setLastDmUid(lastDmUid) {
         this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
+    }
+
+    getLastPrivateReadId() {
+        return Number(this.store.get(this.LAST_PRIVATE_READ_KEY)) || 0;
+    }
+
+    setLastPrivateReadId(lastPrivateReadd) {
+        this.store.set(this.LAST_PRIVATE_READ_KEY, String(lastPrivateReadd));
+    }
+
+    getPCountProcessed() {
+        return this.store.get(this.PCOUNT_PROCESSED_KEY) || 0;
+    }
+
+    setPCountProcessed(pCountProcessed) {
+        this.store.set(this.PCOUNT_PROCESSED_KEY, String(pCountProcessed));
     }
 
     clearLastDmUid() {
@@ -416,17 +434,17 @@ class ActivityLogStore {
         return mergedList;
     }
 
-    MarkReadUntilChatLogId(uid, parsedDmInUpToLog) {
-        if (!uid || parsedDmInUpToLog === undefined) {
-            console.error(`Uid ${uid} or parsedDmInUpToLog ${parsedDmInUpToLog} is invalid`);
+    MarkReadUntilChatLogId(uid, lastPrivateReadId) {
+        if (!uid || lastPrivateReadId === undefined) {
+            console.error(`Uid ${uid} or lastPrivateReadId ${lastPrivateReadId} is invalid`);
             return [];
-        } else if (parsedDmInUpToLog === 0) {
-            console.log(`parsedDmInUpToLog is 0 (this means there are no logs for user ${uid} , nothing to do`);
+        } else if (lastPrivateReadId === 0) {
+            console.log(`lastPrivateReadId is 0 (this means there are no logs for user ${uid} , nothing to do`);
             return [];
         }
 
         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
-            .filter(log => log.guid <= parsedDmInUpToLog)
+            .filter(log => log.guid <= lastPrivateReadId)
             .map(log => ({...log, unread: false}))
         this.helpers.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
         return this.setAll(allUnreadMessagesForUid);
@@ -734,6 +752,12 @@ class UserStore {
         this.store = keyValueStore;
         this.api = api;
         this.helpers = helpers;
+        this.newUserBaseData = {
+            lastPrivateReadId: 0,
+            lastPCountProcessed: 0,
+            isIncludedForBroadcast: true,
+            privateDmFetchRetries: 0
+        }
     }
 
     _deleteUserByUid(uid) {
@@ -771,8 +795,34 @@ class UserStore {
         return Array.isArray(raw) ? raw : [];
     }
 
-    parsedDmInUpToLog(uid) {
-        return this.get(uid)?.parsedDmInUpToLog !== 0;
+    getLastPrivateReadId(uid) {
+        return this.get(uid)?.lastPrivateReadId;
+    }
+
+    setLastPrivateReadId(uid, lastPrivateReadId) {
+        const u = this.get(uid);
+        if (!u) {
+            console.error(`User ${uid} not found, cannot set lastPrivateReadId`);
+            return null;
+        }
+        this.helpers.debug(`Setting last read for user ${uid} to ${lastPrivateReadId}`);
+        const updated = {...u, lastPrivateReadId};
+        return this.set(updated);
+    }
+
+    getLastPCountProcessed(uid) {
+        return this.get(uid)?.lastPCountProcessed;
+    }
+
+    setLastPCountProcessed(uid, lastPCountProcessed) {
+        const u = this.get(uid);
+        if (!u) {
+            console.error(`User ${uid} not found, cannot set lastPCountProcessed`);
+            return null;
+        }
+        this.helpers.debug(`Setting last read for user ${uid} to ${lastPCountProcessed}`);
+        const updated = {...u, lastPCountProcessed};
+        return this.set(updated);
     }
 
     _save(userToEdit) {
@@ -837,9 +887,7 @@ class UserStore {
                 // defaults for new users
                 const userWithDefaults = {
                     ...newUser,
-                    parsedDmInUpToLog: 0,
-                    isIncludedForBroadcast: true,
-                    noNewPrivateDmTries: 0
+                    ...this.newUserBaseData
                 };
 
                 updatedUsers.push(userWithDefaults);
@@ -882,12 +930,9 @@ class UserStore {
         // defaults for new users
         return {
             ...newUser,
-            parsedDmInUpToLog: 0,
-            isIncludedForBroadcast: true,
-            noNewPrivateDmTries: 0
+            ...this.newUserBaseData
         };
     }
-
 
     set(user) {
         if (!user || user.uid == null) {
@@ -897,17 +942,6 @@ class UserStore {
         this.helpers.verbose(`Saving merged user`, user);
 
         return this._save(merged);
-    }
-
-    setParsedDmInUpToLog(uid, parsedDmInUpToLog) {
-        const u = this.get(uid);
-        if (!u) {
-            console.error(`User ${uid} not found, cannot set parsedDmInUpToLog`);
-            return null;
-        }
-        this.helpers.debug(`Setting last read for user ${uid} to ${parsedDmInUpToLog}`);
-        const updated = {...u, parsedDmInUpToLog};
-        return this.set(updated);
     }
 
     isLoggedIn(uid) {
