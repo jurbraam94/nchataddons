@@ -253,7 +253,6 @@ class App {
         this._wireGlobalChatHeaderProfileClick();
         this.wireListOptionClicks();
         this._attachLogClickHandlers();
-        this._wirePrivateEmojiEsc();
 
         if (this.shouldShowBroadcastCheckboxes) {
             this.helpers.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
@@ -287,8 +286,6 @@ class App {
             userStore: this.userStore,
             api: this.api
         });
-
-        this._wireHostEmojiKeyboard();
 
         this.helpers.init({
             debugMode: this.settingsStore.getDebugMode(),
@@ -347,37 +344,6 @@ class App {
             }
 
             this.activeTextInput = target;
-        });
-    }
-
-    _wireHostEmojiKeyboard() {
-        document.addEventListener('keydown', (e) => {
-            if (!e) {
-                console.error('[CA] document keydown: event missing');
-                return;
-            }
-
-            if (e.key !== 'Escape' && e.key !== 'Esc') {
-                return;
-            }
-
-            const emojiPanel = document.getElementById('private_emoticon');
-            if (!emojiPanel) {
-                return;
-            }
-
-            const style = window.getComputedStyle(emojiPanel);
-            const isVisible = style && style.display !== 'none';
-
-            if (!isVisible) {
-                return;
-            }
-
-            if (typeof window.hidePrivEmoticon === 'function') {
-                window.hidePrivEmoticon();
-            } else {
-                emojiPanel.style.display = 'none';
-            }
         });
     }
 
@@ -1351,43 +1317,6 @@ class App {
         }
     }
 
-    _wirePrivateEmojiEsc() {
-        if (window._caPrivateEmojiEscWired) {
-            return;
-        }
-
-        window._caPrivateEmojiEscWired = true;
-
-        document.addEventListener('keydown', (e) => {
-            if (!e) {
-                console.error('[CA] _wirePrivateEmojiEsc: keydown event missing');
-                return;
-            }
-
-            if (e.key !== 'Escape' && e.key !== 'Esc') {
-                return;
-            }
-
-            const emojiPanel = document.getElementById('private_emoticon');
-            if (!emojiPanel) {
-                return;
-            }
-
-            const style = window.getComputedStyle(emojiPanel);
-            const isVisible = style && style.display !== 'none';
-
-            if (!isVisible) {
-                return;
-            }
-
-            if (typeof window.hidePrivEmoticon === 'function') {
-                window.hidePrivEmoticon();
-            } else {
-                emojiPanel.style.display = 'none';
-            }
-        });
-    }
-
     openAndRememberPrivateChat({uid, name, avatar}) {
         if (!uid || !name || !avatar) {
             console.error('[CA] open-dm: could not fetch user for uid', uid, name, avatar);
@@ -1660,7 +1589,6 @@ class App {
     }
 
     _applyUserDomChanges(existingUserEl, updatedUserJson, changedKeys) {
-
         for (const key of changedKeys) {
 
             if (key === "name") {
@@ -1853,7 +1781,6 @@ class App {
         }
 
     }
-
 
     _logSummarySingle(label, value) {
         if (!value) return;

@@ -38,6 +38,46 @@ class Popups {
         this._loadColumnPrefs();
         this._wireGlobalEsc();   // 👈 add this
         this.overwriteHostMethods();
+
+        this._wireHostEmojiKeyboard();
+        this._wirePrivateEmojiEsc();
+    }
+
+    _wirePrivateEmojiEsc() {
+        if (window._caPrivateEmojiEscWired) {
+            return;
+        }
+
+        window._caPrivateEmojiEscWired = true;
+
+        document.addEventListener('keydown', (e) => {
+            if (!e) {
+                console.error('[CA] _wirePrivateEmojiEsc: keydown event missing');
+                return;
+            }
+
+            if (e.key !== 'Escape' && e.key !== 'Esc') {
+                return;
+            }
+
+            const emojiPanel = document.getElementById('private_emoticon');
+            if (!emojiPanel) {
+                return;
+            }
+
+            const style = window.getComputedStyle(emojiPanel);
+            const isVisible = style && style.display !== 'none';
+
+            if (!isVisible) {
+                return;
+            }
+
+            if (typeof window.hidePrivEmoticon === 'function') {
+                window.hidePrivEmoticon();
+            } else {
+                emojiPanel.style.display = 'none';
+            }
+        });
     }
 
     /**
@@ -84,6 +124,37 @@ class Popups {
             closeBtn.dispatchEvent(
                 new MouseEvent('click', {bubbles: true})
             );
+        });
+    }
+
+    _wireHostEmojiKeyboard() {
+        document.addEventListener('keydown', (e) => {
+            if (!e) {
+                console.error('[CA] document keydown: event missing');
+                return;
+            }
+
+            if (e.key !== 'Escape' && e.key !== 'Esc') {
+                return;
+            }
+
+            const emojiPanel = document.getElementById('private_emoticon');
+            if (!emojiPanel) {
+                return;
+            }
+
+            const style = window.getComputedStyle(emojiPanel);
+            const isVisible = style && style.display !== 'none';
+
+            if (!isVisible) {
+                return;
+            }
+
+            if (typeof window.hidePrivEmoticon === 'function') {
+                window.hidePrivEmoticon();
+            } else {
+                emojiPanel.style.display = 'none';
+            }
         });
     }
 
