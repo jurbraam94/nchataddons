@@ -1,14 +1,14 @@
 class Api {
-    constructor({settingsStore, helpers}) {
+    constructor({settingsStore, util}) {
         this.settingsStore = settingsStore;
-        this.helpers = helpers;
+        this.util = util;
 
         this.FEMALE_CODE = '2';
         this.maxRequestTimeout = 10000;
     }
 
     async getProfile(uid) {
-        const token = this.helpers.getToken();
+        const token = this.util.getToken();
 
         const body = new URLSearchParams({
             token,
@@ -39,7 +39,7 @@ class Api {
         console.log(`Starting remote search for profile with uid ${uid}`);
 
         const body = new URLSearchParams({
-            token: this.helpers.getToken(),
+            token: this.util.getToken(),
             get_profile: uid,
             cp: "chat"
         }).toString();
@@ -60,7 +60,7 @@ class Api {
 
     async fetchPrivateNotify() {
         const body = new URLSearchParams({
-            token: this.helpers.getToken(),
+            token: this.util.getToken(),
             cp: 'chat'
         }).toString();
         const res = await fetch('/system/float/private_notify.php', {
@@ -78,7 +78,7 @@ class Api {
 
     async fetchChatLog(body) {
         body = new URLSearchParams({
-            token: this.helpers.getToken(),
+            token: this.util.getToken(),
             ...body
         }).toString();
         const res = await fetch('/system/action/chat_log.php?timestamp=234284923', {
@@ -96,7 +96,7 @@ class Api {
 
     async refreshUserList() {
         const body = new URLSearchParams({
-            token: this.helpers.getToken(),
+            token: this.util.getToken(),
         }).toString();
 
         const res = await fetch('system/panel/user_list.php', {
@@ -113,10 +113,10 @@ class Api {
     }
 
     sendPrivateMessage(target, content) {
-        const token = this.helpers.getToken();
+        const token = this.util.getToken();
         if (!token || !target || !content) return Promise.resolve({ok: false, status: 0, body: 'bad args'});
 
-        this.helpers.debug('Sending private message to:', target, 'content length:', content.length);
+        this.util.debug('Sending private message to:', target, 'content length:', content.length);
 
         const body = new URLSearchParams({
             token,
@@ -163,7 +163,7 @@ class Api {
         console.log(`Starting remote search for profile with username ${username}`);
 
         const body = new URLSearchParams({
-            token: this.helpers.getToken(),
+            token: this.util.getToken(),
             cp: 'chat',
             query: String(username),
             search_type: '1',

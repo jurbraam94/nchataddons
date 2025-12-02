@@ -1,7 +1,5 @@
-// (async function () {
-/** Key/Value store backed by localStorage */
 class SettingsStore {
-    constructor({keyValueStore, helpers}) {
+    constructor({keyValueStore, util}) {
         this.DEBUG_COOKIE = `debug`;
         this.VERBOSE_COOKIE = `verbose`;
         this.DEBUG_MODE_KEY = `debugMode`;
@@ -18,7 +16,7 @@ class SettingsStore {
 
 
         this.store = keyValueStore;
-        this.helpers = helpers;
+        this.util = util;
     }
 
     setUserManagerVisibleColumnPrefs(userManagerVisibleColumnPrefs) {
@@ -99,7 +97,7 @@ class SettingsStore {
 
     getGlobalWatermark() {
         return this.store.get(this.GLOBAL_WATERMARK_KEY, {
-            default: this.helpers.getTimeStampInWebsiteFormat()
+            default: this.util.getTimeStampInWebsiteFormat()
         });
     }
 
@@ -283,18 +281,18 @@ class KeyValueStore {
 }
 
 class ActivityLogStore {
-    constructor({keyValueStore, helpers} = {}) {
+    constructor({keyValueStore, util} = {}) {
         this.ACTIVITY_LOG_KEY = `activityLog`;
 
         this.store = keyValueStore;
-        this.helpers = helpers;
+        this.util = util;
     }
 
     getAllOnlineWomen() {
         return this.list().filter(user => user.isFemale && user.online);
     }
 
-    // ---- storage helpers (arrays only) ----
+    // ---- storage util (arrays only) ----
     _getAll() {
         const raw = this.store.get(this.ACTIVITY_LOG_KEY);
         return Array.isArray(raw) ? raw : [];
@@ -361,7 +359,7 @@ class ActivityLogStore {
                 && (!onlyUnread || log.unread)
                 && log.guid !== String(user_id)
         );
-        this.helpers.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
+        this.util.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
         return result;
     }
 
@@ -446,7 +444,7 @@ class ActivityLogStore {
         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
             .filter(log => log.guid <= lastPrivateReadId)
             .map(log => ({...log, unread: false}))
-        this.helpers.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
+        this.util.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
         return this.setAll(allUnreadMessagesForUid);
     }
 
@@ -476,7 +474,7 @@ class ActivityLogStore {
 }
 
 // class ActivityLogStore {
-//     constructor({keyValueStore, helpers} = {}) {
+//     constructor({keyValueStore, util} = {}) {
 //         // Legacy single-key (kept only for optional migration / back-compat)
 //         this.ACTIVITY_LOG_KEY = 'activityLog';
 //
@@ -496,14 +494,14 @@ class ActivityLogStore {
 //         ];
 //
 //         this.store = keyValueStore;
-//         this.helpers = helpers;
+//         this.util = util;
 //     }
 //
 //     getAllOnlineWomen() {
 //         return this.list().filter(user => user.isFemale && user.online);
 //     }
 //
-//     // ---------- bucket helpers ----------
+//     // ---------- bucket util ----------
 //
 //     _getAllFromBucket(bucketKey) {
 //         const raw = this.store.get(bucketKey);
@@ -562,7 +560,7 @@ class ActivityLogStore {
 //         return this.ACTIVITY_LOG_EVENTS_KEY;
 //     }
 //
-//     // ---------- storage helpers (arrays only) ----------
+//     // ---------- storage util (arrays only) ----------
 //
 //     _save(changedLog) {
 //         this._saveAll([changedLog]);
@@ -702,8 +700,8 @@ class ActivityLogStore {
 //             return true;
 //         });
 //
-//         if (this.helpers && typeof this.helpers.verbose === 'function') {
-//             this.helpers.verbose(
+//         if (this.util && typeof this.util.verbose === 'function') {
+//             this.util.verbose(
 //                 `Got all logs for ${uidStr} with onlyUnread=${onlyUnread}:`,
 //                 result
 //             );
@@ -746,12 +744,12 @@ class ActivityLogStore {
 
 /** Users store (array-backed, like ActivityLogStore) */
 class UserStore {
-    constructor({keyValueStore, api, helpers} = {}) {
+    constructor({keyValueStore, api, util} = {}) {
         this.USERS_KEY = `users`;
 
         this.store = keyValueStore;
         this.api = api;
-        this.helpers = helpers;
+        this.util = util;
         this.newUserBaseData = {
             lastPrivateReadId: 0,
             lastPCountProcessed: 0,
@@ -789,7 +787,7 @@ class UserStore {
         return this._deleteUserByUid(uid);
     }
 
-    // ---- storage helpers (arrays only) ----
+    // ---- storage util (arrays only) ----
     _getAll() {
         const raw = this.store.get(this.USERS_KEY);
         return Array.isArray(raw) ? raw : [];
@@ -805,7 +803,7 @@ class UserStore {
             console.error(`User ${uid} not found, cannot set lastPrivateReadId`);
             return null;
         }
-        this.helpers.debug(`Setting last read for user ${uid} to ${lastPrivateReadId}`);
+        this.util.debug(`Setting last read for user ${uid} to ${lastPrivateReadId}`);
         const updated = {...u, lastPrivateReadId};
         return this.set(updated);
     }
@@ -820,7 +818,7 @@ class UserStore {
             console.error(`User ${uid} not found, cannot set lastPCountProcessed`);
             return null;
         }
-        this.helpers.debug(`Setting last read for user ${uid} to ${lastPCountProcessed}`);
+        this.util.debug(`Setting last read for user ${uid} to ${lastPCountProcessed}`);
         const updated = {...u, lastPCountProcessed};
         return this.set(updated);
     }
@@ -939,7 +937,7 @@ class UserStore {
             throw new Error('set() requires user.uid')
         }
         const merged = this._mergeUser(user);
-        this.helpers.verbose(`Saving merged user`, user);
+        this.util.verbose(`Saving merged user`, user);
 
         return this._save(merged);
     }
@@ -975,7 +973,7 @@ class UserStore {
         let user = this.get(id);
         if (!user) {
             const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
-            const doc = this.helpers.createElementFromString(getProfileResponseHtml);
+            const doc = this.util.createElementFromString(getProfileResponseHtml);
             const foundUser = await this.getOrFetchByName(doc?.querySelector('.pro_name')?.textContent?.trim());
 
             if (foundUser) {
@@ -992,7 +990,7 @@ class UserStore {
         let user = this.getByName(name);
 
         if (!user) {
-            const result = this.helpers.parseUserSearchHTML(await this.api.searchUserRemoteByUsername(String(name)));
+            const result = this.util.parseUserSearchHTML(await this.api.searchUserRemoteByUsername(String(name)));
 
             if (Array.isArray(result) && result.length > 1) {
                 const exactMatch = result.find(u => u.name === name);

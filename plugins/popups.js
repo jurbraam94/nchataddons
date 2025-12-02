@@ -1,8 +1,8 @@
 class Popups {
-    constructor({app, settingsStore, helpers, userStore, api}) {
+    constructor({app, settingsStore, util, userStore, api}) {
         this.app = app;
         this.settingsStore = settingsStore;
-        this.helpers = helpers;
+        this.util = util;
         this.userStore = userStore;
         this.api = api;
 
@@ -43,6 +43,18 @@ class Popups {
         this._wirePrivateEmojiEsc();
     }
 
+    openAndRememberPrivateChat({uid, name, avatar}) {
+        if (!uid || !name || !avatar) {
+            console.error('[CA] open-dm: could not fetch user for uid', uid, name, avatar);
+            return;
+        }
+
+        this.util.debug('[CA] applyLegacyAndOpenDm', {uid, name, avatar});
+        this.settingsStore.setLastDmUid(uid);
+        this.openPrivateInCaPopup({uid, name, avatar});
+        this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
+    }
+
     _wirePrivateEmojiEsc() {
         if (window._caPrivateEmojiEscWired) {
             return;
@@ -56,7 +68,7 @@ class Popups {
                 return;
             }
 
-            if (e.key !== 'Escape' && e.key !== 'Esc') {
+            if (this.util.hasPressedEscapeEvent(e)) {
                 return;
             }
 
@@ -134,7 +146,7 @@ class Popups {
                 return;
             }
 
-            if (e.key !== 'Escape' && e.key !== 'Esc') {
+            if (this.util.hasPressedEscapeEvent(e)) {
                 return;
             }
 
@@ -168,7 +180,7 @@ class Popups {
 
         this._renderUserManagementPopup(popup);
         this.togglePopup('ca-uer-management-popup');
-        this.helpers.installLogImageHoverPreview([popup]);
+        this.util.installLogImageHoverPreview([popup]);
     }
 
     UserManagementPopup() {
@@ -248,7 +260,7 @@ class Popups {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
         }
 
@@ -258,7 +270,7 @@ class Popups {
                 this.state.onlyOnline = !!onlyOnlineCheckbox.checked;
                 this.state.page = 1;
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
         }
 
@@ -267,7 +279,7 @@ class Popups {
                 this.state.query = String(searchInput.value || '').trim().toLowerCase();
                 this.state.page = 1;
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
         } else {
             console.warn('[UsersPopup] _wirePopup: search input not found');
@@ -278,7 +290,7 @@ class Popups {
                 this.state.onlyFemales = !!onlyFemalesCheckbox.checked;
                 this.state.page = 1;
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
         }
 
@@ -300,7 +312,7 @@ class Popups {
 
                 this.state.page = pageNum;
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
         }
 
@@ -312,7 +324,7 @@ class Popups {
                 const sortKey = String(thSortable.getAttribute('data-sort-key') || '').trim();
                 this._toggleSort(sortKey);
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
                 return;
             }
 
@@ -547,17 +559,17 @@ class Popups {
     }
 
     openProfileOnHost = async (uid) => {
-        this.helpers.debug('openProfileOnHost called with uid:', uid);
+        this.util.debug('openProfileOnHost called with uid:', uid);
 
         if (!uid || uid === 'system') {
-            this.helpers.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
+            this.util.verbose('[CA] open-profile: ignoring for system or missing uid', {uid});
             return;
         }
 
         const profileHtmlResult = await this.api.getProfile(uid);
         const profileEl = document.createElement("div");
         profileEl.innerHTML = profileHtmlResult.trim();
-        this.createAndOpenPopupWithHtml(profileEl, 'ca-profile-popup', this.helpers.qs(`.pro_name`, profileEl)?.innerText || 'User profile');
+        this.createAndOpenPopupWithHtml(profileEl, 'ca-profile-popup', this.util.qs(`.pro_name`, profileEl)?.innerText || 'User profile');
     }
 
     overwriteHostMethods() {
@@ -565,7 +577,7 @@ class Popups {
         window.getProfile = async (uid) => {
             await this.openProfileOnHost(uid);
         };
-        this.helpers.debug('[CA] Overridden window.getProfile with CA profile popup');
+        this.util.debug('[CA] Overridden window.getProfile with CA profile popup');
 
         if (typeof window.openPrivate === 'function') {
             this.hostOpenPrivateOriginal = window.openPrivate.bind(window);
@@ -574,14 +586,14 @@ class Popups {
                 this.openPrivateInCaPopup({uid, name, avatar});
             };
 
-            this.helpers.debug('[CA] Overridden window.openPrivate with CA private popup');
+            this.util.debug('[CA] Overridden window.openPrivate with CA private popup');
         } else {
             console.warn('[CA] window.openPrivate is not a function; cannot override private chat popup');
         }
     }
 
     openPrivateInCaPopup({uid, name, avatar}) {
-        this.helpers.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
+        this.util.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
         this.settingsStore.setLastDmUid(uid);
 
         if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
@@ -619,7 +631,7 @@ class Popups {
             name ? `Private chat with ${name}` : 'Private chat'
         );
 
-        this.app.ui.caPrivateMessagesSlot = this.helpers.qs('#ca-private-messages-slot', popup);
+        this.app.ui.caPrivateMessagesSlot = this.util.qs('#ca-private-messages-slot', popup);
 
         if (!(popup instanceof HTMLElement)) {
             console.error('[CA] openPrivateInCaPopup: popup not created for id', popupId);
@@ -653,7 +665,7 @@ class Popups {
         left.className = 'ca-host-private-header-left';
 
         left.addEventListener('click', async (e) => {
-            await this.helpers.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
+            await this.util.wrapFnWithEventPrevent(e, this.openProfileOnHost, uid);
         });
 
         const right = document.createElement('div');
@@ -728,9 +740,9 @@ class Popups {
         const broadcastSendEl = broadcastPopupEl.querySelector('#ca-bc-send');
 
         broadcastSendEl.addEventListener('click', () => {
-            const broadcastMsgEl = this.helpers.qs('#ca-bc-msg');
+            const broadcastMsgEl = this.util.qs('#ca-bc-msg');
             const raw = (broadcastMsgEl && 'value' in broadcastMsgEl) ? broadcastMsgEl.value : '';
-            const text = this.helpers.trim(raw);
+            const text = this.util.trim(raw);
 
             if (!text) {
                 console.warn('[BROADCAST] Empty message, nothing to send');
@@ -795,7 +807,7 @@ class Popups {
     }
 
     printModalStatus(message) {
-        const statusEl = this.helpers.qs('#ca-specific-status');
+        const statusEl = this.util.qs('#ca-specific-status');
         statusEl.textContent = message;
         return statusEl;
     }
@@ -816,10 +828,10 @@ class Popups {
 
     openSendMessageModal() {
         const pop = this.createSpecificPopup();
-        this.helpers.qs('#ca-specific-status', pop).textContent = '';
-        this.helpers.qs('#ca-specific-send', pop).addEventListener('click', async () => {
-            const sendPrivateMessageUser = this.helpers.qs('#ca-specific-username').value;
-            const sendPrivateMessageText = this.helpers.qs('#ca-specific-message').value;
+        this.util.qs('#ca-specific-status', pop).textContent = '';
+        this.util.qs('#ca-specific-send', pop).addEventListener('click', async () => {
+            const sendPrivateMessageUser = this.util.qs('#ca-specific-username').value;
+            const sendPrivateMessageText = this.util.qs('#ca-specific-message').value;
             console.log(`[CA] Sending private message to ${sendPrivateMessageUser}:`, sendPrivateMessageText);
             const user = await this.userStore.getOrFetchByName(sendPrivateMessageUser);
 
@@ -956,7 +968,7 @@ class Popups {
         this.bringToFront(popup);
 
         // Image hover preview inside any popup
-        this.helpers.installLogImageHoverPreview([popup]);
+        this.util.installLogImageHoverPreview([popup]);
 
         return popup;
     }
@@ -1154,13 +1166,13 @@ class Popups {
             return null;
         }
 
-        const form = this.helpers.qsForm('#ca-predefined-messages-form', popup);
-        const subjectInput = this.helpers.qsInput('#ca-predefined-messages-subject', popup);
-        const textInput = this.helpers.qsTextarea('#ca-predefined-messages-text', popup);
-        const indexInput = this.helpers.qsInput('#ca-predefined-messages-index', popup);
-        const resetBtn = this.helpers.qs('#ca-predefined-messages-reset', popup);
-        const editorRoot = this.helpers.qs('.ca-predefined-messages-editor', popup);
-        const toggleBtn = this.helpers.qs('#ca-predefined-messages-toggle', popup);
+        const form = this.util.qsForm('#ca-predefined-messages-form', popup);
+        const subjectInput = this.util.qsInput('#ca-predefined-messages-subject', popup);
+        const textInput = this.util.qsTextarea('#ca-predefined-messages-text', popup);
+        const indexInput = this.util.qsInput('#ca-predefined-messages-index', popup);
+        const resetBtn = this.util.qs('#ca-predefined-messages-reset', popup);
+        const editorRoot = this.util.qs('.ca-predefined-messages-editor', popup);
+        const toggleBtn = this.util.qs('#ca-predefined-messages-toggle', popup);
 
         if (!form || !subjectInput || !textInput || !indexInput || !resetBtn) {
             console.error('[Popups] openPredefinedPopup: missing form controls');
@@ -1300,7 +1312,7 @@ class Popups {
     }
 
     _refreshAllPredefinedSelects() {
-        const selects = this.helpers.qsa('.ca-predefined-messages-select');
+        const selects = this.util.qsa('.ca-predefined-messages-select');
         selects.forEach((sel) => this._fillPredefinedSelect(sel));
     }
 
@@ -1337,7 +1349,7 @@ class Popups {
             insertLink.title = "Paste into active text field";
 
             insertLink.appendChild(
-                this.helpers.renderSvgIconWithClass(
+                this.util.renderSvgIconWithClass(
                     "lucide lucide-corner-down-left",
                     `<polyline points="9 10 4 15 9 20"></polyline>
      <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>`
@@ -1354,7 +1366,7 @@ class Popups {
             editLink.className = 'ca-log-action ca-edit-link';
             editLink.title = "Edit template";
             editLink.appendChild(
-                this.helpers.renderSvgIconWithClass(
+                this.util.renderSvgIconWithClass(
                     "lucide lucide-lucide-pencil",
                     `<path d="M17 3a2.828 2.828 0 0 1 4 4l-12 12-4 1 1-4 12-12z"></path>`
                 )
@@ -1385,7 +1397,7 @@ class Popups {
             deleteLink.className = 'ca-log-action ca-del-link';
             deleteLink.title = "Delete template";
             deleteLink.appendChild(
-                this.helpers.renderSvgIconWithClass(
+                this.util.renderSvgIconWithClass(
                     "lucide lucide-x",
                     `<line x1="18" y1="6" x2="6" y2="18"></line>
      <line x1="6" y1="6" x2="18" y2="18"></line>`
@@ -1544,10 +1556,10 @@ class Popups {
                 const nextVisible = {...this.state.visibleColumns};
                 nextVisible[colKey] = !!cb.checked;
                 this.state.visibleColumns = nextVisible;
-                this.helpers.debug(`Persisting visible columns:`, JSON.stringify(this.state.visibleColumns));
+                this.util.debug(`Persisting visible columns:`, JSON.stringify(this.state.visibleColumns));
                 this.settingsStore.setUserManagerVisibleColumnPrefs(this.state.visibleColumns);
                 this._renderUserManagementPopup(popup);
-                this.helpers.installLogImageHoverPreview([popup]);
+                this.util.installLogImageHoverPreview([popup]);
             });
 
             const span = document.createElement('span');
@@ -1679,7 +1691,7 @@ class Popups {
                     editLink.setAttribute('data-uid', String(user.uid || ''));
 
                     editLink.appendChild(
-                        this.helpers.renderSvgIconWithClass(
+                        this.util.renderSvgIconWithClass(
                             'lucide lucide-pencil',
                             '<path d="M17 3a2.828 2.828 0 0 1 4 4L7 21l-4 1 1-4L17 3z"></path>'
                         )
@@ -1693,7 +1705,7 @@ class Popups {
                     deleteLink.setAttribute('data-uid', String(user.uid || ''));
 
                     deleteLink.appendChild(
-                        this.helpers.renderSvgIconWithClass(
+                        this.util.renderSvgIconWithClass(
                             'lucide lucide-x',
                             '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>'
                         )
@@ -1949,7 +1961,7 @@ class Popups {
 
             this.userStore.set(updated);
             this._renderUserManagementPopup(popup);
-            this.helpers.installLogImageHoverPreview([popup]);
+            this.util.installLogImageHoverPreview([popup]);
         };
 
         const cancel = () => {
@@ -1983,7 +1995,7 @@ class Popups {
         this.userStore.remove(uid);
 
         this._renderUserManagementPopup(popup);
-        this.helpers.installLogImageHoverPreview([popup]);
+        this.util.installLogImageHoverPreview([popup]);
     }
 
     _handleEditUserJson(uid, popup) {
@@ -2020,7 +2032,7 @@ class Popups {
 
         this.userStore.set(merged);
         this._renderUserManagementPopup(popup);
-        this.helpers.installLogImageHoverPreview([popup]);
+        this.util.installLogImageHoverPreview([popup]);
     }
 
     _loadColumnPrefs() {
@@ -2064,7 +2076,7 @@ class Popups {
         return !!v;
     }
 
-    // ---------- helpers ----------
+    // ---------- util ----------
 
     _formatCellValue(v) {
         if (v === null || v === undefined) {

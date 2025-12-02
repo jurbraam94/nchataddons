@@ -1,13 +1,75 @@
-class Helpers {
+class Util {
     constructor() {
         this.FEMALE_CODE = '2';
         this.verboseMode = false;
         this.debugMode = false;
+
+        this.colors = {
+            SOFT_GREEN: 'color:#8bdf8b',
+            SOFT_RED: 'color:#d88989',
+            GREY: 'color:#9ca3af',
+            GREY_NUM: 'color:#6b7280',
+            SOFT_PINK: 'color:#e0a2ff',
+            SOFT_BLUE: 'color:#82aaff'
+        }
     }
 
     init({verboseMode, debugMode}) {
         this.verboseMode = verboseMode;
         this.debugMode = debugMode;
+    }
+
+    logSummarySingle(label, value) {
+        if (!value) return;
+        this.logStyled('', [
+            {text: `${label}: `, style: 'color:#d1d5db;font-weight:bold'},
+            {text: String(value), style: this.colors.SOFT_GREEN}
+        ]);
+    }
+
+    hasPressedEscapeEvent(e) {
+        return (e.key !== 'Escape' && e.key !== 'Esc');
+    }
+
+    logStyled(label, segments, labelStyle = 'color:#9cf; font-weight:bold') {
+        const parts = [];
+        const styles = [];
+
+        if (label) {
+            parts.push('%c' + label);
+            styles.push(labelStyle);
+        }
+
+        for (const seg of segments) {
+            if (!seg || !seg.text) {
+                continue;
+            }
+
+            parts.push('%c' + seg.text);
+            styles.push(seg.style || 'color:#ffffff');
+        }
+
+        console.log(parts.join(''), ...styles);
+    }
+
+    logSummaryDouble(label, plus, minus) {
+        if (!plus && !minus) return;
+
+        const labelColor = label.toLowerCase().includes('female')
+            ? this.colors.SOFT_PINK
+            : this.colors.SOFT_BLUE;
+
+        const plusStyle = plus ? this.colors.SOFT_GREEN : this.colors.GREY;
+        const minusStyle = minus ? this.colors.SOFT_RED : this.colors.GREY;
+
+        this.logStyled('', [
+            {text: `${label} `, style: labelColor},
+            {text: '(+', style: this.colors.GREY},
+            {text: String(plus), style: plusStyle},
+            {text: ' : -', style: this.colors.GREY},
+            {text: String(minus), style: minusStyle},
+            {text: ')', style: this.colors.GREY}
+        ]);
     }
 
     setDebugMode(debugMode) {
@@ -24,6 +86,22 @@ class Helpers {
             console.log('[DEBUG]', ...args);
         }
     };
+
+    sleep(ms) {
+        return new Promise(r => setTimeout(r, ms));
+    }
+
+    randBetween(minMs, maxMs) {
+        return Math.floor(minMs + Math.random() * (maxMs - minMs));
+    }
+
+    toHourMinuteSecondFormat(ts) {
+        const s = String(ts || '').trim();
+        if (!s) return '';
+        if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}:\d{2}\b/.test(s)) return s;
+        if (/\b\d{1,2}\/\d{1,2}\s+\d{2}:\d{2}\b/.test(s)) return s + ':00';
+        return s;
+    }
 
     verbose(...args) {
 
@@ -138,6 +216,16 @@ class Helpers {
         }
 
         return el;
+    }
+
+    scrollToBottom(targetContainer) {
+        if (!targetContainer) {
+            console.warn('scrollToBottom: No target container provided');
+            return;
+        }
+        requestAnimationFrame(() => {
+            targetContainer.scrollTop = targetContainer.scrollHeight;
+        });
     }
 
     timeHHMM() {
