@@ -230,11 +230,6 @@ class Popups {
             bodyHtml
         });
 
-        if (!(popup instanceof HTMLElement)) {
-            console.error('[UsersPopup] _ensurePopup: ensurePopup did not return an HTMLElement');
-            return null;
-        }
-
         if (!popup.dataset.caUsersPopupWired) {
             popup.dataset.caUsersPopupWired = '1';
             this._wireUserManagementPopup(popup);
@@ -250,10 +245,6 @@ class Popups {
         const pagination = popup.querySelector('#ca-users-pagination');
         const table = popup.querySelector('#ca-users-table');
 
-        if (!table) {
-            console.error('[UsersPopup] _wirePopup: table not found');
-            return;
-        }
 
         if (onlyFemalesCheckbox) {
             onlyFemalesCheckbox.addEventListener('change', () => {
@@ -1373,7 +1364,7 @@ class Popups {
 
             const insertLink = document.createElement('a');
             insertLink.href = "#";
-            insertLink.className = 'ca-log-action ca-insert-link';
+            insertLink.className = 'ca-trigger-action ca-insert-link';
             insertLink.title = "Paste into active text field";
 
             insertLink.appendChild(
@@ -1391,7 +1382,7 @@ class Popups {
 
             const editLink = document.createElement('a');
             editLink.href = "#";
-            editLink.className = 'ca-log-action ca-edit-link';
+            editLink.className = 'ca-trigger-action ca-edit-link';
             editLink.title = "Edit template";
             editLink.appendChild(
                 this.util.renderSvgIconWithClass(
@@ -1422,7 +1413,7 @@ class Popups {
 
             const deleteLink = document.createElement('a');
             deleteLink.href = "#";
-            deleteLink.className = 'ca-log-action ca-del-link';
+            deleteLink.className = 'ca-trigger-action ca-del-link';
             deleteLink.title = "Delete template";
             deleteLink.appendChild(
                 this.util.renderSvgIconWithClass(
@@ -1714,7 +1705,7 @@ class Popups {
                     const editLink = document.createElement('a');
                     editLink.href = '#';
                     editLink.title = 'Edit user JSON';
-                    editLink.className = 'ca-log-action ca-edit-link';
+                    editLink.className = 'ca-trigger-action ca-edit-link';
                     editLink.setAttribute('data-action', 'user-edit-json');
                     editLink.setAttribute('data-uid', String(user.uid || ''));
 
@@ -1728,7 +1719,7 @@ class Popups {
                     const deleteLink = document.createElement('a');
                     deleteLink.href = '#';
                     deleteLink.title = 'Delete user';
-                    deleteLink.className = 'ca-log-action ca-del-link';
+                    deleteLink.className = 'ca-trigger-action ca-del-link';
                     deleteLink.setAttribute('data-action', 'user-delete');
                     deleteLink.setAttribute('data-uid', String(user.uid || ''));
 

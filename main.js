@@ -97,8 +97,8 @@ class App {
                 ca_dm_link: 'ca-dm-link',
                 ca_dm_right: 'ca-dm-right',
                 ca_del_link: 'ca-del-link',
-                ca_log_actions: 'ca-log-actions',
-                ca_log_action: 'ca-log-action',
+                ca_log_actions: 'ca-trigger-actions',
+                ca_log_action: 'ca-trigger-action',
                 ca_log_text: 'ca-log-text',
                 ca_sent_chip: 'ca-sent-chip',
                 ca_unread_messages: 'ca-unread-messages',
@@ -754,44 +754,46 @@ class App {
     }
 
     ensureBroadcastCheckbox = (userItemDataEl, user) => {
-        let include = false;
-        include = !!(user.isIncludedForBroadcast);
+        if (!userItemDataEl) {
+            console.error('[BC] ensureBroadcastCheckbox: userItemDataEl is missing');
+            return;
+        }
+
+        if (!user || !user.uid) {
+            console.error('[BC] ensureBroadcastCheckbox: invalid user object', user);
+            return;
+        }
+
+        const include = !!user.isIncludedForBroadcast;
 
         // Anchor instead of native checkbox, same style as DM icon
         const toggle = document.createElement('a');
         toggle.href = '#';
-        toggle.className = 'ca-ck ca-log-action ca-bc-toggle';
+        toggle.className = 'ca-ck ca-trigger-action ca-bc-toggle';
         toggle.setAttribute('role', 'button');
         toggle.setAttribute('data-action', 'toggle-broadcast');
         toggle.dataset.caIncluded = include ? '1' : '0';
         toggle.title = include ? 'Exclude from broadcast' : 'Include in broadcast';
         toggle.setAttribute('aria-pressed', include ? 'true' : 'false');
 
-        // Unchecked SVG (square)
-        const uncheckedSvg = this.util.renderSvgIconWithClass(
-            'lucide lucide-square',
-            `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>`
-        );
-        uncheckedSvg.classList.add('ca-bc-icon-unchecked');
-
-        // Checked SVG (square + check mark)
-        const checkedSvg = this.util.renderSvgIconWithClass(
-            'lucide lucide-check-square',
-            `<rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>
-                                <polyline points="7 12 10 15 16 9"></polyline>`
-        );
-        checkedSvg.classList.add('ca-bc-icon-checked');
+        // Single Font Awesome icon
+        const icon = document.createElement('i');
+        icon.className = include
+            ? 'fa fa-check-square ca-bc-icon'
+            : 'fa fa-square ca-bc-icon';
+        icon.setAttribute('aria-hidden', 'true');
 
         const applyVisualState = (isIncluded) => {
+            // Remove both possible FA state classes first
+            icon.classList.remove('fa-square', 'fa-check-square');
+
             if (isIncluded) {
-                checkedSvg.style.display = '';
-                uncheckedSvg.style.display = 'none';
+                icon.classList.add('fa-check-square');  // checked state
                 toggle.dataset.caIncluded = '1';
                 toggle.title = 'Exclude from broadcast';
                 toggle.setAttribute('aria-pressed', 'true');
             } else {
-                checkedSvg.style.display = 'none';
-                uncheckedSvg.style.display = '';
+                icon.classList.add('fa-square');      // unchecked state
                 toggle.dataset.caIncluded = '0';
                 toggle.title = 'Include in broadcast';
                 toggle.setAttribute('aria-pressed', 'false');
@@ -804,30 +806,34 @@ class App {
 
             applyVisualState(nextInclude);
             this.userStore.includeUserForBroadcast(user.uid, nextInclude);
-            this.util.debug(`[BC] isIncludedForBroadcast → uid=${user.uid}, include=${include}`);
-        }
+            this.util.debug(
+                `[BC] isIncludedForBroadcast → uid=${user.uid}, include=${nextInclude}`
+            );
+        };
 
-        toggle.appendChild(uncheckedSvg);
-        toggle.appendChild(checkedSvg);
+        toggle.appendChild(icon);
         applyVisualState(include);
 
-        this.util.click(toggle, () => includeForBroadcast);
+        // Important: pass the handler directly, don't wrap it
+        this.util.click(toggle, includeForBroadcast);
 
         userItemDataEl.appendChild(toggle);
-    }
+    };
+
 
     ensureDmLink = (userItemDataEl, user) => {
         const dmLink = document.createElement('a');
         dmLink.href = '#';
-        dmLink.className = 'ca-dm-from-userlist ca-log-action';
+        dmLink.className = 'ca-dm-from-userlist ca-trigger-action';
         dmLink.title = 'Open direct message';
         dmLink.setAttribute('data-action', 'open-dm');
 
-        dmLink.appendChild(this.util.renderSvgIconWithClass(
-            'lucide lucide-mail',
-            `<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-         <polyline points="3 7,12 13,21 7"></polyline>`
-        ));
+        dmLink.appendChild(this.util.createElementFromString(`<a href="#"
+                       class="${this.sel.classes.ca_dm_link} ${this.sel.classes.ca_dm_right} ${this.sel.classes.ca_log_action}"
+                       data-action="open-dm"
+                       title="Direct message">
+                       <i class="fa fa-envelope" aria-hidden="true"></i>
+                    </a>`));
 
         this.util.click(dmLink, this.popups.openAndRememberPrivateChat, user);
         userItemDataEl.appendChild(dmLink);
@@ -896,7 +902,7 @@ class App {
           <a id="ca-nav-bc"
              data-action="broadcast"
              href="#"
-             class="ca-dm-link ca-dm-right ca-log-action"
+             class="ca-trigger-action"
              title="Broadcast message">
             ${this.util.buildSvgIconString(
             "lucide lucide-triangle-right",
@@ -908,7 +914,7 @@ class App {
           <a id="ca-nav-specific"
              href="#"
              data-action="send-message"
-             class="ca-dm-link ca-dm-right ca-log-action"
+             class="ca-trigger-action"
              title="Send specific message">
             ${this.util.buildSvgIconString(
             "lucide lucide-triangle-right",
@@ -920,7 +926,7 @@ class App {
           <a id="${this.sel.clear}"
              href="#"
              data-action="clear-all-logs"
-             class="ca-dm-link ca-dm-right ca-log-action"
+             class="ca-trigger-action"
              title="Clear logs">
             ${this.util.buildSvgIconString(
             "lucide lucide-triangle-right",
@@ -934,18 +940,17 @@ class App {
         )}
           </a>
           
-          
-
+         
           <a id="ca-nav-storage-toggle"
              href="#"
-             class="ca-dm-link ca-dm-right ca-log-action"
+             class="ca-trigger-action"
              data-action="storage-toggle"
              title="">
           </a>
           
           <a id="ca-nav-users"
                href="#"
-               class="ca-dm-link ca-dm-right ca-log-action"
+               class="ca-trigger-action"
                data-action="open-users"
                title="Show all users">
               ${this.util.buildSvgIconString(
@@ -962,7 +967,7 @@ class App {
 
           <a id="ca-nav-settings"
              href="#"
-             class="ca-dm-link ca-dm-right ca-log-action"
+             class="ca-trigger-action"
              data-action="open-settings"
              title="Settings (debug &amp; verbose)">
             ${this.util.buildSvgIconString(
@@ -1229,7 +1234,7 @@ class App {
     }
 
     onGlobalClickPanelNav = (e) => {
-        const link = e.target.closest('.ca-dm-link[data-action]');
+        const link = e.target.closest('.ca-trigger-action[data-action]');
         if (!link) {
             return;
         }
@@ -1280,13 +1285,14 @@ class App {
         this.ui.eventLogBox.innerHTML = '';
         this.ui.loginLogoutBox.innerHTML = '';
 
-        const removedIn = this.activityLogStore.clearByLogType('dm-in') || 0;
+        const removedUnreadIn = this.activityLogStore.clearByLogType('dm-in-unread') || 0;
+        const removedHandledIn = this.activityLogStore.clearByLogType('dm-in-handled') || 0;
         const removedOut = this.activityLogStore.clearByLogType('dm-out') || 0;
         const removedFail = this.activityLogStore.clearByLogType('send-fail') || 0;
         const removedEvents = this.activityLogStore.clearByLogType('event') || 0;
         const removedLogin = this.activityLogStore.clearByLogType('login') || 0;
         const removedLogout = this.activityLogStore.clearByLogType('logout') || 0;
-        console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
+        console.log(`[LOG] Global clear removed: handled in=${removedHandledIn}, unread in=${removedUnreadIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
         this.hostServices.logEvent(`Logs cleared at ${this.util.timeHHMMSS()}`);
     }
 

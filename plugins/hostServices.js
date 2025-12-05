@@ -107,9 +107,10 @@ class HostServices {
             // Find the existing DOM element for this user (if any)
             let existingUserEl = null;
 
-            const newUserJson = parsedUserJson.isLoggedIn === true
-                ? parsedUserJson
-                : {...parsedUserJson, isLoggedIn: true};
+            const newUserJson = {
+                ...parsedUserJson,
+                isLoggedIn: true
+            };
 
             let updatedUserJson;
 
@@ -125,7 +126,8 @@ class HostServices {
                 const {
                     updatedExistingUserJson,
                     updatedExistingUserEl,
-                    hasUpdatedUser
+                    hasUpdatedUser,
+                    loggedInChanged
                 } = this.updateExistingUserMetadata(
                     existingUserJsonFromStore,
                     newUserJson,
@@ -133,6 +135,10 @@ class HostServices {
                 );
 
                 updatedUserJson = updatedExistingUserJson;
+
+                if (loggedInChanged) {
+                    this.handleLoggedInStatus(updatedUserJson);
+                }
 
                 if (hasUpdatedUser) {
                     updatedProfileCount++;
@@ -283,6 +289,7 @@ class HostServices {
         let updatedExistingUserEl = existingUserEl;
         const changedKeys = [];
         const segments = [];
+        let loggedInChanged = false;
 
         const addSegment = (text, style) => {
             segments.push({text, style});
@@ -308,6 +315,8 @@ class HostServices {
                     }
                 } else if (key !== "isLoggedIn") {
                     this.logEvent(text, updatedExistingUserJson);
+                } else if (key === "isLoggedIn") {
+                    loggedInChanged = true;
                 }
             }
         };
@@ -336,7 +345,8 @@ class HostServices {
         return {
             updatedExistingUserJson,
             updatedExistingUserEl,
-            hasUpdatedUser
+            hasUpdatedUser,
+            loggedInChanged
         };
     }
 
@@ -750,7 +760,7 @@ class HostServices {
 
     isMessageNewer = (logDateStr) => {
         const msgNum = this.parseLogDateToNumber(this.util.toHourMinuteSecondFormat(logDateStr));
-        const wmNum = this.parseLogDateToNumber(this.util.toHourMinuteSecondFormat(watermark));
+        const wmNum = this.parseLogDateToNumber(this.util.toHourMinuteSecondFormat(this.watermark));
         this.util.verbose('Date comparison:', {
             logDate: logDateStr, logDateNum: msgNum,
             watermark: this.watermark, watermarkNum: wmNum

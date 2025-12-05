@@ -191,8 +191,7 @@ class Util {
             rank: this.extractRank(userEl),
             age: this.extractAge(userEl),
             country: this.extractCountry(userEl),
-            mood: this.extractMood(userEl),
-            isLoggedIn: !!(userEl && !userEl.classList.contains('offline'))
+            mood: this.extractMood(userEl)
         }
     }
 
@@ -219,12 +218,6 @@ class Util {
         return obj;
     }
 
-    /**
-     * @param {string} className
-     * @param {string} svgInnerHTML
-     * @param {boolean} [small]
-     * @returns {SVGElement | null}
-     */
     renderSvgIconWithClass = (className, svgInnerHTML, small = true) => {
         const el = this.createElementFromString(
             this.buildSvgIconString(className, svgInnerHTML, small)
