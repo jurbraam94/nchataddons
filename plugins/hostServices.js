@@ -532,7 +532,7 @@ class HostServices {
     }
 
     processPrivateConversationMessages = async (privateConversation, lastPCountProcessed) => {
-        console.log('Fetch private messages for conversation', privateConversation.uid, '— unread:', privateConversation.unread);
+        console.log('Fetch private messages for conversation', privateConversation.uid);
 
         const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid);
 
@@ -600,10 +600,10 @@ class HostServices {
                 unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
             }
             if (id && id.length) {
-                out.push({uid: Number(id), unread: unread});
+                out.push({uid: Number(id)});
             }
-
         }
+
         tmp.innerHTML = '';
         this.util.debug('Parsed', out.length, 'private conversation' + (out.length !== 1 ? 's' : ''));
         return out;
@@ -613,8 +613,6 @@ class HostServices {
         const privateConversationsHtmlResponse = await this.api.fetchPrivateNotify();
         const privateConversationsToProcess = this.parsePrivateConversationsHtmlResponse(privateConversationsHtmlResponse);
 
-        privateConversationsToProcess.sort(this.sortPrivateConversationsByUnreadDescThenNameAsc)
-            .filter(pc => (Number(pc.unread) || 0) > 0);
         this.util.debug('Sorted private conversations:', privateConversationsToProcess);
         this.util.verbose('Private conversations returned:', privateConversationsToProcess.length, privateConversationsToProcess);
 
@@ -761,22 +759,6 @@ class HostServices {
         }
 
         console.error('=================================================');
-    }
-
-    sortPrivateConversationsByUnreadDescThenNameAsc = (a, b) => {
-        const unreadA = Number(a.unread) || 0;
-        const unreadB = Number(b.unread) || 0;
-
-        if (unreadB !== unreadA) {
-            return unreadB - unreadA;
-        }
-
-        const nameA = (a.name || '').toLowerCase();
-        const nameB = (b.name || '').toLowerCase();
-
-        if (nameA < nameB) return -1;
-        if (nameA > nameB) return 1;
-        return 0;
     }
 
     isMessageNewer = (logDateStr) => {

@@ -278,200 +278,6 @@ class KeyValueStore {
 
 }
 
-//
-// class ActivityLogStore {
-//     constructor({keyValueStore, util} = {}) {
-//         this.ACTIVITY_LOG_KEY = `activityLog`;
-//
-//         this.store = keyValueStore;
-//         this.util = util;
-//     }
-//
-//     getAllOnlineWomen = () => {
-//         return this.list().filter(user => user.isFemale && user.online);
-//     }
-//
-//     // ---- storage util (arrays only) ----
-//     _getAll = () => {
-//         const raw = this.store.get(this.ACTIVITY_LOG_KEY);
-//         return Array.isArray(raw) ? raw : [];
-//     }
-//
-//     _save = (changedLog) => {
-//         this._saveAll([changedLog])
-//         return changedLog;
-//     }
-//
-//     _saveAll = (changedLogs) => {
-//         if (!Array.isArray(changedLogs)) {
-//             throw new Error('changedLogs expects an array');
-//         }
-//
-//         const existing = this._getAll();
-//
-//         // Make a Set of all GUIDs we’re about to replace
-//         const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
-//
-//         // Keep only logs whose GUID isn’t being replaced
-//         const filtered = existing.filter(log => !incomingIds.has(String(log.guid)));
-//
-//         // Append the new ones
-//         const next = filtered.concat(changedLogs);
-//
-//         this.store.set(this.ACTIVITY_LOG_KEY, next);
-//         return changedLogs;
-//     }
-//
-//     parseLogDateToNumber = (logDateStr) => {
-//         if (!logDateStr || typeof logDateStr !== 'string') return 0;
-//
-//         const parts = logDateStr.trim().split(/[\s\/:]+/);
-//         if (parts.length < 4) return 0;
-//
-//         const day = parseInt(parts[0], 10);
-//         const month = parseInt(parts[1], 10);
-//         const hours = parseInt(parts[2], 10);
-//         const minutes = parseInt(parts[3], 10);
-//
-//         if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
-//
-//         return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
-//     }
-//
-//     list = ({order = 'desc'} = {}) => {
-//         const arr = [...this._getAll()];
-//         arr.sort((a, b) => {
-//             const ta = this.parseLogDateToNumber(a?.ts);
-//             const tb = this.parseLogDateToNumber(b?.ts);
-//             return order === 'asc' ? ta - tb : tb - ta;
-//         });
-//         return arr;
-//     }
-//
-//     get = (guid) => {
-//         return this._getAll().find(log => String(log.guid) === String(guid)) || null;
-//     }
-//
-//     getAllByUserUid = (uid, onlyUnread = false, alsoFromSelf = false) => {
-//         const result = this._getAll().filter(
-//             log => String(log.uid) === String(uid)
-//                 && (!onlyUnread || log.unread)
-//                 && log.guid !== String(user_id)
-//         );
-//         this.util.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
-//         return result;
-//     }
-//
-//     hasSentMessageToUser = (uid) => {
-//         return this.getAllSentMessagesByUserId(uid).length > 0;
-//     }
-//
-//     getAllReceivedMessagesByUserId = (uid, onlyUnread = false) => {
-//         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-in`);
-//     }
-//
-//     getAllSentMessagesByUserId = (uid, onlyUnread = false) => {
-//         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-out`);
-//     }
-//
-//     getUnreadReceivedMessageCountByUserUid = (uid) => {
-//         return this.getAllReceivedMessagesByUserId(uid, true).length;
-//     }
-//
-//     getAllSentMessagesCountByUserId = (uid) => {
-//         return this.getAllSentMessagesByUserId(uid).length;
-//     }
-//
-//     has = ({guid, uid}) => {
-//         const e = this.get(guid);
-//         return !!(e && (!uid || String(e.uid) === String(uid)));
-//     }
-//
-//     // Merge a single patch with existing (NO SAVE)
-//     _mergeLog = (changedLog) => {
-//         if (!changedLog || !changedLog.guid) {
-//             throw new Error('_mergeOne requires changedLog.guid');
-//         }
-//         const existing = this.get(changedLog.guid);
-//         return existing ? {...existing, ...changedLog} : changedLog;
-//     }
-//
-//     _MergeLogs = (changedLogs) => {
-//         if (!Array.isArray(changedLogs)) {
-//             throw new Error('_mergeMany expects an array');
-//         }
-//
-//         const mergedLogsResult = [];
-//
-//         for (const changedLog of changedLogs) {
-//             mergedLogsResult.push(this._mergeLog(changedLog));
-//         }
-//
-//         return mergedLogsResult;
-//     }
-//
-//     set = (changedLog) => {
-//         if (!changedLog || !changedLog.guid) {
-//             throw new Error('set() requires changedLog.guid');
-//         }
-//         const mergedLogResult = this._mergeLog(changedLog);
-//         // keep your existing save here:
-//         this._save(mergedLogResult);
-//         return mergedLogResult;
-//     }
-//
-//     setAll = (changedLogs) => {
-//         if (!Array.isArray(changedLogs)) {
-//             console.error(`ChangedLogs needs to be an array, got ${typeof changedLogs}`);
-//             return null;
-//         }
-//         const mergedList = this._MergeLogs(changedLogs);
-//         // keep your existing saveAll here:
-//         this._saveAll(mergedList);
-//         return mergedList;
-//     }
-//
-//     MarkReadUntilChatLogId = (uid, lastPrivateHandledId) => {
-//         if (!uid || lastPrivateHandledId === undefined) {
-//             console.error(`Uid ${uid} or lastPrivateHandledId ${lastPrivateHandledId} is invalid`);
-//             return [];
-//         } else if (lastPrivateHandledId === 0) {
-//             console.log(`lastPrivateHandledId is 0 (this means there are no logs for user ${uid} , nothing to do`);
-//             return [];
-//         }
-//
-//         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
-//             .filter(log => log.guid <= lastPrivateHandledId)
-//             .map(log => ({...log, unread: false}))
-//         this.util.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
-//         return this.setAll(allUnreadMessagesForUid);
-//     }
-//
-//     remove = (guid) => {
-//         if (!guid) return false;
-//         const all = this._getAll();
-//         const next = all.filter(l => String(l.guid) !== String(guid));
-//         this.store.set(this.ACTIVITY_LOG_KEY, next);
-//         return next.length !== all.length;
-//     }
-//
-//     clearByKind = (kind) => {
-//         if (!kind) return 0;
-//         const all = this._getAll();
-//         const next = all.filter(l => l?.kind !== kind);
-//         this.store.set(this.ACTIVITY_LOG_KEY, next);
-//         return all.length - next.length;
-//     }
-//
-//     clearEvents = () => {
-//         return this.clearByKind('event');
-//     }
-//
-//     clear = () => {
-//         this.store.set(this.ACTIVITY_LOG_KEY, []);
-//     }
-// }
-
 class ActivityLogStore {
     constructor({keyValueStore, util} = {}) {
         this.store = keyValueStore;
@@ -506,6 +312,44 @@ class ActivityLogStore {
         }
     }
 
+    markLogHandled = (guid) => {
+        if (!guid) {
+            console.error('[ActivityLogStore] markSingleLogHandled: guid is required');
+            return null;
+        }
+
+        const log = this.get(guid);
+        if (!log) {
+            console.error('[ActivityLogStore] markSingleLogHandled: no log found for guid', guid);
+            return null;
+        }
+
+        if (log.kind !== 'dm-in-unread') {
+            console.warn(
+                '[ActivityLogStore] markSingleLogHandled: log is not dm-in-unread, ignoring',
+                {guid, kind: log.kind}
+            );
+            return null;
+        }
+
+        const updatedLog = {
+            ...log,
+            unread: false,          // keep for backward compatibility
+            kind: 'dm-in-handled'
+        };
+
+        // Reuse the same machinery as the bulk method
+        this._saveAll([updatedLog]);
+
+        this.util?.verbose?.(
+            '[ActivityLogStore] markSingleLogHandled: updated',
+            updatedLog
+        );
+
+        return updatedLog;
+    };
+
+
     markHandledUntilChatLogId = (uid, lastPrivateHandledId) => {
         if (!uid || lastPrivateHandledId === undefined) {
             console.error(`Uid ${uid} or lastPrivateHandledId ${lastPrivateHandledId} is invalid`);
@@ -524,7 +368,6 @@ class ActivityLogStore {
             )
             .map(log => ({
                 ...log,
-                unread: false,          // keep for compatibility if you still use it in UI
                 kind: 'dm-in-handled'
             }));
 
@@ -619,9 +462,6 @@ class ActivityLogStore {
         return [...unread, ...handled];
     }
 
-    /**
-     * Outgoing DMs
-     */
     _getAllDmOut() {
         return this._getAllFromBucket(this.ACTIVITY_LOG_DM_OUT_KEY);
     }

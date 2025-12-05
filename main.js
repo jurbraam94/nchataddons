@@ -111,7 +111,7 @@ class App {
                 sentMessagesBox: '#ca-log-box-sent',
                 messagesWrapper: '.ca-sections-wrapper',
                 handledMessagesBox: '#ca-log-received-handled',
-                unrepliedMessagesBox: '#ca-log-received-unreplied',
+                unreadMessagesBox: '#ca-log-received-unread',
                 presence: '#ca-log-box-presence',
                 clear: '#ca-log-clear',
                 general: '#ca-logs-box'
@@ -202,7 +202,7 @@ class App {
         this.ui.sentMessagesBox = this.util.qs(this.sel.log.sentMessagesBox);
         this.ui.messagesWrapper = this.util.qs(this.sel.log.messagesWrapper);
         this.ui.handledMessagesBox = this.util.qs(this.sel.log.handledMessagesBox);
-        this.ui.unreadMessagesBox = this.util.qs(this.sel.log.unrepliedMessagesBox);
+        this.ui.unreadMessagesBox = this.util.qs(this.sel.log.unreadMessagesBox);
         this.ui.presenceBox = this.util.qs(this.sel.log.presence);
         this.ui.logClear = this.util.qs(this.sel.log.clear);
         this.ui.loggingBox = this.util.qs(this.sel.log.general);
@@ -473,6 +473,23 @@ class App {
                 entry.remove();
                 return;
             }
+
+            if (action === 'mark-handled') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const guid = entry.getAttribute('data-guid');
+
+                const updated = this.activityLogStore.markLogHandled(guid);
+
+                this.processHandledStatusForLogsEls([updated]);
+
+                this.updateProfileChipByUid(uid);
+
+                return;
+            }
+
 
             if (action === 'open-profile') {
                 await this.popups.openUserProfilePopupUsingHostEl(uid);
@@ -751,7 +768,7 @@ class App {
         const userEl = this.findUserElById(uid);
 
         if (!userEl) {
-            this.util.debug('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
+            this.util.verbose('updateProfileChipByUid: user element not found for uid (probably offline):', uid);
             return;
         }
 
@@ -1009,15 +1026,15 @@ class App {
                    aria-live="polite"></div>
             </div>
             <div class="ca-resizer" data-resizer="sent-received"></div>
-            <div class="ca-section ca-section-expand" data-section="unreplied">
+            <div class="ca-section ca-section-expand" data-section="unread">
               <div class="ca-section-title">
-                <span>Unreplied Messages</span>
+                <span>Unread Messages</span>
                 <span class="clear-logs"
-                      data-kinds="dm-in-unreplied"
+                      data-kinds="dm-in-unread"
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.unrepliedMessagesBox}"
+              <div id="${this.sel.raw.log.unreadMessagesBox}"
                    class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
@@ -1714,7 +1731,7 @@ class App {
         const boxes = new Set();
         const hasOut = kinds.includes('dm-out');
         const hasInHandled = kinds.includes('dm-in-handled');
-        const hasInUnreplied = kinds.includes('dm-in-unreplied');
+        const hasInUnread = kinds.includes('dm-in-unread');
         const hasEvt = kinds.includes('event');
         const hasPresence = kinds.includes('login') || kinds.includes('logout');
 
@@ -1726,7 +1743,7 @@ class App {
             boxes.add(this.ui.handledMessagesBox);
         }
 
-        if (hasInUnreplied) {
+        if (hasInUnread) {
             boxes.add(this.ui.unreadMessagesBox);
         }
 
@@ -1807,18 +1824,6 @@ class App {
         }
 
         return el.scrollWidth > el.clientWidth + 1;
-    }
-
-    createExpandIndicator_ = () => {
-        const exp = document.createElement("span");
-        exp.className = "ca-expand-indicator";
-        exp.title = "Click to expand/collapse";
-        exp.textContent = "▾";
-        exp.setAttribute("data-action", "toggle-expand");
-        exp.setAttribute("role", "button");
-        exp.setAttribute("tabindex", "0");
-        exp.setAttribute("aria-expanded", "false");
-        return exp;
     }
 
     ensureExpandButtonFor_ = (logEntryEl) => {
@@ -1912,21 +1917,34 @@ class App {
                 </div>
               `;
 
-        const dmIconHTML = (kind !== 'event' && !isSystemUser)
-            ? `
+        const dmIconHTML = `
             <a href="#"
                class="${this.sel.raw.log.classes.ca_dm_link} ${this.sel.raw.log.classes.ca_dm_right} ${this.sel.raw.log.classes.ca_log_action}"
                data-action="open-dm"
                title="Direct message">
                ${this.util.buildSvgIconString(
-                'lucide lucide-mail',
-                `
+            'lucide lucide-mail',
+            `
                                 <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
                                 <polyline points="3 7,12 13,21 7"></polyline>
-                            `)} </a> ` : '';
+                            `)} </a> `;
 
-        const expandIconHTML = (kind !== 'event' && !isSystemUser) ?
-            `<span class="ca-expand-indicator" title="Click to expand/collapse" data-action="toggle-expand" role="button" tabindex="0" aria-expanded="true">▴</span>` : ``;
+        const expandIconHTML = `<span class="ca-expand-indicator" title="Click to expand/collapse" data-action="toggle-expand" role="button" tabindex="0" aria-expanded="true">▴</span>`;
+
+        const markHandledIconHTML = `
+        <a href="#"
+           class="${this.sel.raw.log.classes.ca_log_action} ca-log-mark-handled"
+           data-action="mark-handled"
+           title="Mark this message as handled">
+           ${this.util.buildSvgIconString(
+            'lucide lucide-check',
+            `
+                  <polyline points="9 12 11 14 15 10"></polyline>
+                `,
+            false
+        )}
+        </a>`;
+
 
         const deleteIconHTML = `
                 <a href="#"
@@ -1958,22 +1976,25 @@ class App {
                     <div class="${this.sel.raw.log.classes.ca_log_actions}">
                         ${expandIconHTML}
                         ${dmIconHTML}
+                        ${markHandledIconHTML}
                         ${deleteIconHTML}
                     </div>
                 </div>
             `;
 
         const logEntryEl = this.util.createElementFromString(entryHTML);
+        logEntryEl.classList.add(kind);
 
         if (user.uid !== 'system') {
             this.setLogDotLoggedInStatusForElement(this.util.qs(`${this.sel.log.classes.ca_log_dot}`, logEntryEl), user.isLoggedIn);
+        } else {
+            logEntryEl.classList.add('system-log-entry');
         }
 
         if (!logEntryEl) {
             console.error('renderLogEntry: Failed to build log entry element', {activityLog, user});
             return;
         }
-        console.log(targetContainer)
         targetContainer.appendChild(logEntryEl);
         this.ensureExpandButtonFor_(logEntryEl);
         this.util.scrollToBottom(targetContainer);
@@ -1996,6 +2017,8 @@ class App {
             this.util.debug(`Processing handled status for log ${log.guid}`);
             const el = this.util.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unreadMessagesBox);
             this.ui.handledMessagesBox.appendChild(el);
+            el.classList.remove('dm-in-unread');
+            el.classList.add('dm-in-handled');
         }
 
         this.util.scrollToBottom(this.ui.handledMessagesBox);

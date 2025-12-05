@@ -669,7 +669,7 @@
     padding: 0 !important;
 }
 
-#ca-log-received-unreplied,
+#ca-log-received-unread,
 #ca-log-received-handled {
     flex: 1 1 0;
     overflow-y: auto;
@@ -911,6 +911,7 @@ svg.svg-large {
     cursor: pointer;
     transition: all 0.2s;
     user-select: none;
+    display: none;
 }
 
 .ca-expand-indicator:hover {
@@ -920,6 +921,19 @@ svg.svg-large {
 
 .ca-text-expanded .ca-expand-indicator {
     background: rgba(147, 197, 253, 0.3);
+}
+
+.ca-log-entry .ca-log-mark-handled {
+    display: none;
+}
+
+.ca-log-entry.dm-in-unread .ca-log-mark-handled {
+    display: inline-block;
+}
+
+.ca-log-entry.system-log-entry .ca-expand-indicator,
+.ca-log-entry.system-log-entry .ca-dm-link {
+    display: none;
 }
 
 /* Image preview */
