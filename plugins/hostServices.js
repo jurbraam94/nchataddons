@@ -51,6 +51,7 @@ class HostServices {
 
     init = async () => {
         this.restoreAllLogs();
+        await this.syncUsersFromDom(document.querySelectorAll('.online_user .user_item'));
 
         this.installNetworkTaps();
         this.installPrivateSendInterceptor();
@@ -155,23 +156,25 @@ class HostServices {
                 ]);
                 resultPatches.push(newUserJson);
                 updatedUserJson = newUserJson;
+
+                this.handleLoggedInStatus(updatedUserJson);
+                if (updatedUserJson.isFemale) {
+                    femaleLoggedInCount++;
+                } else {
+                    othersLoggedInCount++;
+                }
             }
 
             // If there's still no DOM element for this user, clone + render a new one
             if (!existingUserEl) {
                 await this.app.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson);
-
-                // Track login status changes (same logic as before)
-                if (!this.isInitialLoad) {
-                    this.handleLoggedInStatus(updatedUserJson);
-                    if (updatedUserJson.isFemale) {
-                        femaleLoggedInCount++;
-                    } else {
-                        othersLoggedInCount++;
-                    }
-                }
             } else {
                 parsedUserItemEl.remove();
+            }
+
+            if (this.isInitialLoad) {
+                // Track login status changes (same logic as before)
+                this.app.setLogDotsLoggedInStatusForUid(updatedUserJson.uid, updatedUserJson.isLoggedIn);
             }
 
             // User is no longer a candidate for "logged out"
@@ -184,7 +187,6 @@ class HostServices {
             } else {
                 totalOthersLoggedInCount++;
             }
-
         }
 
         // Any users left in maybeLoggedOutMap have gone offline
@@ -544,9 +546,6 @@ class HostServices {
     }
 
     handleLoggedInStatus = (user) => {
-        if (this.isInitialLoad) {
-            return;
-        }
         if (!user) {
             console.error('[USER_LIST] Could not find user in store for uid', user.uid);
         }
@@ -814,7 +813,7 @@ class HostServices {
             ...this.createLogObject('has logged in.', user),
             action: 'login',
         };
-        this.activityLogStore.saveLoginLogout(log);
+        //this.activityLogStore.saveLoginLogout(log);
         this.app.renderLogEntry(log, 'login', this.app.ui.loginLogoutBox, user.isLoggedIn);
     }
 
@@ -823,7 +822,7 @@ class HostServices {
             ...this.createLogObject('has logged out.', user),
             action: 'logout',
         };
-        this.activityLogStore.saveLoginLogout(log);
+        //this.activityLogStore.saveLoginLogout(log);
         this.app.renderLogEntry(log, 'logout', this.app.ui.loginLogoutBox, user.isLoggedIn);
     }
 
