@@ -35,7 +35,9 @@ class HostServices {
         this.userRefreshInterval = 30000;
 
         this.shouldIncludeFemaleUsers = true;
-        this.shouldIncludeOtherUsers
+        this.shouldIncludeOtherUsers = true;
+
+        this.watermark = null;
 
         this._xhrOpen = null;
         this._xhrSend = null;
@@ -45,10 +47,6 @@ class HostServices {
                 caction: '', room: '', notify: '', curset: ''
             }
         };
-
-        if (this.isInitialLoad) {
-            this.isInitialLoad = false;
-        }
     }
 
     init = async () => {
@@ -61,7 +59,12 @@ class HostServices {
         this._installAudioAutoplayGate();
         await this.startRefreshUsersLoop({intervalMs: 30000, runImmediately: true});
 
+        this.watermark = this.settingsStore.getGlobalWatermark();
         await this.restoreLastDmFromStore();
+
+        if (this.isInitialLoad) {
+            this.isInitialLoad = false;
+        }
     }
 
     _removeSuperBotMethods = () => {
@@ -360,7 +363,7 @@ class HostServices {
                 caction: String(this.state.CHAT_CTX.caction),
                 last: 99999999999999, //prevents regular chat messages to be fetched too.
                 priv: uid,
-                lastp: this.userStore.getLastPrivateReadId(uid),
+                lastp: this.userStore.getlastPrivateHandledId(uid),
                 pcount: this.userStore.getLastPCountProcessed(uid),
                 room: String(this.state.CHAT_CTX.room),
                 notify: String(this.state.CHAT_CTX.notify),
@@ -379,7 +382,7 @@ class HostServices {
             e._ca_context = {
                 function: 'f etchPrivateMessagesForUid',
                 user: {
-                    lastPrivateReadId: this.userStore.getLastPrivateReadId(uid),
+                    lastPrivateHandledId: this.userStore.getlastPrivateHandledId(uid),
                     pcount: this.userStore.getLastPCountProcessed(uid)
                 },
                 chatCtx: {
@@ -399,7 +402,7 @@ class HostServices {
     processNewIncomingPrivateMessage = (newPrivateConversationMessage, user) => {
         console.log(`New incoming private message ${newPrivateConversationMessage.logId} for user ${user.uid}`, newPrivateConversationMessage);
         this.logLine(
-            'dm-in',
+            'dm-in-unread',
             this.app.decodeHTMLEntities(newPrivateConversationMessage?.log_content),
             user,
             newPrivateConversationMessage.log_id
@@ -416,13 +419,13 @@ class HostServices {
         let skippedMessages = 0;
         let skippedReasons = '';
         let user = await this.userStore.getOrFetch(fromUid);
-        let lastPrivateReadId = user.lastPrivateReadId;
+        let lastPrivateHandledId = user.lastPrivateHandledId;
 
         if (privateConversationMessages.length > 0) {
             for (const privateConversationMessage of privateConversationMessages) {
                 const validationResult = this.validatePrivateChatLog(
                     privateConversationMessage,
-                    lastPrivateReadId
+                    lastPrivateHandledId
                 );
 
                 if (!validationResult.accepted) {
@@ -433,8 +436,8 @@ class HostServices {
 
                 this.processNewIncomingPrivateMessage(privateConversationMessage, user);
 
-                if (validationResult.logId > lastPrivateReadId) {
-                    lastPrivateReadId = validationResult.logId;
+                if (validationResult.logId > lastPrivateHandledId) {
+                    lastPrivateHandledId = validationResult.logId;
                 }
 
                 newMessages++;
@@ -451,10 +454,10 @@ class HostServices {
         };
 
         if (newMessages > 0) {
-            if (lastPrivateReadId > (user.lastPrivateReadId)) {
-                updatedUser.lastPrivateReadId = lastPrivateReadId;
+            if (lastPrivateHandledId > (user.lastPrivateHandledId)) {
+                updatedUser.lastPrivateHandledId = lastPrivateHandledId;
                 this.util.verbose(
-                    `[PrivateChat] Setting lastPrivateReadId for user ${user.uid} to ${lastPrivateReadId}`
+                    `[PrivateChat] Setting lastPrivateHandledId for user ${user.uid} to ${lastPrivateHandledId}`
                 );
             }
 
@@ -474,27 +477,27 @@ class HostServices {
             // --- RECOVERY + KILLSWITCH LOGIC ---
 
             if (tries >= 3) {
-                const hadNonZeroParsedBefore = (user.lastPrivateReadId || 0) > 0;
+                const hadNonZeroParsedBefore = (user.lastPrivateHandledId || 0) > 0;
 
                 if (hadNonZeroParsedBefore) {
-                    // Stage 1: we had a non-zero lastPrivateReadId, but repeatedly nothing
+                    // Stage 1: we had a non-zero lastPrivateHandledId, but repeatedly nothing
                     // parsed; reset to 0 to trigger a full history reload on next loop.
-                    updatedUser.lastPrivateReadId = 0;
+                    updatedUser.lastPrivateHandledId = 0;
                     console.warn(
                         `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid}; ` +
-                        `resetting complete chat history (setting lastPrivateReadId to 0)`
+                        `resetting complete chat history (setting lastPrivateHandledId to 0)`
                     );
                 } else {
-                    // // Stage 2: we are ALREADY at lastPrivateReadId === 0 and still
+                    // // Stage 2: we are ALREADY at lastPrivateHandledId === 0 and still
                     // // getting nothing accepted after multiple tries -> hard abort.
                     // console.error(
-                    //     `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with lastPrivateReadId already 0. ` +
+                    //     `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with lastPrivateHandledId already 0. ` +
                     //     `Aborting private DM polling via killswitch.`
                     // );
                     //
                     // const err = new Error(
                     //     `[PrivateChat] Repeatedly failed to parse any private DM logs for uid ${user.uid} ` +
-                    //     `even from lastPrivateReadId=0 (attempts=${tries}).`
+                    //     `even from lastPrivateHandledId=0 (attempts=${tries}).`
                     // );
                     //
                     // // Label for our global error handler
@@ -506,8 +509,8 @@ class HostServices {
                     //     uid: user.uid,
                     //     initialFetch,
                     //     attemptsWithoutMessages: tries,
-                    //     lastPrivateReadIdBefore: user.lastPrivateReadId || 0,
-                    //     lastPrivateReadIdAfter: updatedUser.lastPrivateReadId || 0,
+                    //     lastPrivateHandledIdBefore: user.lastPrivateHandledId || 0,
+                    //     lastPrivateHandledIdAfter: updatedUser.lastPrivateHandledId || 0,
                     //     hasLogs,
                     //     privateChatLogsLength: hasLogs ? privateChatLogs.length : 0,
                     //     // Keep this small – we don't want to flood logs with full history
@@ -627,8 +630,8 @@ class HostServices {
         }
     }
 
-    validatePrivateChatLog = (privateConversationMessage, lastPrivateReadId) => {
-        const initialFetch = lastPrivateReadId === 0;
+    validatePrivateChatLog = (privateConversationMessage, lastPrivateHandledId) => {
+        const initialFetch = lastPrivateHandledId === 0;
         console.log(`Comparing from uid ${privateConversationMessage.user_id} with own id ${user_id}`)
         if (String(privateConversationMessage.user_id) === String(user_id)) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'from myself'};
@@ -636,14 +639,14 @@ class HostServices {
 
         this.util.verbose(
             `Initial fetch: skipping old message ${privateConversationMessage.log_id} for uid ${privateConversationMessage.log_id}; ` +
-            `watermark=${this.settingsStore.getGlobalWatermark()}`
+            `watermark=${this.watermark}`
         );
 
         if (initialFetch && !this.isMessageNewer(privateConversationMessage.log_date)) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'too old'};
         }
 
-        if (privateConversationMessage.log_id <= lastPrivateReadId) {
+        if (privateConversationMessage.log_id <= lastPrivateHandledId) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'already shown'};
         }
 
@@ -777,17 +780,11 @@ class HostServices {
     }
 
     isMessageNewer = (logDateStr) => {
-        const watermark = this.settingsStore.getGlobalWatermark();
-        if (!watermark) {
-            console.warn(`.isMessageNewer() - watermark not found`);
-            return true;
-        }
-
         const msgNum = this.parseLogDateToNumber(this.util.toHourMinuteSecondFormat(logDateStr));
         const wmNum = this.parseLogDateToNumber(this.util.toHourMinuteSecondFormat(watermark));
         this.util.verbose('Date comparison:', {
             logDate: logDateStr, logDateNum: msgNum,
-            watermark, watermarkNum: wmNum
+            watermark: this.watermark, watermarkNum: wmNum
         });
         if (!msgNum) {
             throw new Error(`Invalid MsgNum: ${msgNum}`);
@@ -796,7 +793,7 @@ class HostServices {
         const isNewer = msgNum >= wmNum;
         this.util.verbose('Date comparison:', {
             logDate: logDateStr, logDateNum: msgNum,
-            watermark, watermarkNum: wmNum, isNewer
+            watermark: this.watermark, watermarkNum: wmNum, isNewer
         });
         return isNewer;
     }
@@ -840,19 +837,11 @@ class HostServices {
             content,
             uid: user.uid,
             guid: guid ? guid : crypto.randomUUID(),
-            unread: (kind === 'dm-in') ? true : undefined
+            unread: (kind === 'dm-in-unread' +
+                '') ? true : undefined
         };
 
         this.app.renderLogEntry(entry, user);
-        this.saveLogEntry(entry.ts, entry.kind, entry.content, entry.uid, entry.guid);
-    }
-
-    saveLogEntry = (ts, kind, content, uid, guid) => {
-        if (kind === 'login' || kind === 'logout') return;
-        const entry = {
-            ts, kind, content, uid, guid,
-            unread: (kind === 'dm-in') ? true : undefined
-        };
         this.activityLogStore.set(entry);
     }
 
@@ -1023,9 +1012,9 @@ class HostServices {
         }
 
         const affectedLogs =
-            this.activityLogStore.MarkReadUntilChatLogId(
+            this.activityLogStore.markHandledUntilChatLogId(
                 uid,
-                dmSentToUser.lastPrivateReadId
+                dmSentToUser.lastPrivateHandledId
             );
 
         if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
@@ -1033,7 +1022,7 @@ class HostServices {
             return true;
         }
 
-        this.app.processReadStatusForLogsEls(affectedLogs);
+        this.app.processHandledStatusForLogsEls(affectedLogs);
         return true;
     }
 

@@ -68,8 +68,8 @@ class App {
             messagesWrapper: null,
             presenceBox: null,
             logClear: null,
-            repliedMessageBox: null,
-            unrepliedMessageBox: null,
+            handledMessagesBox: null,
+            unreadMessagesBox: null,
             loggingBox: null,
             userContainersWrapper: null,
             femaleUserContainerGroup: null,
@@ -103,14 +103,14 @@ class App {
                     ca_log_text: '.ca-log-text',
                     ca_sent_chip: '.ca-sent-chip',
                     ca_unread_messages: '.ca-unread-messages',
-                    ca_replied_messages: '.ca-replied-messages',
-                    ca_sent_chip_all_read: '.ca-sent-chip-all-read',
+                    ca_handled_messages: '.ca-handled-messages',
+                    ca_sent_chip_all_handled: '.ca-sent-chip-all-handled',
                     ca_sent_chip_unread: '.ca-sent-chip-unread',
                     user_item: '.user_item'
                 },
                 sentMessagesBox: '#ca-log-box-sent',
                 messagesWrapper: '.ca-sections-wrapper',
-                repliedMessagesBox: '#ca-log-received-replied',
+                handledMessagesBox: '#ca-log-received-handled',
                 unrepliedMessagesBox: '#ca-log-received-unreplied',
                 presence: '#ca-log-box-presence',
                 clear: '#ca-log-clear',
@@ -189,7 +189,7 @@ class App {
         this.ui.caChatRight.appendChild(userContainersWrapper);
         this.ui.userContainersWrapper = userContainersWrapper;
 
-        this.shouldHideRepliedUsers = this.settingsStore.getHideReplied();
+        this.shouldHideHandledUsers = this.settingsStore.getHideHandled();
         this.shouldIncludeOtherUsers = this.settingsStore.getShouldIncludeOthers();
         this.shouldShowBroadcastCheckboxes = this.settingsStore.getShowBroadcastSelectionBoxes();
 
@@ -201,8 +201,8 @@ class App {
 
         this.ui.sentMessagesBox = this.util.qs(this.sel.log.sentMessagesBox);
         this.ui.messagesWrapper = this.util.qs(this.sel.log.messagesWrapper);
-        this.ui.repliedMessageBox = this.util.qs(this.sel.log.repliedMessagesBox);
-        this.ui.unrepliedMessageBox = this.util.qs(this.sel.log.unrepliedMessagesBox);
+        this.ui.handledMessagesBox = this.util.qs(this.sel.log.handledMessagesBox);
+        this.ui.unreadMessagesBox = this.util.qs(this.sel.log.unrepliedMessagesBox);
         this.ui.presenceBox = this.util.qs(this.sel.log.presence);
         this.ui.logClear = this.util.qs(this.sel.log.clear);
         this.ui.loggingBox = this.util.qs(this.sel.log.general);
@@ -215,8 +215,8 @@ class App {
         this.util.qs('#private_center').after(this.util.qs('#private_menu'));
 
         this.util.installLogImageHoverPreview([
-            this.ui.repliedMessageBox,
-            this.ui.unrepliedMessageBox,
+            this.ui.handledMessagesBox,
+            this.ui.unreadMessagesBox,
             this.ui.sentMessagesBox,
             this.ui.presenceBox,
             this.ui.loggingBox,
@@ -261,8 +261,8 @@ class App {
 
         await this.hostServices.init();
 
-        this.util.scrollToBottom(this.ui.repliedMessageBox);
-        this.util.scrollToBottom(this.ui.unrepliedMessageBox);
+        this.util.scrollToBottom(this.ui.handledMessagesBox);
+        this.util.scrollToBottom(this.ui.unreadMessagesBox);
         this.util.scrollToBottom(this.ui.sentMessagesBox);
 
         return this;
@@ -416,8 +416,8 @@ class App {
             this.ui.sentMessagesBox,
             this.ui.messagesWrapper,
             this.ui.presenceBox,
-            this.ui.unrepliedMessageBox,
-            this.ui.repliedMessageBox,
+            this.ui.unreadMessagesBox,
+            this.ui.handledMessagesBox,
             this.ui.loggingBox
         ];
         boxes.forEach(box => {
@@ -712,15 +712,15 @@ class App {
             this.util.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
             const chip = this._createChipForUserItem(userEl);
 
-            userEl.classList.remove(this.sel.raw.log.classes.ca_replied_messages);
+            userEl.classList.remove(this.sel.raw.log.classes.ca_handled_messages);
             userEl.classList.add(this.sel.raw.log.classes.ca_unread_messages);
             chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_unread);
-            chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_read);
+            chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_handled);
             chip.textContent = `${unreadReceivedMessagesCount}`;
             userEl.style.display = '';
         } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
             this.util.verbose(
-                'Adding all read chip to user:',
+                'Adding all handled chip to user:',
                 uid,
                 ', unread received messages count: ',
                 unreadReceivedMessagesCount,
@@ -730,13 +730,13 @@ class App {
 
             const chip = this._createChipForUserItem(userEl);
 
-            userEl.classList.add(this.sel.raw.log.classes.ca_replied_messages);
+            userEl.classList.add(this.sel.raw.log.classes.ca_handled_messages);
             userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
 
-            chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_read);
+            chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_handled);
             chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
             chip.textContent = '✓';
-            userEl.style.display = this.shouldHideRepliedUsers ? 'none' : '';
+            userEl.style.display = this.shouldHideHandledUsers ? 'none' : '';
         } else {
             userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
             this.util.qs(this.sel.raw.log.classes.ca_sent_chip, {
@@ -1021,16 +1021,16 @@ class App {
                    class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
-            <div class="ca-resizer" data-resizer="received-replied"></div>
-            <div class="ca-section ca-section-expand" data-section="replied" id="${this.sel.raw.log.repliedMessageBox}">
+            <div class="ca-resizer" data-resizer="received-handled"></div>
+            <div class="ca-section ca-section-expand" data-section="handled">
               <div class="ca-section-title">
-                <span>Replied Messages</span>
+                <span>Handled Messages</span>
                 <span class="clear-logs"
-                      data-kinds="dm-in-replied"
+                      data-kinds="dm-in-handled"
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.repliedMessagesBox}"
+              <div id="${this.sel.raw.log.handledMessagesBox}"
                    class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
@@ -1295,8 +1295,8 @@ class App {
 
     handleLogContainersElClear = () => {
         this.ui.sentMessagesBox.innerHTML = '';
-        this.ui.unrepliedMessageBox.innerHTML = '';
-        this.ui.repliedMessageBox.innerHTML = '';
+        this.ui.unreadMessagesBox.innerHTML = '';
+        this.ui.handledMessagesBox.innerHTML = '';
         this.ui.loggingBox.innerHTML = '';
         this.ui.presenceBox.innerHTML = '';
 
@@ -1486,7 +1486,7 @@ class App {
 
         if (refs.subrow) {
             this.renderAndWireEnableBroadcastCheckbox(refs.subrow, this.ui.femaleUsersContainer);
-            this.renderAndWireHideRepliedToggle(refs.subrow, this.ui.femaleUsersContainer);
+            this.renderAndWireHideHandledToggle(refs.subrow, this.ui.femaleUsersContainer);
         } else {
             console.warn('[CA] createFemaleUsersContainer: subrow is missing, cannot render toggles');
         }
@@ -1527,7 +1527,7 @@ class App {
                 this.util.debug("[CA] Include other users:", checked);
                 this.shouldIncludeOtherUsers = checked;
                 this.settingsStore.setShouldIncludeOthers(checked);
-                this.applyHideRepliedUseritemEls(checked);
+                this.applyHideHandledUseritemEls(checked);
                 this.util.qs(`.ca-user-list-content`, this.ui.otherUsersContainer).innerHTML = "";
                 await this.hostServices.refreshUserList();
             }
@@ -1536,17 +1536,17 @@ class App {
         elToAppendTo.appendChild(label);
     }
 
-    renderAndWireHideRepliedToggle = (elToAppendTo, targetContainer) => {
+    renderAndWireHideHandledToggle = (elToAppendTo, targetContainer) => {
         const label = document.createElement('label');
         label.style.marginLeft = '8px';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.id = 'ca-hide-replied-ck-toggle';
-        checkbox.checked = !!this.shouldHideRepliedUsers;
+        checkbox.id = 'ca-hide-handled-ck-toggle';
+        checkbox.checked = !!this.shouldHideHandledUsers;
 
         const textSpan = document.createElement('span');
-        textSpan.textContent = 'Hide replied users';
+        textSpan.textContent = 'Hide handled users';
 
         label.appendChild(checkbox);
         label.appendChild(textSpan);
@@ -1556,24 +1556,24 @@ class App {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                this.util.debug("[CA] Hide replied users:", checkbox.checked);
+                this.util.debug("[CA] Hide handled users:", checkbox.checked);
 
                 const target = e.target;
 
                 if (!(target instanceof HTMLInputElement)) {
                     console.warn(
-                        "[CA] renderAndWireHideRepliedToggle: event target is not an input",
+                        "[CA] renderAndWireHideHandledToggle: event target is not an input",
                         e
                     );
                     return;
                 }
 
                 const checked = !!target.checked;
-                this.util.debug("[CA] Hide replied users:", checked);
-                this.shouldHideRepliedUsers = checked;
-                this.settingsStore.setHideReplied(checked);
-                targetContainer.classList.toggle("ca-hide-replied-ck-toggle", checked);
-                this.applyHideRepliedUseritemEls(checked);
+                this.util.debug("[CA] Hide handled users:", checked);
+                this.shouldHideHandledUsers = checked;
+                this.settingsStore.setHideHandled(checked);
+                targetContainer.classList.toggle("ca-hide-handled-ck-toggle", checked);
+                this.applyHideHandledUseritemEls(checked);
             }
         );
 
@@ -1608,9 +1608,9 @@ class App {
         elToAppendTo.appendChild(label);
     }
 
-    applyHideRepliedUseritemEls = (hide) => {
-        const repliedEls = this.util.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_replied_messages}`, this.ui.femaleUsersContainer);
-        repliedEls.forEach((el) => {
+    applyHideHandledUseritemEls = (hide) => {
+        const handledEls = this.util.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_handled_messages}`, this.ui.femaleUsersContainer);
+        handledEls.forEach((el) => {
             el.style.display = hide ? 'none' : '';
         });
     }
@@ -1713,7 +1713,7 @@ class App {
     _boxesForKinds = (kinds) => {
         const boxes = new Set();
         const hasOut = kinds.includes('dm-out');
-        const hasInReplied = kinds.includes('dm-in-replied');
+        const hasInHandled = kinds.includes('dm-in-handled');
         const hasInUnreplied = kinds.includes('dm-in-unreplied');
         const hasEvt = kinds.includes('event');
         const hasPresence = kinds.includes('login') || kinds.includes('logout');
@@ -1722,12 +1722,12 @@ class App {
             boxes.add(this.ui.sentMessagesBox);
         }
 
-        if (hasInReplied) {
-            boxes.add(this.ui.repliedMessageBox);
+        if (hasInHandled) {
+            boxes.add(this.ui.handledMessagesBox);
         }
 
         if (hasInUnreplied) {
-            boxes.add(this.ui.unrepliedMessageBox);
+            boxes.add(this.ui.unreadMessagesBox);
         }
 
         if (hasPresence) {
@@ -1861,14 +1861,13 @@ class App {
                 targetContainer = this.ui.sentMessagesBox;
                 break;
 
-            case 'dm-in': {
-                if (activityLog.unread !== false) {
-                    targetContainer = this.ui.unrepliedMessageBox;
-                } else {
-                    targetContainer = this.ui.repliedMessageBox;
-                }
+            case 'dm-in-handled':
+                targetContainer = this.ui.handledMessagesBox;
                 break;
-            }
+
+            case 'dm-in-unread':
+                targetContainer = this.ui.unreadMessagesBox;
+                break;
 
             case 'login':
             case 'logout':
@@ -1974,7 +1973,7 @@ class App {
             console.error('renderLogEntry: Failed to build log entry element', {activityLog, user});
             return;
         }
-
+        console.log(targetContainer)
         targetContainer.appendChild(logEntryEl);
         this.ensureExpandButtonFor_(logEntryEl);
         this.util.scrollToBottom(targetContainer);
@@ -1992,14 +1991,14 @@ class App {
           </a>`;
     }
 
-    processReadStatusForLogsEls = (logs) => {
+    processHandledStatusForLogsEls = (logs) => {
         for (const log of logs) {
-            this.util.debug(`Processing read status for log ${log.guid}`);
-            const el = this.util.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unrepliedMessageBox);
-            this.ui.repliedMessageBox.appendChild(el);
+            this.util.debug(`Processing handled status for log ${log.guid}`);
+            const el = this.util.qs(`.ca-log-entry[data-guid="${log.guid}"]`, this.ui.unreadMessagesBox);
+            this.ui.handledMessagesBox.appendChild(el);
         }
 
-        this.util.scrollToBottom(this.ui.repliedMessageBox);
+        this.util.scrollToBottom(this.ui.handledMessagesBox);
     }
 
     destroy = () => {

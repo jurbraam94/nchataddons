@@ -6,14 +6,13 @@ class SettingsStore {
         this.VERBOSE_MODE_KEY = `verboseMode`;
         this.PREDEFINED_MESSAGES_KEY = `predefined_messages`;
         this.GLOBAL_WATERMARK_KEY = `global.watermark`;
-        this.SHOULD_HIDE_REPLIED_USERS_KEY = `shouldHideRepliedUsers`;
+        this.SHOULD_HIDE_HANDLED_USERS_KEY = `shouldHideHandledUsers`;
         this.SHOULD_INCLUDE_OTHER_USERS_KEY = `shouldIncludeOtherUsers`;
         this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY = `shouldShowBroadcastCheckboxes`;
         this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY = `userManagerVisibleColumns`;
         this.LAST_DM_UID_KEY = `lastDmUid`;
-        this.LAST_PRIVATE_READ_KEY = `lastPrivateReadId`;
+        this.LAST_PRIVATE_HANDLED_KEY = `lastPrivateHandledId`;
         this.PCOUNT_PROCESSED_KEY = `pcountProcessed`;
-
 
         this.store = keyValueStore;
         this.util = util;
@@ -45,12 +44,12 @@ class SettingsStore {
         this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
     }
 
-    getLastPrivateReadId = () => {
-        return Number(this.store.get(this.LAST_PRIVATE_READ_KEY)) || 0;
+    getlastPrivateHandledId = () => {
+        return Number(this.store.get(this.LAST_PRIVATE_HANDLED_KEY)) || 0;
     }
 
-    setLastPrivateReadId = (lastPrivateReadd) => {
-        this.store.set(this.LAST_PRIVATE_READ_KEY, String(lastPrivateReadd));
+    setlastPrivateHandledId = (lastPrivateHandledId) => {
+        this.store.set(this.LAST_PRIVATE_HANDLED_KEY, String(lastPrivateHandledId));
     }
 
     getPCountProcessed = () => {
@@ -67,7 +66,7 @@ class SettingsStore {
 
     getShowBroadcastSelectionBoxes = () => {
         return this.store.getBool(this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY, {
-            default: false
+            defaultIfMissing: false
         });
     }
 
@@ -77,7 +76,7 @@ class SettingsStore {
 
     getShouldIncludeOthers = () => {
         return this.store.getBool(this.SHOULD_INCLUDE_OTHER_USERS_KEY, {
-            default: true
+            defaultIfMissing: true
         });
     }
 
@@ -85,19 +84,19 @@ class SettingsStore {
         this.store.set(this.SHOULD_INCLUDE_OTHER_USERS_KEY, String(shouldIncludeOthers));
     }
 
-    getHideReplied = () => {
-        return this.store.getBool(this.SHOULD_HIDE_REPLIED_USERS_KEY, {
-            default: false
+    getHideHandled = () => {
+        return this.store.getBool(this.SHOULD_HIDE_HANDLED_USERS_KEY, {
+            defaultIfMissing: false
         });
     }
 
-    setHideReplied = (hideReplied) => {
-        this.store.set(this.SHOULD_HIDE_REPLIED_USERS_KEY, String(hideReplied));
+    setHideHandled = (hideHandled) => {
+        this.store.set(this.SHOULD_HIDE_HANDLED_USERS_KEY, String(hideHandled));
     }
 
     getGlobalWatermark = () => {
         return this.store.get(this.GLOBAL_WATERMARK_KEY, {
-            default: this.util.getTimeStampInWebsiteFormat()
+            defaultIfMissing: this.util.getTimeStampInWebsiteFormat()
         });
     }
 
@@ -200,10 +199,10 @@ class KeyValueStore {
         key,
         {
             prefix = this.STORAGE_KEY_PREFIX,
-            default: defaultIfMissing
+            defaultIfMissing
         } = {}
     ) => {
-        const val = this.get(key, {prefix, default: defaultIfMissing});
+        const val = this.get(key, {prefix, defaultIfMissing: defaultIfMissing});
         return val === true;
     }
 
@@ -211,7 +210,7 @@ class KeyValueStore {
         key,
         {
             prefix = this.STORAGE_KEY_PREFIX,
-            default: defaultIfMissing = undefined,
+            defaultIfMissing = undefined,
             parseJson = true
         } = {}
     ) => {
@@ -248,7 +247,6 @@ class KeyValueStore {
         return trimmed;
     }
 
-
     getPersisted = (key) => {
         return this.get(key, {prefix: this.PERSIST_STORAGE_KEY_PREFIX});
     }
@@ -280,367 +278,51 @@ class KeyValueStore {
 
 }
 
-class ActivityLogStore {
-    constructor({keyValueStore, util} = {}) {
-        this.ACTIVITY_LOG_KEY = `activityLog`;
-
-        this.store = keyValueStore;
-        this.util = util;
-    }
-
-    getAllOnlineWomen = () => {
-        return this.list().filter(user => user.isFemale && user.online);
-    }
-
-    // ---- storage util (arrays only) ----
-    _getAll = () => {
-        const raw = this.store.get(this.ACTIVITY_LOG_KEY);
-        return Array.isArray(raw) ? raw : [];
-    }
-
-    _save = (changedLog) => {
-        this._saveAll([changedLog])
-        return changedLog;
-    }
-
-    _saveAll = (changedLogs) => {
-        if (!Array.isArray(changedLogs)) {
-            throw new Error('changedLogs expects an array');
-        }
-
-        const existing = this._getAll();
-
-        // Make a Set of all GUIDs we’re about to replace
-        const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
-
-        // Keep only logs whose GUID isn’t being replaced
-        const filtered = existing.filter(log => !incomingIds.has(String(log.guid)));
-
-        // Append the new ones
-        const next = filtered.concat(changedLogs);
-
-        this.store.set(this.ACTIVITY_LOG_KEY, next);
-        return changedLogs;
-    }
-
-    parseLogDateToNumber = (logDateStr) => {
-        if (!logDateStr || typeof logDateStr !== 'string') return 0;
-
-        const parts = logDateStr.trim().split(/[\s\/:]+/);
-        if (parts.length < 4) return 0;
-
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10);
-        const hours = parseInt(parts[2], 10);
-        const minutes = parseInt(parts[3], 10);
-
-        if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
-
-        return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
-    }
-
-    list = ({order = 'desc'} = {}) => {
-        const arr = [...this._getAll()];
-        arr.sort((a, b) => {
-            const ta = this.parseLogDateToNumber(a?.ts);
-            const tb = this.parseLogDateToNumber(b?.ts);
-            return order === 'asc' ? ta - tb : tb - ta;
-        });
-        return arr;
-    }
-
-    get = (guid) => {
-        return this._getAll().find(log => String(log.guid) === String(guid)) || null;
-    }
-
-    getAllByUserUid = (uid, onlyUnread = false, alsoFromSelf = false) => {
-        const result = this._getAll().filter(
-            log => String(log.uid) === String(uid)
-                && (!onlyUnread || log.unread)
-                && log.guid !== String(user_id)
-        );
-        this.util.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
-        return result;
-    }
-
-    hasSentMessageToUser = (uid) => {
-        return this.getAllSentMessagesByUserId(uid).length > 0;
-    }
-
-    getAllReceivedMessagesByUserId = (uid, onlyUnread = false) => {
-        return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-in`);
-    }
-
-    getAllSentMessagesByUserId = (uid, onlyUnread = false) => {
-        return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-out`);
-    }
-
-    getUnreadReceivedMessageCountByUserUid = (uid) => {
-        return this.getAllReceivedMessagesByUserId(uid, true).length;
-    }
-
-    getAllSentMessagesCountByUserId = (uid) => {
-        return this.getAllSentMessagesByUserId(uid).length;
-    }
-
-    has = ({guid, uid}) => {
-        const e = this.get(guid);
-        return !!(e && (!uid || String(e.uid) === String(uid)));
-    }
-
-    // Merge a single patch with existing (NO SAVE)
-    _mergeLog = (changedLog) => {
-        if (!changedLog || !changedLog.guid) {
-            throw new Error('_mergeOne requires changedLog.guid');
-        }
-        const existing = this.get(changedLog.guid);
-        return existing ? {...existing, ...changedLog} : changedLog;
-    }
-
-    _MergeLogs = (changedLogs) => {
-        if (!Array.isArray(changedLogs)) {
-            throw new Error('_mergeMany expects an array');
-        }
-
-        const mergedLogsResult = [];
-
-        for (const changedLog of changedLogs) {
-            mergedLogsResult.push(this._mergeLog(changedLog));
-        }
-
-        return mergedLogsResult;
-    }
-
-    set = (changedLog) => {
-        if (!changedLog || !changedLog.guid) {
-            throw new Error('set() requires changedLog.guid');
-        }
-        const mergedLogResult = this._mergeLog(changedLog);
-        // keep your existing save here:
-        this._save(mergedLogResult);
-        return mergedLogResult;
-    }
-
-    setAll = (changedLogs) => {
-        if (!Array.isArray(changedLogs)) {
-            console.error(`ChangedLogs needs to be an array, got ${typeof changedLogs}`);
-            return null;
-        }
-        const mergedList = this._MergeLogs(changedLogs);
-        // keep your existing saveAll here:
-        this._saveAll(mergedList);
-        return mergedList;
-    }
-
-    MarkReadUntilChatLogId = (uid, lastPrivateReadId) => {
-        if (!uid || lastPrivateReadId === undefined) {
-            console.error(`Uid ${uid} or lastPrivateReadId ${lastPrivateReadId} is invalid`);
-            return [];
-        } else if (lastPrivateReadId === 0) {
-            console.log(`lastPrivateReadId is 0 (this means there are no logs for user ${uid} , nothing to do`);
-            return [];
-        }
-
-        const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
-            .filter(log => log.guid <= lastPrivateReadId)
-            .map(log => ({...log, unread: false}))
-        this.util.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
-        return this.setAll(allUnreadMessagesForUid);
-    }
-
-    remove = (guid) => {
-        if (!guid) return false;
-        const all = this._getAll();
-        const next = all.filter(l => String(l.guid) !== String(guid));
-        this.store.set(this.ACTIVITY_LOG_KEY, next);
-        return next.length !== all.length;
-    }
-
-    clearByKind = (kind) => {
-        if (!kind) return 0;
-        const all = this._getAll();
-        const next = all.filter(l => l?.kind !== kind);
-        this.store.set(this.ACTIVITY_LOG_KEY, next);
-        return all.length - next.length;
-    }
-
-    clearEvents = () => {
-        return this.clearByKind('event');
-    }
-
-    clear = () => {
-        this.store.set(this.ACTIVITY_LOG_KEY, []);
-    }
-}
-
+//
 // class ActivityLogStore {
 //     constructor({keyValueStore, util} = {}) {
-//         // Legacy single-key (kept only for optional migration / back-compat)
-//         this.ACTIVITY_LOG_KEY = 'activityLog';
-//
-//         // New separate buckets
-//         this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY = 'activityLog_loginLogout';
-//         this.ACTIVITY_LOG_DM_IN_UNREAD_KEY = 'activityLog_dmInUnread';
-//         this.ACTIVITY_LOG_DM_IN_READ_KEY = 'activityLog_dmInRead';
-//         this.ACTIVITY_LOG_DM_OUT_KEY = 'activityLog_dmOut';
-//         this.ACTIVITY_LOG_EVENTS_KEY = 'activityLog_events';
-//
-//         this.ALL_BUCKET_KEYS = [
-//             this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY,
-//             this.ACTIVITY_LOG_DM_IN_UNREAD_KEY,
-//             this.ACTIVITY_LOG_DM_IN_READ_KEY,
-//             this.ACTIVITY_LOG_DM_OUT_KEY,
-//             this.ACTIVITY_LOG_EVENTS_KEY
-//         ];
+//         this.ACTIVITY_LOG_KEY = `activityLog`;
 //
 //         this.store = keyValueStore;
 //         this.util = util;
 //     }
 //
-//     getAllOnlineWomen() {
+//     getAllOnlineWomen = () => {
 //         return this.list().filter(user => user.isFemale && user.online);
 //     }
 //
-//     // ---------- bucket util ----------
-//
-//     _getAllFromBucket(bucketKey) {
-//         const raw = this.store.get(bucketKey);
+//     // ---- storage util (arrays only) ----
+//     _getAll = () => {
+//         const raw = this.store.get(this.ACTIVITY_LOG_KEY);
 //         return Array.isArray(raw) ? raw : [];
 //     }
 //
-//     _setAllForBucket(bucketKey, logs) {
-//         if (!Array.isArray(logs)) {
-//             console.error('[ActivityLogStore] _setAllForBucket: logs must be an array');
-//             return;
-//         }
-//         this.store.set(bucketKey, logs);
-//     }
-//
-//     _getAll() {
-//         // Combine all buckets into a single array, used by list() & friends
-//         const combined = [];
-//         for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
-//             const bucketKey = this.ALL_BUCKET_KEYS[i];
-//             const arr = this._getAllFromBucket(bucketKey);
-//             if (Array.isArray(arr) && arr.length > 0) {
-//                 combined.push(...arr);
-//             }
-//         }
-//         return combined;
-//     }
-//
-//     _getBucketKeyForLog(log) {
-//         if (!log || !log.kind) {
-//             console.warn('[ActivityLogStore] _getBucketKeyForLog: log.kind missing, defaulting to events bucket', log);
-//             return this.ACTIVITY_LOG_EVENTS_KEY;
-//         }
-//
-//         const kind = String(log.kind);
-//
-//         if (kind === 'login' || kind === 'logout') {
-//             return this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY;
-//         }
-//
-//         if (kind === 'dm-in') {
-//             const isUnread = !!log.unread;
-//             return isUnread
-//                 ? this.ACTIVITY_LOG_DM_IN_UNREAD_KEY
-//                 : this.ACTIVITY_LOG_DM_IN_READ_KEY;
-//         }
-//
-//         if (kind === 'dm-out') {
-//             return this.ACTIVITY_LOG_DM_OUT_KEY;
-//         }
-//
-//         if (kind === 'event') {
-//             return this.ACTIVITY_LOG_EVENTS_KEY;
-//         }
-//
-//         console.warn('[ActivityLogStore] _getBucketKeyForLog: unknown kind, defaulting to events bucket', kind, log);
-//         return this.ACTIVITY_LOG_EVENTS_KEY;
-//     }
-//
-//     // ---------- storage util (arrays only) ----------
-//
-//     _save(changedLog) {
-//         this._saveAll([changedLog]);
+//     _save = (changedLog) => {
+//         this._saveAll([changedLog])
 //         return changedLog;
 //     }
 //
-//     _saveAll(changedLogs) {
+//     _saveAll = (changedLogs) => {
 //         if (!Array.isArray(changedLogs)) {
-//             console.error('[ActivityLogStore] _saveAll: changedLogs expects an array, got', typeof changedLogs);
 //             throw new Error('changedLogs expects an array');
 //         }
 //
-//         if (changedLogs.length === 0) {
-//             return [];
-//         }
+//         const existing = this._getAll();
 //
-//         // Sanity: ensure all logs have a guid
-//         const validLogs = [];
-//         for (let i = 0; i < changedLogs.length; i++) {
-//             const log = changedLogs[i];
-//             if (!log || !log.guid) {
-//                 console.error('[ActivityLogStore] _saveAll: skipped log without guid', log);
-//                 continue;
-//             }
-//             validLogs.push(log);
-//         }
+//         // Make a Set of all GUIDs we’re about to replace
+//         const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
 //
-//         if (validLogs.length === 0) {
-//             console.warn('[ActivityLogStore] _saveAll: no valid logs to save (all missing guid)');
-//             return [];
-//         }
+//         // Keep only logs whose GUID isn’t being replaced
+//         const filtered = existing.filter(log => !incomingIds.has(String(log.guid)));
 //
-//         const incomingIds = new Set(validLogs.map(log => String(log.guid)));
+//         // Append the new ones
+//         const next = filtered.concat(changedLogs);
 //
-//         // 1) Load all buckets and remove any logs with matching GUIDs
-//         const bucketContents = {};
-//         for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
-//             const bucketKey = this.ALL_BUCKET_KEYS[i];
-//             const existing = this._getAllFromBucket(bucketKey);
-//             const filtered = existing.filter(
-//                 log => !incomingIds.has(String(log.guid))
-//             );
-//             bucketContents[bucketKey] = filtered;
-//         }
-//
-//         // 2) Partition the incoming logs per bucket
-//         const bucketsToAppend = {};
-//         for (let i = 0; i < validLogs.length; i++) {
-//             const log = validLogs[i];
-//             const bucketKey = this._getBucketKeyForLog(log);
-//             if (!bucketsToAppend[bucketKey]) {
-//                 bucketsToAppend[bucketKey] = [];
-//             }
-//             bucketsToAppend[bucketKey].push(log);
-//         }
-//
-//         // 3) Append and persist per bucket
-//         for (const bucketKey in bucketsToAppend) {
-//             if (!Object.prototype.hasOwnProperty.call(bucketsToAppend, bucketKey)) {
-//                 continue;
-//             }
-//             const base = bucketContents[bucketKey] || [];
-//             const updated = base.concat(bucketsToAppend[bucketKey]);
-//             this._setAllForBucket(bucketKey, updated);
-//         }
-//
-//         // Buckets without new logs already have filtered contents in bucketContents;
-//         // we need to persist those as well to finish the "remove old GUID" step.
-//         for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
-//             const key = this.ALL_BUCKET_KEYS[i];
-//             if (!bucketsToAppend[key]) {
-//                 const existingFiltered = bucketContents[key] || [];
-//                 this._setAllForBucket(key, existingFiltered);
-//             }
-//         }
-//
-//         return validLogs;
+//         this.store.set(this.ACTIVITY_LOG_KEY, next);
+//         return changedLogs;
 //     }
 //
-//     parseLogDateToNumber(logDateStr) {
+//     parseLogDateToNumber = (logDateStr) => {
 //         if (!logDateStr || typeof logDateStr !== 'string') return 0;
 //
 //         const parts = logDateStr.trim().split(/[\s\/:]+/);
@@ -651,20 +333,12 @@ class ActivityLogStore {
 //         const hours = parseInt(parts[2], 10);
 //         const minutes = parseInt(parts[3], 10);
 //
-//         if (
-//             Number.isNaN(day) ||
-//             Number.isNaN(month) ||
-//             Number.isNaN(hours) ||
-//             Number.isNaN(minutes)
-//         ) {
-//             console.warn('[ActivityLogStore] parseLogDateToNumber: invalid parts', parts);
-//             return 0;
-//         }
+//         if ([day, month, hours, minutes].some(n => Number.isNaN(n))) return 0;
 //
 //         return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
 //     }
 //
-//     list({order = 'desc'} = {}) {
+//     list = ({order = 'desc'} = {}) => {
 //         const arr = [...this._getAll()];
 //         arr.sort((a, b) => {
 //             const ta = this.parseLogDateToNumber(a?.ts);
@@ -674,73 +348,523 @@ class ActivityLogStore {
 //         return arr;
 //     }
 //
-//     get(guid) {
-//         if (!guid) return null;
+//     get = (guid) => {
 //         return this._getAll().find(log => String(log.guid) === String(guid)) || null;
 //     }
 //
-//     getAllByUserUid(uid, onlyUnread = false, alsoFromSelf = false) {
-//         if (uid == null || uid === '') {
-//             console.error('[ActivityLogStore] getAllByUserUid: uid is required');
-//             return [];
-//         }
-//
-//         const uidStr = String(uid);
-//
-//         const result = this._getAll().filter(log => {
-//             if (String(log.uid) !== uidStr) {
-//                 return false;
-//             }
-//             if (onlyUnread && !log.unread) {
-//                 return false;
-//             }
-//             if (!alsoFromSelf && log.guid === String(user_id)) {
-//                 return false;
-//             }
-//             return true;
-//         });
-//
-//         if (this.util && typeof this.util.verbose === 'function') {
-//             this.util.verbose(
-//                 `Got all logs for ${uidStr} with onlyUnread=${onlyUnread}:`,
-//                 result
-//             );
-//         }
-//
+//     getAllByUserUid = (uid, onlyUnread = false, alsoFromSelf = false) => {
+//         const result = this._getAll().filter(
+//             log => String(log.uid) === String(uid)
+//                 && (!onlyUnread || log.unread)
+//                 && log.guid !== String(user_id)
+//         );
+//         this.util.verbose(`Got all logs for ${uid} with only unread flag set to ${onlyUnread}:`, result);
 //         return result;
 //     }
 //
-//     hasSentMessageToUser(uid) {
+//     hasSentMessageToUser = (uid) => {
 //         return this.getAllSentMessagesByUserId(uid).length > 0;
 //     }
 //
-//     getAllReceivedMessagesByUserId(uid, onlyUnread = false) {
-//         return this.getAllByUserUid(uid, onlyUnread).filter(
-//             log => log.kind === 'dm-in'
-//         );
+//     getAllReceivedMessagesByUserId = (uid, onlyUnread = false) => {
+//         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-in`);
 //     }
 //
-//     getAllSentMessagesByUserId(uid, onlyUnread = false) {
-//         return this.getAllByUserUid(uid, onlyUnread).filter(
-//             log => log.kind === 'dm-out'
-//         );
+//     getAllSentMessagesByUserId = (uid, onlyUnread = false) => {
+//         return this.getAllByUserUid(uid, onlyUnread).filter(log => log.kind === `dm-out`);
 //     }
 //
-//     getUnreadReceivedMessageCountByUserUid(uid) {
+//     getUnreadReceivedMessageCountByUserUid = (uid) => {
 //         return this.getAllReceivedMessagesByUserId(uid, true).length;
 //     }
 //
-//     getAllSentMessagesCountByUserId(uid) {
+//     getAllSentMessagesCountByUserId = (uid) => {
 //         return this.getAllSentMessagesByUserId(uid).length;
 //     }
 //
-//     has({guid, uid}) {
+//     has = ({guid, uid}) => {
 //         const e = this.get(guid);
-//         if (!e) return false;
-//         if (!uid) return true;
-//         return String
+//         return !!(e && (!uid || String(e.uid) === String(uid)));
+//     }
+//
+//     // Merge a single patch with existing (NO SAVE)
+//     _mergeLog = (changedLog) => {
+//         if (!changedLog || !changedLog.guid) {
+//             throw new Error('_mergeOne requires changedLog.guid');
+//         }
+//         const existing = this.get(changedLog.guid);
+//         return existing ? {...existing, ...changedLog} : changedLog;
+//     }
+//
+//     _MergeLogs = (changedLogs) => {
+//         if (!Array.isArray(changedLogs)) {
+//             throw new Error('_mergeMany expects an array');
+//         }
+//
+//         const mergedLogsResult = [];
+//
+//         for (const changedLog of changedLogs) {
+//             mergedLogsResult.push(this._mergeLog(changedLog));
+//         }
+//
+//         return mergedLogsResult;
+//     }
+//
+//     set = (changedLog) => {
+//         if (!changedLog || !changedLog.guid) {
+//             throw new Error('set() requires changedLog.guid');
+//         }
+//         const mergedLogResult = this._mergeLog(changedLog);
+//         // keep your existing save here:
+//         this._save(mergedLogResult);
+//         return mergedLogResult;
+//     }
+//
+//     setAll = (changedLogs) => {
+//         if (!Array.isArray(changedLogs)) {
+//             console.error(`ChangedLogs needs to be an array, got ${typeof changedLogs}`);
+//             return null;
+//         }
+//         const mergedList = this._MergeLogs(changedLogs);
+//         // keep your existing saveAll here:
+//         this._saveAll(mergedList);
+//         return mergedList;
+//     }
+//
+//     MarkReadUntilChatLogId = (uid, lastPrivateHandledId) => {
+//         if (!uid || lastPrivateHandledId === undefined) {
+//             console.error(`Uid ${uid} or lastPrivateHandledId ${lastPrivateHandledId} is invalid`);
+//             return [];
+//         } else if (lastPrivateHandledId === 0) {
+//             console.log(`lastPrivateHandledId is 0 (this means there are no logs for user ${uid} , nothing to do`);
+//             return [];
+//         }
+//
+//         const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
+//             .filter(log => log.guid <= lastPrivateHandledId)
+//             .map(log => ({...log, unread: false}))
+//         this.util.verbose(`Unread messages for Uuid:`, allUnreadMessagesForUid);
+//         return this.setAll(allUnreadMessagesForUid);
+//     }
+//
+//     remove = (guid) => {
+//         if (!guid) return false;
+//         const all = this._getAll();
+//         const next = all.filter(l => String(l.guid) !== String(guid));
+//         this.store.set(this.ACTIVITY_LOG_KEY, next);
+//         return next.length !== all.length;
+//     }
+//
+//     clearByKind = (kind) => {
+//         if (!kind) return 0;
+//         const all = this._getAll();
+//         const next = all.filter(l => l?.kind !== kind);
+//         this.store.set(this.ACTIVITY_LOG_KEY, next);
+//         return all.length - next.length;
+//     }
+//
+//     clearEvents = () => {
+//         return this.clearByKind('event');
+//     }
+//
+//     clear = () => {
+//         this.store.set(this.ACTIVITY_LOG_KEY, []);
 //     }
 // }
+
+class ActivityLogStore {
+    constructor({keyValueStore, util} = {}) {
+        this.store = keyValueStore;
+        this.util = util;
+
+        this.ACTIVITY_LOG_KEY = 'activityLog';
+
+        this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY = 'activityLog_loginLogout';
+        this.ACTIVITY_LOG_DM_IN_UNREAD_KEY = 'activityLog_dmInUnread';
+        this.ACTIVITY_LOG_DM_IN_HANDLED_KEY = 'activityLog_dmInHandled';
+        this.ACTIVITY_LOG_DM_OUT_KEY = 'activityLog_dmOut';
+        this.ACTIVITY_LOG_EVENTS_KEY = 'activityLog_events';
+
+        this.ALL_BUCKET_KEYS = [
+            this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY,
+            this.ACTIVITY_LOG_DM_IN_UNREAD_KEY,
+            this.ACTIVITY_LOG_DM_IN_HANDLED_KEY,
+            this.ACTIVITY_LOG_DM_OUT_KEY,
+            this.ACTIVITY_LOG_EVENTS_KEY
+        ];
+
+        // 🔹 Ensure all keys exist in localStorage
+        this.initializeStorageBuckets();
+    }
+
+    initializeStorageBuckets() {
+        for (const key of this.ALL_BUCKET_KEYS) {
+            const existing = this.store.get(key, {parseJson: true});
+            if (!Array.isArray(existing)) {
+                this.store.set(key, []);   // create empty bucket
+            }
+        }
+    }
+
+    markHandledUntilChatLogId = (uid, lastPrivateHandledId) => {
+        if (!uid || lastPrivateHandledId === undefined) {
+            console.error(`Uid ${uid} or lastPrivateHandledId ${lastPrivateHandledId} is invalid`);
+            return [];
+        } else if (lastPrivateHandledId === 0) {
+            console.log(
+                `lastPrivateHandledId is 0 (this means there are no logs for user ${uid}, nothing to do`
+            );
+            return [];
+        }
+
+        const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
+            .filter(log =>
+                log.kind === 'dm-in-unread' &&
+                log.guid <= lastPrivateHandledId
+            )
+            .map(log => ({
+                ...log,
+                unread: false,          // keep for compatibility if you still use it in UI
+                kind: 'dm-in-handled'
+            }));
+
+        this.util.verbose(`Unread messages for Uid:`, allUnreadMessagesForUid);
+        return this._saveAll(allUnreadMessagesForUid);
+    };
+
+    clearByKind = (kind) => {
+        if (!kind) {
+            console.warn('[ActivityLogStore] clearByKind called without kind');
+            return 0;
+        }
+
+        const bucketKeysToClear = [];
+
+        switch (kind) {
+            case 'login':
+            case 'logout':
+                bucketKeysToClear.push(this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY);
+                break;
+
+            case 'dm-in-unread':
+                bucketKeysToClear.push(this.ACTIVITY_LOG_DM_IN_UNREAD_KEY);
+                break;
+
+            case 'dm-in-handled':
+                bucketKeysToClear.push(this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
+                break;
+
+            case 'dm-out':
+                bucketKeysToClear.push(this.ACTIVITY_LOG_DM_OUT_KEY);
+                break;
+
+            case 'event':
+                bucketKeysToClear.push(this.ACTIVITY_LOG_EVENTS_KEY);
+                break;
+
+            default:
+                console.warn(
+                    '[ActivityLogStore] clearByKind: unknown kind, nothing cleared',
+                    kind
+                );
+                return 0;
+        }
+
+        let removedCount = 0;
+
+        for (let i = 0; i < bucketKeysToClear.length; i++) {
+            const bucketKey = bucketKeysToClear[i];
+
+            const existing = this._getAllFromBucket(bucketKey);
+            if (!Array.isArray(existing) || existing.length === 0) {
+                continue;
+            }
+
+            removedCount += existing.length;
+
+            this._setAllForBucket(bucketKey, []);
+        }
+
+        return removedCount;
+    };
+
+    getAllOnlineWomen() {
+        return this.list().filter(user => user.isFemale && user.online);
+    }
+
+    _getAllFromBucket(bucketKey) {
+        const raw = this.store.get(bucketKey);
+        return Array.isArray(raw) ? raw : [];
+    }
+
+    _setAllForBucket(bucketKey, logs) {
+        if (!Array.isArray(logs)) {
+            console.error('[ActivityLogStore] _setAllForBucket: logs must be an array');
+            return;
+        }
+        this.store.set(bucketKey, logs);
+    }
+
+    _getAllDmInUnread() {
+        return this._getAllFromBucket(this.ACTIVITY_LOG_DM_IN_UNREAD_KEY);
+    }
+
+    _getAllDmInHandled() {
+        return this._getAllFromBucket(this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
+    }
+
+    _getAllDmIn() {
+        const unread = this._getAllDmInUnread();
+        const handled = this._getAllDmInHandled();
+        return [...unread, ...handled];
+    }
+
+    /**
+     * Outgoing DMs
+     */
+    _getAllDmOut() {
+        return this._getAllFromBucket(this.ACTIVITY_LOG_DM_OUT_KEY);
+    }
+
+    _getAll() {
+        const combined = [];
+        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
+            const bucketKey = this.ALL_BUCKET_KEYS[i];
+            const arr = this._getAllFromBucket(bucketKey);
+            if (Array.isArray(arr) && arr.length > 0) {
+                combined.push(...arr);
+            }
+        }
+        return combined;
+    }
+
+    _getBucketKeyForLog(log) {
+        if (!log || !log.kind) {
+            console.warn(
+                '[ActivityLogStore] _getBucketKeyForLog: log.kind missing, defaulting to events bucket',
+                log
+            );
+            return this.ACTIVITY_LOG_EVENTS_KEY;
+        }
+
+        const kind = String(log.kind);
+
+        switch (kind) {
+            case 'login':
+            case 'logout':
+                return this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY;
+
+            case 'dm-in-unread':
+                return this.ACTIVITY_LOG_DM_IN_UNREAD_KEY;
+
+            case 'dm-in-handled':
+                return this.ACTIVITY_LOG_DM_IN_HANDLED_KEY;
+
+            case 'dm-out':
+                return this.ACTIVITY_LOG_DM_OUT_KEY;
+
+            case 'event':
+                return this.ACTIVITY_LOG_EVENTS_KEY;
+
+            default:
+                console.warn(
+                    '[ActivityLogStore] _getBucketKeyForLog: unknown kind, defaulting to events bucket',
+                    kind,
+                    log
+                );
+                return this.ACTIVITY_LOG_EVENTS_KEY;
+        }
+    }
+
+    set(changedLog) {
+        this._saveAll([changedLog]);
+        return changedLog;
+    }
+
+    _saveAll(changedLogs) {
+        if (!Array.isArray(changedLogs)) {
+            console.error('[ActivityLogStore] _saveAll: changedLogs expects an array, got', typeof changedLogs);
+            throw new Error('changedLogs expects an array');
+        }
+
+        if (changedLogs.length === 0) {
+            console.warn('[ActivityLogStore] _saveAll: no logs to save');
+            return [];
+        }
+
+        const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
+
+        // 1) Load all buckets and remove any logs with matching GUIDs
+        const bucketContents = {};
+        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
+            const bucketKey = this.ALL_BUCKET_KEYS[i];
+            const existing = this._getAllFromBucket(bucketKey);
+            bucketContents[bucketKey] = existing.filter(
+                log => !incomingIds.has(String(log.guid))
+            );
+        }
+
+        // 2) Partition the incoming logs per bucket
+        const bucketsToAppend = {};
+        for (let i = 0; i < changedLogs.length; i++) {
+            const log = changedLogs[i];
+            const bucketKey = this._getBucketKeyForLog(log);
+            if (!bucketsToAppend[bucketKey]) {
+                bucketsToAppend[bucketKey] = [];
+            }
+            bucketsToAppend[bucketKey].push(log);
+        }
+
+        // 3) Append and persist per bucket
+        for (const bucketKey in bucketsToAppend) {
+            if (!Object.prototype.hasOwnProperty.call(bucketsToAppend, bucketKey)) {
+                continue;
+            }
+            const base = bucketContents[bucketKey] || [];
+            const updated = base.concat(bucketsToAppend[bucketKey]);
+            this._setAllForBucket(bucketKey, updated);
+        }
+
+        // Buckets without new logs already have filtered contents in bucketContents;
+        // we need to persist those as well to finish the "remove old GUID" step.
+        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
+            const key = this.ALL_BUCKET_KEYS[i];
+            if (!bucketsToAppend[key]) {
+                const existingFiltered = bucketContents[key] || [];
+                this._setAllForBucket(key, existingFiltered);
+            }
+        }
+
+        return changedLogs;
+    }
+
+    parseLogDateToNumber(logDateStr) {
+        if (!logDateStr || typeof logDateStr !== 'string') return 0;
+
+        const parts = logDateStr.trim().split(/[\s\/:]+/);
+        if (parts.length < 4) return 0;
+
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const hours = parseInt(parts[2], 10);
+        const minutes = parseInt(parts[3], 10);
+
+        if (
+            Number.isNaN(day) ||
+            Number.isNaN(month) ||
+            Number.isNaN(hours) ||
+            Number.isNaN(minutes)
+        ) {
+            console.warn('[ActivityLogStore] parseLogDateToNumber: invalid parts', parts);
+            return 0;
+        }
+
+        return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
+    }
+
+    list({order = 'desc'} = {}) {
+        const arr = [...this._getAll()];
+        arr.sort((a, b) => {
+            const ta = this.parseLogDateToNumber(a?.ts);
+            const tb = this.parseLogDateToNumber(b?.ts);
+            return order === 'asc' ? ta - tb : tb - ta;
+        });
+        return arr;
+    }
+
+    get(guid) {
+        if (!guid) return null;
+        return this._getAll().find(log => String(log.guid) === String(guid)) || null;
+    }
+
+    getAllByUserUid(uid, onlyUnread = false, alsoFromSelf = false) {
+        if (uid == null || uid === '') {
+            console.error('[ActivityLogStore] getAllByUserUid: uid is required');
+            return [];
+        }
+
+        const uidStr = String(uid);
+
+        // Only DM buckets – no login/logout/events needed here
+        const source = [
+            ...this._getAllDmIn(),
+            ...this._getAllDmOut()
+        ];
+
+        const result = source.filter(log => {
+            if (String(log.uid) !== uidStr) {
+                return false;
+            }
+
+            if (onlyUnread && !log.unread) {
+                return false;
+            }
+
+            return !(!alsoFromSelf && log.guid === uidStr);
+        });
+
+        if (this.util && typeof this.util.verbose === 'function') {
+            this.util.verbose(
+                `[ActivityLogStore] getAllByUserUid(${uidStr}, onlyUnread=${onlyUnread}, alsoFromSelf=${alsoFromSelf}) →`,
+                result
+            );
+        }
+
+        return result;
+    }
+
+    hasSentMessageToUser(uid) {
+        return this.getAllSentMessagesByUserId(uid).length > 0;
+    }
+
+    getAllReceivedMessagesByUserId(uid, onlyUnread = false) {
+        if (uid == null || uid === '') {
+            console.error('[ActivityLogStore] getAllReceivedMessagesByUserId: uid is required');
+            return [];
+        }
+
+        const uidStr = String(uid);
+
+        let logs = [];
+
+        if (onlyUnread) {
+            // Only unread bucket
+            logs = this._getAllDmInUnread();
+        } else {
+            // Both unread + read
+            logs = this._getAllDmIn();
+        }
+
+        return logs.filter(log => String(log.uid) === uidStr);
+    }
+
+    getAllSentMessagesByUserId(uid) {
+        if (uid == null || uid === '') {
+            console.error('[ActivityLogStore] getAllSentMessagesByUserId: uid is required');
+            return [];
+        }
+
+        const uidStr = String(uid);
+        const logs = this._getAllDmOut();
+
+        return logs.filter(log => String(log.uid) === uidStr);
+    }
+
+    getUnreadReceivedMessageCountByUserUid(uid) {
+        return this.getAllReceivedMessagesByUserId(uid, true).length;
+    }
+
+    getAllSentMessagesCountByUserId(uid) {
+        return this.getAllSentMessagesByUserId(uid).length;
+    }
+
+    has({guid, uid}) {
+        const e = this.get(guid);
+        if (!e) return false;
+        if (!uid) return true;
+        return String
+    }
+}
 
 /** Users store (array-backed, like ActivityLogStore) */
 class UserStore {
@@ -751,7 +875,7 @@ class UserStore {
         this.api = api;
         this.util = util;
         this.newUserBaseData = {
-            lastPrivateReadId: 0,
+            lastPrivateHandledId: 0,
             lastPCountProcessed: 0,
             isIncludedForBroadcast: true,
             privateDmFetchRetries: 0
@@ -793,18 +917,18 @@ class UserStore {
         return Array.isArray(raw) ? raw : [];
     }
 
-    getLastPrivateReadId = (uid) => {
-        return this.get(uid)?.lastPrivateReadId;
+    getlastPrivateHandledId = (uid) => {
+        return this.get(uid)?.lastPrivateHandledId;
     }
 
-    setLastPrivateReadId = (uid, lastPrivateReadId) => {
+    setlastPrivateHandledId = (uid, lastPrivateHandledId) => {
         const u = this.get(uid);
         if (!u) {
-            console.error(`User ${uid} not found, cannot set lastPrivateReadId`);
+            console.error(`User ${uid} not found, cannot set lastPrivateHandledId`);
             return null;
         }
-        this.util.debug(`Setting last read for user ${uid} to ${lastPrivateReadId}`);
-        const updated = {...u, lastPrivateReadId};
+        this.util.debug(`Setting last read for user ${uid} to ${lastPrivateHandledId}`);
+        const updated = {...u, lastPrivateHandledId};
         return this.set(updated);
     }
 

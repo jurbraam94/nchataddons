@@ -405,7 +405,7 @@
     width: 100%;
 }
 
-.user_item.ca-replied-messages {
+.user_item.ca-handled-messages {
     box-shadow: inset 0 0 0 2px rgba(49, 217, 102, 0.2);
     border-radius: 8px;
 }
@@ -428,7 +428,7 @@
     pointer-events: none;
 }
 
-.user_item .ca-sent-chip.ca-sent-chip-all-read {
+.user_item .ca-sent-chip.ca-sent-chip-all-handled {
     background: #22c55e;
     color: #073b16;
     font-size: 12px;
@@ -669,20 +669,8 @@
     padding: 0 !important;
 }
 
-.ca-log-subsection-unreplied-wrapper,
-.ca-log-subsection-replied-wrapper {
-    flex: 1 1 50%;
-    display: flex;
-    flex-direction: column;
-    padding: 8px;
-}
-
-.ca-log-subsection-unreplied-wrapper {
-    border-bottom: 1px solid #334155;
-}
-
 #ca-log-received-unreplied,
-#ca-log-received-replied {
+#ca-log-received-handled {
     flex: 1 1 0;
     overflow-y: auto;
     overflow-x: hidden;
