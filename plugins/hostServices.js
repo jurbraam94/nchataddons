@@ -50,8 +50,7 @@ class HostServices {
     }
 
     init = async () => {
-        this.removeAds(document);
-        await this.restoreLog();
+        this.restoreAllLogs();
 
         this.installNetworkTaps();
         this.installPrivateSendInterceptor();
@@ -65,18 +64,20 @@ class HostServices {
         if (this.isInitialLoad) {
             this.isInitialLoad = false;
         }
+
+        this.app.scrollAllBoxesToBottom();
     }
 
     _removeSuperBotMethods = () => {
         window.sendSuperbotMain = () => {
             const message = `!!! Prevented a call to superbot main method.`;
             console.error(message);
-            this.logEventLine(message);
+            this.logEvent(message);
         };
         window.sendSuperbotPrivate = () => {
             const message = `!!! Prevented a call to superbot private method.!`;
             console.error(message);
-            this.logEventLine(message);
+            this.logEvent(message);
         };
     }
 
@@ -296,8 +297,17 @@ class HostServices {
                     color
                 );
 
-                if (key !== "isLoggedIn") {
-                    this.logEventLine(text, updatedExistingUserJson);
+                if (key.includes('avatar')) {
+                    const oldAvatar = existingUserJsonFromStore.avatar || '';
+                    const newAvatar = updatedExistingUserJson.avatar || '';
+                    const pronoun = updatedExistingUserJson.isFemale ? 'her' : 'his';
+                    const text = `has changed ${pronoun} Avatar.`;
+
+                    if (!this.isInitialLoad) {
+                        this.logEvent(text, updatedExistingUserJson, [oldAvatar, newAvatar]);
+                    }
+                } else if (key !== "isLoggedIn") {
+                    this.logEvent(text, updatedExistingUserJson);
                 }
             }
         };
@@ -320,23 +330,6 @@ class HostServices {
                 this.app.applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
             } else {
                 this.util.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
-            }
-
-            if (changedKeys.includes('avatar')) {
-                const oldAvatar = existingUserJsonFromStore.avatar || '';
-                const newAvatar = updatedExistingUserJson.avatar || '';
-                const pronoun = updatedExistingUserJson.isFemale ? 'her' : 'his';
-
-                const avatarImgHtml = newAvatar
-                    ? `<br><a href="${newAvatar}" target="_blank" rel="noopener noreferrer">
-                    <img src="${newAvatar}" class="avav ca-log-avatar-preview" alt="Avatar of ${updatedExistingUserJson.name}">
-               </a>`
-                    : '';
-
-                const text = `[USER_UPDATE] ${updatedExistingUserJson.name} has changed ${pronoun} Avatar (${oldAvatar} → ${newAvatar})${avatarImgHtml}`;
-                if (!this.isInitialLoad) {
-                    this.logEventLine(text, updatedExistingUserJson);
-                }
             }
         }
 
@@ -401,12 +394,7 @@ class HostServices {
 
     processNewIncomingPrivateMessage = (newPrivateConversationMessage, user) => {
         console.log(`New incoming private message ${newPrivateConversationMessage.logId} for user ${user.uid}`, newPrivateConversationMessage);
-        this.logLine(
-            'dm-in-unread',
-            this.app.decodeHTMLEntities(newPrivateConversationMessage?.log_content),
-            user,
-            newPrivateConversationMessage.log_id
-        );
+        this.logDmInUnread(this.app.decodeHTMLEntities(newPrivateConversationMessage?.log_content), user);
         if (user.isLoggedIn) {
             this.app.updateProfileChipByUid(user.uid);
         } else {
@@ -474,14 +462,10 @@ class HostServices {
                 `[PrivateChat] No messages accepted for uid ${user.uid} (attempt ${tries})`
             );
 
-            // --- RECOVERY + KILLSWITCH LOGIC ---
-
             if (tries >= 3) {
                 const hadNonZeroParsedBefore = (user.lastPrivateHandledId || 0) > 0;
 
                 if (hadNonZeroParsedBefore) {
-                    // Stage 1: we had a non-zero lastPrivateHandledId, but repeatedly nothing
-                    // parsed; reset to 0 to trigger a full history reload on next loop.
                     updatedUser.lastPrivateHandledId = 0;
                     console.warn(
                         `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid}; ` +
@@ -527,7 +511,7 @@ class HostServices {
         this.userStore.set(updatedUser);
 
         if (skippedReasons.length > 0) {
-            this.util.debug(skippedReasons);
+            this.util.verbose(skippedReasons);
         }
     }
 
@@ -568,7 +552,11 @@ class HostServices {
 
         if (user.isFemale) {
             this.app.setLogDotsLoggedInStatusForUid(user.uid, user.isLoggedIn);
-            this.logLine(user.isLoggedIn ? 'login' : 'logout', null, user);
+            if (user.isLoggedIn) {
+                this.logLogin(user)
+            } else {
+                this.logLogout(user)
+            }
         }
         this.util.verbose(`${user.isLoggedIn ? '[LOGIN]' : '[LOGOUT]'} ${user.name} (${user.uid}) logging ${user.isLoggedIn ? 'in' : 'out'}`);
     }
@@ -630,7 +618,6 @@ class HostServices {
 
     validatePrivateChatLog = (privateConversationMessage, lastPrivateHandledId) => {
         const initialFetch = lastPrivateHandledId === 0;
-        console.log(`Comparing from uid ${privateConversationMessage.user_id} with own id ${user_id}`)
         if (String(privateConversationMessage.user_id) === String(user_id)) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'from myself'};
         }
@@ -799,7 +786,7 @@ class HostServices {
         return this.activityLogStore.parseLogDateToNumber?.(logDateStr) ?? 0;
     }
 
-    logEventLine = (content, user) => {
+    logEvent = (content, user, images) => {
         if (!user) {
             user = this.userStore.get('system') || {
                 uid: 'system',
@@ -807,33 +794,90 @@ class HostServices {
                 avatar: ''
             };
         }
-
-        this.logLine('event', content, user);
+        const log = this.createLogObject(content, user, images);
+        this.activityLogStore.saveEvent(log);
+        this.app.renderLogEntry(log, 'event', this.app.ui.eventLogBox, user.isLoggedIn);
     }
 
-    logLine = (kind, content, user, guid) => {
-        const ts = this.util.getTimeStampInWebsiteFormat();
-        const entry = {
-            ts,
-            kind,
+    logLogin = (user) => {
+        const log = {
+            ...this.createLogObject('has logged in.', user),
+            action: 'login',
+        };
+        this.activityLogStore.saveLoginLogout(log);
+        this.app.renderLogEntry(log, 'login', this.app.ui.loginLogoutBox, user.isLoggedIn);
+    }
+
+    logLogout = (user) => {
+        const log = {
+            ...this.createLogObject('has logged out.', user),
+            action: 'logout',
+        };
+        this.activityLogStore.saveLoginLogout(log);
+        this.app.renderLogEntry(log, 'logout', this.app.ui.loginLogoutBox, user.isLoggedIn);
+    }
+
+    logDmOut = (content, user) => {
+        const log = this.createLogObject(content, user);
+        this.activityLogStore.saveDmOut(log);
+        this.app.renderLogEntry(log, 'dm-out', this.app.ui.sentMessagesBox, user.isLoggedIn);
+    }
+
+    logDmInHandled = (content, user) => {
+        const log = this.createLogObject(content, user);
+        this.activityLogStore.saveDmInHandled(log);
+        this.app.renderLogEntry(log, 'dm-in-handled', this.app.ui.handledMessagesBox, user.isLoggedIn);
+    }
+
+    logDmInUnread = (content, user) => {
+        const log = this.createLogObject(content, user);
+        this.activityLogStore.saveDmInUnread(log);
+        this.app.renderLogEntry(log, 'dm-in-unread', this.app.ui.unreadMessagesBox, user.isLoggedIn);
+    }
+
+    createLogObject(content, user, images = []) {
+        return {
+            ts: this.util.getTimeStampInWebsiteFormat(),
             content,
             uid: user.uid,
-            guid: guid ? guid : crypto.randomUUID(),
-            unread: (kind === 'dm-in-unread' +
-                '') ? true : undefined
+            title: user.name,
+            guid: crypto.randomUUID(),
+            images: images
         };
-
-        this.app.renderLogEntry(entry, user);
-        this.activityLogStore.set(entry);
     }
 
-    restoreLog = async () => {
-        const logs = this.activityLogStore.list({order: 'asc'}) || [];
+    restoreAllLogs = () => {
+        this.restoreEventLogs();
+        this.restoreLoginLogoutLogs();
+        this.restoreDmInUnreadLogs();
+        this.restoreHandledLogs();
+        this.restoreDmOutLogs();
+    }
 
+    restoreEventLogs = () => {
+        this.restoreLogs(this.activityLogStore.listEvents(), 'event', this.app.ui.eventLogBox);
+    }
+
+    restoreDmOutLogs = () => {
+        this.restoreLogs(this.activityLogStore.listDmOut(), 'dm-out', this.app.ui.sentMessagesBox);
+    }
+
+    restoreDmInUnreadLogs = () => {
+        this.restoreLogs(this.activityLogStore.listDmInUnread(), 'dm-in-unread', this.app.ui.unreadMessagesBox);
+    }
+
+    restoreHandledLogs = () => {
+        this.restoreLogs(this.activityLogStore.listDmInHandled(), 'dm-in-handled', this.app.ui.handledMessagesBox);
+    }
+
+    restoreLoginLogoutLogs = () => {
+        this.restoreLogs(this.activityLogStore.listLoginLogout(), 'login-logout', this.app.ui.loginLogoutBox);
+    }
+
+    restoreLogs = (logs, logType, targetContainer) => {
         for (const log of logs) {
             this.util.verbose('Restoring log', log);
-            const user = await this.userStore.getOrFetch(log.uid);
-            this.app.renderLogEntry(log, user);
+            this.app.renderLogEntry(log, logType, targetContainer);
         }
     }
 
@@ -893,7 +937,7 @@ class HostServices {
         for (let bi = 0; bi < numberOfBatches; bi++) {
             const start = bi * batchSize;
             const batch = to.slice(start, start + batchSize);
-            this.logEventLine(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
+            this.logEvent(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} — sending ${batch.length}... (OK:${ok} Fail:${fail})`);
 
             for (let idx = 0; idx < batch.length; idx++) {
                 const item = batch[idx];
@@ -905,18 +949,18 @@ class HostServices {
                     fail++;
                 }
 
-                this.logEventLine(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} — ${idx + 1}/${batch.length} sent (OK:${ok} Fail:${fail})`);
+                this.logEvent(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} — ${idx + 1}/${batch.length} sent (OK:${ok} Fail:${fail})`);
                 const perSendDelay = this.util.randBetween(secondsBetweenSends[0], secondsBetweenSends[1]);
                 await sleep(perSendDelay);
             }
 
             if (bi < numberOfBatches - 1) {
                 const wait = this.util.randBetween(secondsBetweenBatches[0], secondsBetweenBatches[1]);
-                this.logEventLine(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} done — waiting ${Math.round(wait / 1000)}s...`);
+                this.logEvent(`[BROADCAST] Batch ${bi + 1}/${numberOfBatches} done — waiting ${Math.round(wait / 1000)}s...`);
                 await sleep(wait);
             }
         }
-        this.logEventLine(`Broadcast finished. Sent ${ok} messages, ${fail} failed.`);
+        this.logEvent(`Broadcast finished. Sent ${ok} messages, ${fail} failed.`);
         return {ok, fail};
     }
 
@@ -979,8 +1023,7 @@ class HostServices {
             uid,
             ')'
         );
-
-        this.logLine('dm-out', content, dmSentToUser, logData.log_id);
+        this.logDmOut(content, dmSentToUser);
 
         this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
         const userEl = this.app.findUserElById(dmSentToUser.uid);
@@ -1025,18 +1068,6 @@ class HostServices {
                 console.error('[BROADCAST] sendWithThrottle error for uid', id, err);
                 return false;
             });
-    }
-
-    removeAds = (root) => {
-        const scope = root && root.querySelectorAll ? root : document;
-        this.util.qsa('.coo-widget').forEach(e => e.remove());
-        const links = scope.querySelectorAll('a[href*="bit.ly"]');
-        if (!links || !links.length) return;
-        links.forEach(a => {
-            if (a && !a.closest(this.app.sel.rightPanel) && a.parentNode) {
-                a.parentNode.removeChild(a);
-            }
-        });
     }
 
     _installAudioAutoplayGate = () => {
@@ -1345,9 +1376,9 @@ class HostServices {
 
         const clearEvents = () => {
             const removed = this.activityLogStore.clearByKind?.('event') || 0;
-            this.app.ui.loggingBox.innerHTML = '';
+            this.app.ui.eventLogBox.innerHTML = '';
 
-            this.logEventLine(`Event logs cleared automatically (${removed} removed) at ${this.util.timeHHMM()}`);
+            this.logEvent(`Event logs cleared automatically (${removed} removed) at ${this.util.timeHHMM()}`);
             this.util.verbose(`[AutoClear] Cleared ${removed} event log(s).`);
         };
 

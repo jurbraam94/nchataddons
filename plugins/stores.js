@@ -303,6 +303,50 @@ class ActivityLogStore {
         this.initializeStorageBuckets();
     }
 
+    remove = (guid) => {
+        if (guid == null || guid === '') {
+            console.error('[ActivityLogStore] remove: guid is required');
+            return false;
+        }
+
+        const guidStr = String(guid);
+        let removedCount = 0;
+
+        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
+            const bucketKey = this.ALL_BUCKET_KEYS[i];
+            const existing = this._getAllFromBucket(bucketKey);
+
+            if (existing.length === 0) {
+                continue;
+            }
+
+            const filtered = existing.filter(log => String(log.guid) !== guidStr);
+
+            if (filtered.length !== existing.length) {
+                removedCount += (existing.length - filtered.length);
+                this._setAllForBucket(bucketKey, filtered);
+            }
+        }
+
+        if (removedCount === 0) {
+            this.util?.verbose?.(
+                '[ActivityLogStore] remove: no log found for guid',
+                guidStr
+            );
+            return false;
+        }
+
+        this.util?.verbose?.(
+            '[ActivityLogStore] remove: removed entries for guid',
+            guidStr,
+            'count =',
+            removedCount
+        );
+
+        return true;
+    };
+
+
     initializeStorageBuckets() {
         for (const key of this.ALL_BUCKET_KEYS) {
             const existing = this.store.get(key, {parseJson: true});
@@ -324,22 +368,12 @@ class ActivityLogStore {
             return null;
         }
 
-        if (log.kind !== 'dm-in-unread') {
-            console.warn(
-                '[ActivityLogStore] markSingleLogHandled: log is not dm-in-unread, ignoring',
-                {guid, kind: log.kind}
-            );
-            return null;
-        }
-
         const updatedLog = {
             ...log,
-            unread: false,          // keep for backward compatibility
-            kind: 'dm-in-handled'
         };
 
         // Reuse the same machinery as the bulk method
-        this._saveAll([updatedLog]);
+        this._saveAll([updatedLog], this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
 
         this.util?.verbose?.(
             '[ActivityLogStore] markSingleLogHandled: updated',
@@ -361,29 +395,24 @@ class ActivityLogStore {
             return [];
         }
 
-        const allUnreadMessagesForUid = this.getAllByUserUid(uid, true)
+        const allUnreadMessagesForUid = this._getAllDmInUnread(uid, true)
             .filter(log =>
-                log.kind === 'dm-in-unread' &&
                 log.guid <= lastPrivateHandledId
-            )
-            .map(log => ({
-                ...log,
-                kind: 'dm-in-handled'
-            }));
+            );
 
         this.util.verbose(`Unread messages for Uid:`, allUnreadMessagesForUid);
-        return this._saveAll(allUnreadMessagesForUid);
+        return this._saveAll(allUnreadMessagesForUid, this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
     };
 
-    clearByKind = (kind) => {
-        if (!kind) {
-            console.warn('[ActivityLogStore] clearByKind called without kind');
+    clearByLogType = (logType) => {
+        if (!logType) {
+            console.warn('[ActivityLogStore] clearByLogType called without kind');
             return 0;
         }
 
         const bucketKeysToClear = [];
 
-        switch (kind) {
+        switch (logType) {
             case 'login':
             case 'logout':
                 bucketKeysToClear.push(this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY);
@@ -408,7 +437,7 @@ class ActivityLogStore {
             default:
                 console.warn(
                     '[ActivityLogStore] clearByKind: unknown kind, nothing cleared',
-                    kind
+                    logType
                 );
                 return 0;
         }
@@ -478,102 +507,60 @@ class ActivityLogStore {
         return combined;
     }
 
-    _getBucketKeyForLog(log) {
-        if (!log || !log.kind) {
-            console.warn(
-                '[ActivityLogStore] _getBucketKeyForLog: log.kind missing, defaulting to events bucket',
-                log
-            );
-            return this.ACTIVITY_LOG_EVENTS_KEY;
-        }
-
-        const kind = String(log.kind);
-
-        switch (kind) {
-            case 'login':
-            case 'logout':
-                return this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY;
-
-            case 'dm-in-unread':
-                return this.ACTIVITY_LOG_DM_IN_UNREAD_KEY;
-
-            case 'dm-in-handled':
-                return this.ACTIVITY_LOG_DM_IN_HANDLED_KEY;
-
-            case 'dm-out':
-                return this.ACTIVITY_LOG_DM_OUT_KEY;
-
-            case 'event':
-                return this.ACTIVITY_LOG_EVENTS_KEY;
-
-            default:
-                console.warn(
-                    '[ActivityLogStore] _getBucketKeyForLog: unknown kind, defaulting to events bucket',
-                    kind,
-                    log
-                );
-                return this.ACTIVITY_LOG_EVENTS_KEY;
-        }
+    saveEvent(log) {
+        this._saveAll([log], this.ACTIVITY_LOG_EVENTS_KEY);
+        return log;
     }
 
-    set(changedLog) {
-        this._saveAll([changedLog]);
-        return changedLog;
+    saveLoginLogout(log) {
+        this._saveAll([log], this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY);
     }
 
-    _saveAll(changedLogs) {
+    saveDmInUnread(log) {
+        this._saveAll([log], this.ACTIVITY_LOG_DM_IN_UNREAD_KEY);
+    }
+
+    saveDmInHandled(log) {
+        this._saveAll([log], this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
+    }
+
+    saveDmOut(log) {
+        this._saveAll([log], this.ACTIVITY_LOG_DM_OUT_KEY);
+    }
+
+    _saveAll(changedLogs, bucketKey) {
         if (!Array.isArray(changedLogs)) {
             console.error('[ActivityLogStore] _saveAll: changedLogs expects an array, got', typeof changedLogs);
             throw new Error('changedLogs expects an array');
         }
 
+        if (typeof bucketKey !== 'string' || bucketKey.trim() === '') {
+            console.error('[ActivityLogStore] _saveAll: bucketKey expects a non-empty string, got', bucketKey);
+            throw new Error('bucketKey expects a non-empty string');
+        }
+
         if (changedLogs.length === 0) {
-            console.warn('[ActivityLogStore] _saveAll: no logs to save');
+            console.warn('[ActivityLogStore] _saveAll: no logs to save for bucket', bucketKey);
             return [];
         }
 
         const incomingIds = new Set(changedLogs.map(log => String(log.guid)));
 
-        // 1) Load all buckets and remove any logs with matching GUIDs
-        const bucketContents = {};
-        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
-            const bucketKey = this.ALL_BUCKET_KEYS[i];
-            const existing = this._getAllFromBucket(bucketKey);
-            bucketContents[bucketKey] = existing.filter(
-                log => !incomingIds.has(String(log.guid))
-            );
+        // 1) Load the existing bucket and remove any logs with matching GUIDs
+        const existing = this._getAllFromBucket(bucketKey) || [];
+
+        if (!Array.isArray(existing)) {
+            console.error('[ActivityLogStore] _saveAll: _getAllFromBucket did not return an array for bucket', bucketKey);
+            throw new Error('_getAllFromBucket must return an array');
         }
 
-        // 2) Partition the incoming logs per bucket
-        const bucketsToAppend = {};
-        for (let i = 0; i < changedLogs.length; i++) {
-            const log = changedLogs[i];
-            const bucketKey = this._getBucketKeyForLog(log);
-            if (!bucketsToAppend[bucketKey]) {
-                bucketsToAppend[bucketKey] = [];
-            }
-            bucketsToAppend[bucketKey].push(log);
-        }
+        const filteredExisting = existing.filter(
+            log => !incomingIds.has(String(log.guid))
+        );
 
-        // 3) Append and persist per bucket
-        for (const bucketKey in bucketsToAppend) {
-            if (!Object.prototype.hasOwnProperty.call(bucketsToAppend, bucketKey)) {
-                continue;
-            }
-            const base = bucketContents[bucketKey] || [];
-            const updated = base.concat(bucketsToAppend[bucketKey]);
-            this._setAllForBucket(bucketKey, updated);
-        }
-
-        // Buckets without new logs already have filtered contents in bucketContents;
-        // we need to persist those as well to finish the "remove old GUID" step.
-        for (let i = 0; i < this.ALL_BUCKET_KEYS.length; i++) {
-            const key = this.ALL_BUCKET_KEYS[i];
-            if (!bucketsToAppend[key]) {
-                const existingFiltered = bucketContents[key] || [];
-                this._setAllForBucket(key, existingFiltered);
-            }
-        }
+        // 2) Append the incoming logs and persist for this bucket only
+        const updated = filteredExisting.concat(changedLogs);
+        this._setAllForBucket(bucketKey, updated);
 
         return changedLogs;
     }
@@ -602,13 +589,57 @@ class ActivityLogStore {
         return (month * 1_000_000) + (day * 10_000) + (hours * 100) + minutes;
     }
 
-    list({order = 'desc'} = {}) {
-        const arr = [...this._getAll()];
+    listLoginLogout(order) {
+        return this.list({order, bucketKey: this.ACTIVITY_LOG_LOGIN_LOGOUT_KEY});
+    }
+
+    listDmInUnread(order) {
+        return this.list({order, bucketKey: this.ACTIVITY_LOG_DM_IN_UNREAD_KEY});
+    }
+
+    listDmInHandled(order) {
+        return this.list({order, bucketKey: this.ACTIVITY_LOG_DM_IN_HANDLED_KEY});
+    }
+
+    listDmOut(order) {
+        return this.list({order, bucketKey: this.ACTIVITY_LOG_DM_OUT_KEY});
+    }
+
+    listEvents(order) {
+        return this.list({order, bucketKey: this.ACTIVITY_LOG_EVENTS_KEY});
+    }
+
+    list({order = 'desc', bucketKey} = {}) {
+        if (typeof bucketKey !== 'string' || bucketKey.trim() === '') {
+            console.error('[ActivityLogStore] list: bucketKey expects a non-empty string, got', bucketKey);
+            throw new Error('bucketKey expects a non-empty string');
+        }
+
+        if (order !== 'asc' && order !== 'desc') {
+            console.error('[ActivityLogStore] list: order must be "asc" or "desc", got', order);
+            throw new Error('Invalid order value');
+        }
+
+        const logs = this._getAllFromBucket(bucketKey);
+
+        if (!Array.isArray(logs)) {
+            console.error('[ActivityLogStore] list: _getAllFromBucket did not return an array for bucket', bucketKey);
+            throw new Error('_getAllFromBucket must return an array');
+        }
+
+        const arr = [...logs];
+
         arr.sort((a, b) => {
             const ta = this.parseLogDateToNumber(a?.ts);
             const tb = this.parseLogDateToNumber(b?.ts);
-            return order === 'asc' ? ta - tb : tb - ta;
+
+            if (order === 'asc') {
+                return ta - tb;
+            }
+
+            return tb - ta;
         });
+
         return arr;
     }
 
@@ -627,28 +658,26 @@ class ActivityLogStore {
 
         // Only DM buckets – no login/logout/events needed here
         const source = [
-            ...this._getAllDmIn(),
+            ...this._getAllDmInUnread(),
             ...this._getAllDmOut()
         ];
+
+        if (!onlyUnread) {
+            source.concat(this._getAllDmInHandled())
+        }
 
         const result = source.filter(log => {
             if (String(log.uid) !== uidStr) {
                 return false;
             }
 
-            if (onlyUnread && !log.unread) {
-                return false;
-            }
-
             return !(!alsoFromSelf && log.guid === uidStr);
         });
 
-        if (this.util && typeof this.util.verbose === 'function') {
-            this.util.verbose(
-                `[ActivityLogStore] getAllByUserUid(${uidStr}, onlyUnread=${onlyUnread}, alsoFromSelf=${alsoFromSelf}) →`,
-                result
-            );
-        }
+        this.util.verbose(
+            `[ActivityLogStore] getAllByUserUid(${uidStr}, onlyUnread=${onlyUnread}, alsoFromSelf=${alsoFromSelf}) →`,
+            result
+        );
 
         return result;
     }
@@ -665,7 +694,7 @@ class ActivityLogStore {
 
         const uidStr = String(uid);
 
-        let logs = [];
+        let logs;
 
         if (onlyUnread) {
             // Only unread bucket
@@ -698,13 +727,16 @@ class ActivityLogStore {
         return this.getAllSentMessagesByUserId(uid).length;
     }
 
-    has({guid, uid}) {
-        const e = this.get(guid);
-        if (!e) return false;
-        if (!uid) return true;
-        return String
+    has({guid} = {}) {
+        if (guid == null || guid === '') {
+            console.error('[ActivityLogStore] has: guid is required');
+            return false;
+        }
+
+        return this.get(guid) !== null;
     }
 }
+
 
 /** Users store (array-backed, like ActivityLogStore) */
 class UserStore {
@@ -937,7 +969,7 @@ class UserStore {
         let user = this.get(id);
         if (!user) {
             const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
-            const doc = this.util.createElementFromString(getProfileResponseHtml);
+            this.util.createElementFromString(getProfileResponseHtml);
             const foundUser = await this.getOrFetchByName(this.util.qs('.pro_name')?.textContent?.trim());
 
             if (foundUser) {

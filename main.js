@@ -66,11 +66,11 @@ class App {
             panelNav: null,
             sentMessagesBox: null,
             messagesWrapper: null,
-            presenceBox: null,
+            loginLogoutBox: null,
             logClear: null,
             handledMessagesBox: null,
             unreadMessagesBox: null,
-            loggingBox: null,
+            eventLogBox: null,
             userContainersWrapper: null,
             femaleUserContainerGroup: null,
             otherUserContainerGroup: null,
@@ -82,93 +82,52 @@ class App {
         };
 
         this.sel = {
-            rightPanel: '#right-panel',
-            log: {
-                classes: {
-                    ca_box_scrollable: '.ca-log-box-scrollable',
-                    ca_log_entry: '.ca-log-entry',
-                    ca_log_cell: '.ca-log-cell',
-                    ca_log_dot: '.ca-log-dot',
-                    ca_log_dot_green: '.ca-log-dot-green',
-                    ca_log_dot_red: '.ca-log-dot-red',
-                    ca_log_dot_gray: '.ca-log-dot-gray',
-                    ca_log_user: '.ca-log-user',
-                    ca_expand_indicator: '.ca-expand-indicator',
-                    ca_user_link: '.ca-user-link',
-                    ca_dm_link: '.ca-dm-link',
-                    ca_dm_right: '.ca-dm-right',
-                    ca_del_link: '.ca-del-link',
-                    ca_log_actions: '.ca-log-actions',
-                    ca_log_action: '.ca-log-action',
-                    ca_log_text: '.ca-log-text',
-                    ca_sent_chip: '.ca-sent-chip',
-                    ca_unread_messages: '.ca-unread-messages',
-                    ca_handled_messages: '.ca-handled-messages',
-                    ca_sent_chip_all_handled: '.ca-sent-chip-all-handled',
-                    ca_sent_chip_unread: '.ca-sent-chip-unread',
-                    user_item: '.user_item'
-                },
-                sentMessagesBox: '#ca-log-box-sent',
-                messagesWrapper: '.ca-sections-wrapper',
-                handledMessagesBox: '#ca-log-received-handled',
-                unreadMessagesBox: '#ca-log-received-unread',
-                presence: '#ca-log-box-presence',
-                clear: '#ca-log-clear',
-                general: '#ca-logs-box'
+            rightPanel: 'right-panel',
+            classes: {
+                ca_box_scrollable: 'ca-log-box-scrollable',
+                ca_log_entry: 'ca-log-entry',
+                ca_log_cell: 'ca-log-cell',
+                ca_log_dot: 'ca-log-dot',
+                ca_log_dot_green: 'ca-log-dot-green',
+                ca_log_dot_red: 'ca-log-dot-red',
+                ca_log_dot_gray: 'ca-log-dot-gray',
+                ca_log_user: 'ca-log-user',
+                ca_expand_indicator: 'ca-expand-indicator',
+                ca_user_link: 'ca-user-link',
+                ca_dm_link: 'ca-dm-link',
+                ca_dm_right: 'ca-dm-right',
+                ca_del_link: 'ca-del-link',
+                ca_log_actions: 'ca-log-actions',
+                ca_log_action: 'ca-log-action',
+                ca_log_text: 'ca-log-text',
+                ca_sent_chip: 'ca-sent-chip',
+                ca_unread_messages: 'ca-unread-messages',
+                ca_handled_messages: 'ca-handled-messages',
+                ca_sent_chip_all_handled: 'ca-sent-chip-all-handled',
+                ca_sent_chip_unread: 'ca-sent-chip-unread',
+                user_item: 'user_item'
             },
-            privateChat: {
-                privateInputBox: '#private_input_box'
-            },
-            users: {
-                femaleUserCount: '#ca-female-users-count',
-                otherUsersContainer: '#ca-other-users-container',
-                femaleUsersContainer: '#ca-female-users-container',
-                otherUserCount: '#ca-other-users-count',
-                online: '.online_user'
-            }
+            sentMessagesBox: 'ca-log-box-sent',
+            messagesWrapper: 'ca-sections-wrapper',
+            handledMessagesBox: 'ca-log-received-handled',
+            unreadMessagesBox: 'ca-log-received-unread',
+            loginLogout: 'ca-log-box-login-logout',
+            clear: 'ca-log-clear',
+            general: 'ca-logs-box',
+            privateInputBox: 'private_input_box',
+            femaleUserCount: 'ca-female-users-count',
+            otherUsersContainer: 'ca-other-users-container',
+            femaleUsersContainer: 'ca-female-users-container',
+            otherUserCount: 'ca-other-users-count',
+            online: 'online_user'
         };
-        this.sel.raw = {};
-    }
-
-    buildRawTree = () => {
-        const seen = new WeakSet();
-
-        const strip = (s) => {
-            if (typeof s !== "string") return s;
-            return (s.startsWith("#") || s.startsWith(".")) ? s.slice(1) : s;
-        };
-
-        const walk = (src) => {
-            if (!src || typeof src !== "object") return undefined;
-            if (seen.has(src)) return undefined;
-            seen.add(src);
-
-            const out = Array.isArray(src) ? [] : {};
-
-            for (const [key, val] of Object.entries(src)) {
-                if (key === "raw") continue;
-
-                if (typeof val === "string") {
-                    out[key] = strip(val);
-                } else if (val && typeof val === "object") {
-                    const child = walk(val);
-                    if (child && (Array.isArray(child) ? child.length : Object.keys(child).length)) {
-                        out[key] = child;
-                    } else {
-                        out[key] = {};
-                    }
-                }
-            }
-            return out;
-        };
-
-        this.sel.raw = walk(this.sel) || {};
+        this._logIconCache = null;
+        this._decodeTextarea = document.createElement('textarea');
     }
 
     init = async (options = {}) => {
         this.options = options || {};
-
-        this.buildRawTree(this.sel, this.sel.raw);
+        this.removeAds(document);
         this.ui.globalChat = this.util.qs(`#global_chat`);
         this.ui.caChatRight = document.createElement('div');
         const hostChatRight = this.util.qs(`#chat_right`);
@@ -199,18 +158,22 @@ class App {
         this.buildPanel();
         this.buildMenuLogPanel();
 
-        this.ui.sentMessagesBox = this.util.qs(this.sel.log.sentMessagesBox);
-        this.ui.messagesWrapper = this.util.qs(this.sel.log.messagesWrapper);
-        this.ui.handledMessagesBox = this.util.qs(this.sel.log.handledMessagesBox);
-        this.ui.unreadMessagesBox = this.util.qs(this.sel.log.unreadMessagesBox);
-        this.ui.presenceBox = this.util.qs(this.sel.log.presence);
-        this.ui.logClear = this.util.qs(this.sel.log.clear);
-        this.ui.loggingBox = this.util.qs(this.sel.log.general);
+        this.ui.sentMessagesBox = this.util.qsId(this.sel.sentMessagesBox);
+        this.ui.messagesWrapper = this.util.qsClass(this.sel.messagesWrapper);
+        this.ui.handledMessagesBox = this.util.qsId(this.sel.handledMessagesBox);
+        this.ui.unreadMessagesBox = this.util.qsId(this.sel.unreadMessagesBox);
+        this.ui.loginLogoutBox = this.util.qsId(this.sel.loginLogout);
+        this.ui.logClear = this.util.qsId(this.sel.clear);
+        this.ui.eventLogBox = this.util.qsId(this.sel.general);
 
         await this.hostServices.syncUsersFromDom(document.querySelectorAll('.online_user .user_item'));
 
-        this.util.qs(this.sel.privateChat.privateInputBox).innerHTML =
-            '<textarea data-paste="1" id="message_content" rows="4" class="inputbox" placeholder="Type a message..."></textarea>';
+        this.util.qsId(this.sel.privateInputBox).innerHTML =
+            '<textarea data-paste="1" id="message_content" class="message_content inputbox" rows="4" placeholder="Type a message..."></textarea>';
+        this.util.qs(`#main_input_box`).innerHTML =
+            '<textarea data-paste="1" class="message_content inputbox" rows="4" id="content" placeholder="Type a message..."></textarea>';
+
+
         this.util.qs('#message_form').prepend(this.util.qs('#private_input_box'));
         this.util.qs('#private_center').after(this.util.qs('#private_menu'));
 
@@ -218,8 +181,8 @@ class App {
             this.ui.handledMessagesBox,
             this.ui.unreadMessagesBox,
             this.ui.sentMessagesBox,
-            this.ui.presenceBox,
-            this.ui.loggingBox,
+            this.ui.loginLogoutBox,
+            this.ui.eventLogBox,
             this.ui.userContainersWrapper,
             this.ui.globalChat
         ]);
@@ -236,36 +199,59 @@ class App {
             this.util.qs('#ca-female-users-container').classList.add("ca-show-broadcast-ck");
         }
 
-        const dmTextarea = this.util.qsTextarea("#message_content");
+        const dmTextarea = this.util.qs("#private_input_box textarea");
         const dmSendBtn = this.util.qs("#private_send");
+        const publicChatTextarea = this.util.qs("#content");
+        const publicChatSendBtn = this.util.qs("#submit_button");
 
-        dmTextarea.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-
-                const text = dmTextarea.value.trim();
-                if (text.length === 0) {
-                    console.warn("Empty private message — not sending");
-                    return;
-                }
-
-                dmSendBtn.click();
-                dmTextarea.value = "";
-            }
-        });
+        this.addEnterEventListener(dmTextarea, dmSendBtn);
+        this.util.qs(`#main_input`).appendChild(publicChatTextarea);
+        this.addEnterEventListener(publicChatTextarea, publicChatSendBtn);
 
         this.util.init({
             debugMode: this.settingsStore.getDebugMode(),
             verboseMode: this.settingsStore.getVerboseMode()
         });
 
-        await this.hostServices.init();
 
+        return this;
+    }
+
+    removeAds = (root) => {
+        const scope = root && root.querySelectorAll ? root : document;
+        this.util.qsa('.coo-widget').forEach(e => e.remove());
+        const links = scope.querySelectorAll('a[href*="bit.ly"]');
+        if (!links || !links.length) return;
+        links.forEach(a => {
+            if (a && !a.closest(`#${this.sel.rightPanel}`) && a.parentNode) {
+                a.parentNode.removeChild(a);
+            }
+        });
+    }
+
+    addEnterEventListener(textarea, sendButton) {
+        textarea.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+
+                const text = textarea.value.trim();
+                if (text.length === 0) {
+                    console.warn("Empty private message — not sending");
+                    return;
+                }
+
+                sendButton.click();
+                textarea.value = "";
+            }
+        });
+    }
+
+    scrollAllBoxesToBottom = () => {
         this.util.scrollToBottom(this.ui.handledMessagesBox);
         this.util.scrollToBottom(this.ui.unreadMessagesBox);
         this.util.scrollToBottom(this.ui.sentMessagesBox);
-
-        return this;
+        this.util.scrollToBottom(this.ui.loginLogoutBox);
+        this.util.scrollToBottom(this.ui.eventLogBox);
     }
 
     setAndPersistDebugMode = (debugMode) => {
@@ -313,7 +299,7 @@ class App {
     }
 
     onClickGlobalChatHeaderProfile = async (e) => {
-        // Don’t hijack image/lightbox or menu clicks
+        // Don’t hijack image/lightbox or menu clicksS
         if (e.target.closest('a[data-fancybox], .chat_image, .logs_menu')) {
             return;
         }
@@ -342,7 +328,7 @@ class App {
 
     onClickRefreshButton = async () => {
         await this.hostServices.refreshUserList();
-        this.hostServices.logEventLine(`Manually refreshed user list on ${this.util.timeHHMMSS()}`);
+        this.hostServices.logEvent(`Manually refreshed user list on ${this.util.timeHHMMSS()}`);
     }
 
     appendCustomActionsToBar = () => {
@@ -384,41 +370,49 @@ class App {
         }
     }
 
-    buildLogHTML = (kind, content, user) => {
-        const text = String(content || '');
+    buildLogHTML = (log) => {
+        const text = String(log.content || '');
 
-        if (kind === 'event') {
-            const m = text.match(/(.+?)\s+has changed (?:his|her) Avatar\s*\(([^)]+)\s*→\s*([^)]+)\)/i);
+        // Ensure log.images is always an array
+        const images = Array.isArray(log.images) ? log.images : [];
 
-            if (m) {
-                const userName = m[1] || '';
-                const newAvatar = (m[3] || '').trim();
-                const safeName = this.util.escapeHTML(userName);
-                const safeSrc = this.util.escapeAttr(newAvatar || '');
+        let imagesHTML = '';
+        if (images.length > 0) {
+            const imgTags = images.map(img => {
+                if (!img) {
+                    console.warn('[buildLogHTML] Invalid image entry', img);
+                    return '';
+                }
+
+                const src = String(img);
                 return `
-                <span class="ca-log-text-main">
-                    ${safeName} has changed ${user.isFemale ? `her` : `his`} avatar:
-                </span>
-                <a href="${safeSrc}" target="_blank" rel="noopener noreferrer">
-                    <img class="chat_image ca-log-avatar-image" src="${safeSrc}" alt="New avatar of ${safeName}">
+                <a href="${src}" target="_blank" rel="noopener noreferrer" class="ca-log-image-link">
+                    <img src="${src}" alt="" class="ca-log-image">
                 </a>
             `;
-            }
+            }).join('');
 
-            return `<span class="ca-log-text-main">${this.util.escapeHTML(text)}</span>`;
+            imagesHTML = `
+            <div class="ca-log-images-container">
+                ${imgTags}
+            </div>
+        `;
         }
 
-        return `<span class="ca-log-text-main">${this.util.escapeHTML(text)}</span>`;
-    }
+        return `
+            ${text}
+            ${imagesHTML}
+    `;
+    };
 
     _attachLogClickHandlers = () => {
         const boxes = [
             this.ui.sentMessagesBox,
             this.ui.messagesWrapper,
-            this.ui.presenceBox,
+            this.ui.loginLogoutBox,
             this.ui.unreadMessagesBox,
             this.ui.handledMessagesBox,
-            this.ui.loggingBox
+            this.ui.eventLogBox
         ];
         boxes.forEach(box => {
             if (!box || box._caGenericWired) return;
@@ -428,7 +422,7 @@ class App {
     }
 
     _onLogClickGeneric = async (e) => {
-        const entry = e.target.closest?.(this.sel.log.classes.ca_log_entry);
+        const entry = e.target.closest?.(`.${this.sel.classes.ca_log_entry}`);
         if (!entry) {
             console.warn('[CA] _onLogClickGeneric: no entry found');
             return;
@@ -448,7 +442,7 @@ class App {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
 
-                const textEl = this.util.qs(`${this.sel.log.classes.ca_log_text}`, entry);
+                const textEl = this.util.qsClass(this.sel.classes.ca_log_text, entry);
 
                 // Flip "expanded" state only
                 textEl.classList.toggle('ca-text-expanded');
@@ -512,12 +506,9 @@ class App {
             }
         }
 
-        const logTextSel = this.sel.raw.log.classes.ca_log_text;
-        const dmLinkSel = this.sel.log.classes.ca_dm_link;
-
         const dmArea =
-            e.target.closest?.(logTextSel) ||
-            e.target.closest?.(dmLinkSel) ||
+            e.target.closest?.(`.${this.sel.classes.ca_log_text}`) ||
+            e.target.closest?.(`.${this.sel.classes.ca_dm_link}`) ||
             e.target.closest?.('img.chat_image');
 
         if (dmArea && uid && !isSystem) {
@@ -552,9 +543,11 @@ class App {
     }
 
     decodeHTMLEntities = (s) => {
-        const txt = document.createElement('textarea');
-        txt.innerHTML = String(s);
-        return txt.value;
+        if (!this._decodeTextarea) {
+            this._decodeTextarea = document.createElement('textarea');
+        }
+        this._decodeTextarea.innerHTML = String(s);
+        return this._decodeTextarea.value;
     }
 
     cloneAndRenderNewUserElement = (parsedUserItemEl, updatedUserJson) => {
@@ -688,7 +681,7 @@ class App {
     }
 
     setLogDotsLoggedInStatusForUid = (uid, isLoggedIn) => {
-        const selector = `.ca-log-entry[data-uid="${uid}"] ${this.sel.log.classes.ca_log_dot}`;
+        const selector = `.ca-log-entry[data-uid="${uid}"] .${this.sel.classes.ca_log_dot}`;
         const logDots = this.util.qsa(selector);
 
         logDots.forEach(dotEL => {
@@ -697,15 +690,15 @@ class App {
     }
 
     setLogDotLoggedInStatusForElement = (dotEl, isLoggedIn) => {
-        dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_green);
-        dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_red);
-        dotEl.classList.remove(this.sel.raw.log.classes.ca_log_dot_gray);
+        dotEl.classList.remove(this.sel.classes.ca_log_dot_green);
+        dotEl.classList.remove(this.sel.classes.ca_log_dot_red);
+        dotEl.classList.remove(this.sel.classes.ca_log_dot_gray);
 
         if (isLoggedIn) {
-            dotEl.classList.add(this.sel.raw.log.classes.ca_log_dot_green);
+            dotEl.classList.add(this.sel.classes.ca_log_dot_green);
             dotEl.title = "Online";
         } else if (!isLoggedIn) {
-            dotEl.classList.add(this.sel.raw.log.classes.ca_log_dot_red);
+            dotEl.classList.add(this.sel.classes.ca_log_dot_red);
             dotEl.title = "Offline";
         } else if (typeof isLoggedIn !== 'boolean') {
             throw Error(`Invalid value for isLoggedIn: ${isLoggedIn}`);
@@ -729,10 +722,10 @@ class App {
             this.util.verbose('Adding unread sent chip to user:', uid, ', unread received messages count: ', unreadReceivedMessagesCount, ', sent messages count: ', sentMessagesCount);
             const chip = this._createChipForUserItem(userEl);
 
-            userEl.classList.remove(this.sel.raw.log.classes.ca_handled_messages);
-            userEl.classList.add(this.sel.raw.log.classes.ca_unread_messages);
-            chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_unread);
-            chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_all_handled);
+            userEl.classList.remove(this.sel.classes.ca_handled_messages);
+            userEl.classList.add(this.sel.classes.ca_unread_messages);
+            chip.classList.add(this.sel.classes.ca_sent_chip_unread);
+            chip.classList.remove(this.sel.classes.ca_sent_chip_all_handled);
             chip.textContent = `${unreadReceivedMessagesCount}`;
             userEl.style.display = '';
         } else if (unreadReceivedMessagesCount === 0 && sentMessagesCount > 0) {
@@ -747,16 +740,16 @@ class App {
 
             const chip = this._createChipForUserItem(userEl);
 
-            userEl.classList.add(this.sel.raw.log.classes.ca_handled_messages);
-            userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
+            userEl.classList.add(this.sel.classes.ca_handled_messages);
+            userEl.classList.remove(this.sel.classes.ca_unread_messages);
 
-            chip.classList.add(this.sel.raw.log.classes.ca_sent_chip_all_handled);
-            chip.classList.remove(this.sel.raw.log.classes.ca_sent_chip_unread);
+            chip.classList.add(this.sel.classes.ca_sent_chip_all_handled);
+            chip.classList.remove(this.sel.classes.ca_sent_chip_unread);
             chip.textContent = '✓';
             userEl.style.display = this.shouldHideHandledUsers ? 'none' : '';
         } else {
-            userEl.classList.remove(this.sel.raw.log.classes.ca_unread_messages);
-            this.util.qs(this.sel.raw.log.classes.ca_sent_chip, {
+            userEl.classList.remove(this.sel.classes.ca_unread_messages);
+            this.util.qs(this.sel.classes.ca_sent_chip, {
                 root: userEl,
                 ignoreWarning: true
             })?.remove();
@@ -776,7 +769,7 @@ class App {
     }
 
     _createChipForUserItem = (userEl) => {
-        let chip = userEl.querySelector(this.sel.log.classes.ca_sent_chip);
+        let chip = this.util.qsClass(this.sel.classes.ca_sent_chip, userEl);
 
         if (!userEl.classList.contains('chataddons-sent')) {
             userEl.classList.add('chataddons-sent');
@@ -785,7 +778,7 @@ class App {
 
         if (!chip) {
             chip = document.createElement('span');
-            chip.classList.add(this.sel.raw.log.classes.ca_sent_chip);
+            chip.classList.add(this.sel.classes.ca_sent_chip);
             userEl.appendChild(chip);
             this.util.verbose('Created sent chip for user:', userEl);
         }
@@ -897,23 +890,23 @@ class App {
                   <div class="ca-section-title">
                     <span>Logon/Logoff</span>
                      <span class="clear-logs"
-                            data-kinds="login,logout"
+                            data-log-type="login,logout"
                             role="button" tabindex="0">Clear</span>
                       
                   </div>
-                  <div id="${this.sel.raw.log.presence}"
-                       class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
+                  <div id="${this.sel.loginLogout}"
+                       class="ca-log-box ${this.sel.classes.ca_box_scrollable}"
                        aria-live="polite"></div>
                 </div>
                  <div class="ca-section ca-log-section">
               <div class="ca-section-title">
                 <span>Logs</span>
                   <span class="clear-logs"
-                    data-kinds="event"
+                    data-log-type="event"
                     role="button" tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.general}"
-                   class="ca-log-box ${this.sel.raw.log.classes.ca_box_scrollable}"
+              <div id="${this.sel.general}"
+                   class="ca-log-box ${this.sel.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
         </div>
@@ -927,7 +920,7 @@ class App {
 
     buildPanel = () => {
         const panelEl = document.createElement('section');
-        panelEl.id = this.sel.raw.rightPanel;
+        panelEl.id = this.sel.rightPanel;
         panelEl.classList.add('ca-panel');
         panelEl.innerHTML = `
       <div class="ca-sections-wrapper">
@@ -947,7 +940,7 @@ class App {
           <a id="ca-nav-specific"
              href="#"
              data-action="send-message"
-             class="ca-dm-link ca-dm-right ca-log-action ca-log-action-filled"
+             class="ca-dm-link ca-dm-right ca-log-action"
              title="Send specific message">
             ${this.util.buildSvgIconString(
             "lucide lucide-triangle-right",
@@ -956,7 +949,7 @@ class App {
         )}
           </a>
 
-          <a id="${this.sel.raw.log.clear}"
+          <a id="${this.sel.clear}"
              href="#"
              data-action="clear-all-logs"
              class="ca-dm-link ca-dm-right ca-log-action"
@@ -972,6 +965,8 @@ class App {
             false
         )}
           </a>
+          
+          
 
           <a id="ca-nav-storage-toggle"
              href="#"
@@ -1017,12 +1012,12 @@ class App {
               <div class="ca-section-title">
                 <span>Sent Messages</span>
                 <span class="clear-logs"
-                      data-kinds="dm-out"
+                      data-log-type="dm-out"
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.sentMessagesBox}"
-                   class="ca-log-box ca-section-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+              <div id="${this.sel.sentMessagesBox}"
+                   class="ca-log-box ca-section-expand ${this.sel.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
             <div class="ca-resizer" data-resizer="sent-received"></div>
@@ -1030,12 +1025,12 @@ class App {
               <div class="ca-section-title">
                 <span>Unread Messages</span>
                 <span class="clear-logs"
-                      data-kinds="dm-in-unread"
+                      data-log-type="dm-in-unread"
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.unreadMessagesBox}"
-                   class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+              <div id="${this.sel.unreadMessagesBox}"
+                   class="ca-log-box ca-log-box-expand ${this.sel.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
             <div class="ca-resizer" data-resizer="received-handled"></div>
@@ -1043,12 +1038,12 @@ class App {
               <div class="ca-section-title">
                 <span>Handled Messages</span>
                 <span class="clear-logs"
-                      data-kinds="dm-in-handled"
+                      data-log-type="dm-in-handled"
                       role="button"
                       tabindex="0">Clear</span>
               </div>
-              <div id="${this.sel.raw.log.handledMessagesBox}"
-                   class="ca-log-box ca-log-box-expand ${this.sel.raw.log.classes.ca_box_scrollable}"
+              <div id="${this.sel.handledMessagesBox}"
+                   class="ca-log-box ca-log-box-expand ${this.sel.classes.ca_box_scrollable}"
                    aria-live="polite"></div>
             </div>
             </div>
@@ -1262,7 +1257,7 @@ class App {
         this.settingsStore.setWriteStorageMode(nextMode);
 
         this._updateStorageToggleUi(nextMode);
-        this.hostServices.logEventLine(`Storage mode set to ${nextMode} at ${this.util.timeHHMM()}`);
+        this.hostServices.logEvent(`Storage mode set to ${nextMode} at ${this.util.timeHHMM()}`);
     }
 
     onGlobalClickPanelNav = (e) => {
@@ -1314,17 +1309,17 @@ class App {
         this.ui.sentMessagesBox.innerHTML = '';
         this.ui.unreadMessagesBox.innerHTML = '';
         this.ui.handledMessagesBox.innerHTML = '';
-        this.ui.loggingBox.innerHTML = '';
-        this.ui.presenceBox.innerHTML = '';
+        this.ui.eventLogBox.innerHTML = '';
+        this.ui.loginLogoutBox.innerHTML = '';
 
-        const removedIn = this.activityLogStore.clearByKind('dm-in') || 0;
-        const removedOut = this.activityLogStore.clearByKind('dm-out') || 0;
-        const removedFail = this.activityLogStore.clearByKind('send-fail') || 0;
-        const removedEvents = this.activityLogStore.clearByKind('event') || 0;
-        const removedLogin = this.activityLogStore.clearByKind('login') || 0;
-        const removedLogout = this.activityLogStore.clearByKind('logout') || 0;
+        const removedIn = this.activityLogStore.clearByLogType('dm-in') || 0;
+        const removedOut = this.activityLogStore.clearByLogType('dm-out') || 0;
+        const removedFail = this.activityLogStore.clearByLogType('send-fail') || 0;
+        const removedEvents = this.activityLogStore.clearByLogType('event') || 0;
+        const removedLogin = this.activityLogStore.clearByLogType('login') || 0;
+        const removedLogout = this.activityLogStore.clearByLogType('logout') || 0;
         console.log(`[LOG] Global clear removed: in=${removedIn}, out=${removedOut}, fail=${removedFail}, event=${removedEvents}, login=${removedLogin}, logout=${removedLogout}`);
-        this.hostServices.logEventLine(`Logs cleared at ${this.util.timeHHMMSS()}`);
+        this.hostServices.logEvent(`Logs cleared at ${this.util.timeHHMMSS()}`);
     }
 
     _createUserListContainer = (options) => {
@@ -1459,8 +1454,8 @@ class App {
     createOtherUsersContainer = () => {
         const refs = this._createUserListContainer({
             wrapperEl: this.ui.userContainersWrapper,
-            containerId: this.sel.raw.users.otherUsersContainer,
-            countId: this.sel.raw.users.otherUserCount,
+            containerId: this.sel.otherUsersContainer,
+            countId: this.sel.otherUserCount,
             labelText: 'Other Users',
             headerExtraClass: 'ca-male-users-header',
             isExpanded: false,
@@ -1485,8 +1480,8 @@ class App {
     createFemaleUsersContainer = () => {
         const refs = this._createUserListContainer({
             wrapperEl: this.ui.userContainersWrapper,
-            containerId: this.sel.raw.users.femaleUsersContainer,
-            countId: this.sel.raw.users.femaleUserCount,
+            containerId: this.sel.femaleUsersContainer,
+            countId: this.sel.femaleUserCount,
             labelText: 'Female Users',
             headerExtraClass: 'ca-female-users-header',
             isExpanded: true,
@@ -1626,7 +1621,7 @@ class App {
     }
 
     applyHideHandledUseritemEls = (hide) => {
-        const handledEls = this.util.qsa(`${this.sel.log.classes.user_item}${this.sel.log.classes.ca_handled_messages}`, this.ui.femaleUsersContainer);
+        const handledEls = this.util.qsa(`.${this.sel.classes.user_item}.${this.sel.classes.ca_handled_messages}`, this.ui.femaleUsersContainer);
         handledEls.forEach((el) => {
             el.style.display = hide ? 'none' : '';
         });
@@ -1703,8 +1698,8 @@ class App {
 
     toggleOriginalUserList = (visible) => {
         this.util.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
-        this.util.qs(this.sel.users.otherUsersContainer).style.display = !visible ? 'block' : 'none';
-        this.util.qs(this.sel.users.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
+        this.util.qsId(this.sel.otherUsersContainer).style.display = !visible ? 'block' : 'none';
+        this.util.qsId(this.sel.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
     }
 
     wireListOptionClicks = () => {
@@ -1718,22 +1713,22 @@ class App {
 
     updateFemaleUserCountEl = (count) => {
         this.util.verbose('Updating female user count:', count);
-        const headerCounter = this.util.qs(this.sel.users.femaleUserCount);
+        const headerCounter = this.util.qsId(this.sel.femaleUserCount);
         headerCounter.textContent = `${count}`;
     }
 
     updateOtherUsersCountEl = (count) => {
-        const headerCounter = this.util.qs(this.sel.users.otherUserCount);
+        const headerCounter = this.util.qsId(this.sel.otherUserCount);
         headerCounter.textContent = `${count}`;
     }
 
-    _boxesForKinds = (kinds) => {
+    _boxesForLogType = (logType) => {
         const boxes = new Set();
-        const hasOut = kinds.includes('dm-out');
-        const hasInHandled = kinds.includes('dm-in-handled');
-        const hasInUnread = kinds.includes('dm-in-unread');
-        const hasEvt = kinds.includes('event');
-        const hasPresence = kinds.includes('login') || kinds.includes('logout');
+        const hasOut = logType.includes('dm-out');
+        const hasInHandled = logType.includes('dm-in-handled');
+        const hasInUnread = logType.includes('dm-in-unread');
+        const hasEvt = logType.includes('event');
+        const hasLoginLogout = logType.includes('login-logout');
 
         if (hasOut) {
             boxes.add(this.ui.sentMessagesBox);
@@ -1747,12 +1742,12 @@ class App {
             boxes.add(this.ui.unreadMessagesBox);
         }
 
-        if (hasPresence) {
-            boxes.add(this.ui.presenceBox);
+        if (hasLoginLogout) {
+            boxes.add(this.ui.loginLogoutBox);
         }
 
         if (hasEvt) {
-            boxes.add(this.ui.loggingBox);
+            boxes.add(this.ui.eventLogBox);
         }
 
         return Array.from(boxes);
@@ -1765,43 +1760,38 @@ class App {
             ? e.currentTarget
             : e.target;
 
-        console.log(`On box clear click: ${btn.dataset?.kinds}`);
+        console.log(`On box clear click: ${btn.dataset?.logType}`);
 
-        const kindsAttr = (btn.dataset?.kinds || '').trim();
-        if (!kindsAttr) {
-            console.warn('[LOG] Clear clicked but data-kinds is missing');
+        const logTypeAttribute = (btn.dataset?.logType || '').trim();
+        if (!logTypeAttribute) {
+            console.warn('[LOG] Clear clicked but data-log-type is missing');
             return;
         }
 
-        const kinds = Array.from(new Set(
-            kindsAttr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+        const logTypes = Array.from(new Set(
+            logTypeAttribute.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
         ));
 
-        if (!this.activityLogStore || typeof this.activityLogStore.clearByKind !== 'function') {
-            console.error('[LOG] ActivityLogStore.clearByKind unavailable for section clear');
-            return;
-        }
-
         let totalRemoved = 0;
-        for (let i = 0; i < kinds.length; i++) {
-            const k = kinds[i];
-            const removed = this.activityLogStore.clearByKind(k) || 0;
+        for (let i = 0; i < logTypes.length; i++) {
+            const k = logTypes[i];
+            const removed = this.activityLogStore.clearByLogType(k) || 0;
             totalRemoved += removed;
         }
 
-        const boxes = this._boxesForKinds(kinds);
+        const boxes = this._boxesForLogType(logTypes);
         if (boxes.length === 0) {
-            console.warn('[LOG] No UI boxes resolved for kinds:', kinds);
+            console.warn('[LOG] No UI boxes resolved for log types:', logTypes);
         } else {
             for (let i = 0; i < boxes.length; i++) {
                 if (!boxes[i]) {
-                    console.error('[LOG] UI box not found for kinds', kinds);
+                    console.error('[LOG] UI box not found for log types', logTypes);
                 }
                 boxes[i].innerHTML = '';
             }
         }
 
-        console.log(`[LOG] Section cleared: kinds=[${kinds.join(', ')}], removed=${totalRemoved}`);
+        console.log(`[LOG] Section cleared: log types=[${logTypes.join(', ')}], removed=${totalRemoved}`);
     }
 
     isVisuallyTruncated_ = (el) => {
@@ -1827,8 +1817,8 @@ class App {
     }
 
     ensureExpandButtonFor_ = (logEntryEl) => {
-        const logEntryTextEl = logEntryEl.querySelector(`${this.sel.log.classes.ca_log_text}`);
-        const ind = logEntryEl.querySelector(`.${this.sel.raw.log.classes.ca_expand_indicator}`);
+        const logEntryTextEl = this.util.qsClass(this.sel.classes.ca_log_text, logEntryEl);
+        const ind = this.util.qsClass(this.sel.classes.ca_expand_indicator, logEntryEl);
         const expanded = logEntryTextEl.classList.contains("ca-text-expanded");
 
         if (!ind) {
@@ -1853,162 +1843,95 @@ class App {
         ind.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
 
-    renderLogEntry = (activityLog, user) => {
-        if (!activityLog || !user || !user.uid) {
-            console.error('renderLogEntry: Invalid args', {entry: activityLog, user});
-            return;
-        }
-
-        const {ts, kind, content, guid} = activityLog;
-        let targetContainer;
-        switch (kind) {
-            case 'dm-out':
-                targetContainer = this.ui.sentMessagesBox;
-                break;
-
-            case 'dm-in-handled':
-                targetContainer = this.ui.handledMessagesBox;
-                break;
-
-            case 'dm-in-unread':
-                targetContainer = this.ui.unreadMessagesBox;
-                break;
-
-            case 'login':
-            case 'logout':
-                targetContainer = this.ui.presenceBox;
-                break;
-
-            case 'event':
-                targetContainer = this.ui.loggingBox;
-                break;
-
-            default:
-                targetContainer = this.ui.messagesWrapper;
-        }
-
-        if (!targetContainer) {
-            console.error('renderLogEntry: No target container for kind', {kind, activityLog, user});
+    renderLogEntry = (activityLog, logType, targetContainer, isLoggedIn = false) => {
+        const uid = activityLog.uid;
+        if (!activityLog || !uid) {
+            console.error('[renderLogEntry] Invalid args', {activityLog, uid});
             return;
         }
 
         this.util.verbose(
-            `Start rendering entry with timestamp ${ts}, type/kind ${kind} and content ${content} from user ${user.uid}`,
-            user,
-            'in target container',
-            targetContainer
+            `[renderLogEntry] Rendering entry ts=${activityLog.ts}, uid=${uid}`,
+            activityLog,
+            'into'
         );
 
-        const mappedKind = kind === 'dm-out' ? 'send-ok' : kind;
-        const tsStr = String(ts);
+        const tsStr = String(activityLog.ts);
         const displayTs = tsStr.split(' ')[1] || tsStr;
-        const html = this.buildLogHTML(kind, activityLog.content, user);
-        const detailsHTML = this.decodeHTMLEntities(html);
-        const isSystemUser = String(user.uid) === 'system';
-        const userHTML = `
-                <div class="${this.sel.raw.log.classes.ca_log_cell}">
-                    <span class="${this.sel.raw.log.classes.ca_log_user}">
-                        ${
-            isSystemUser
-                ? `<strong>${user.name || 'System'}</strong>`
-                : this.userLinkHTML(user)
-        }
-                    </span>
-                </div>
-              `;
 
-        const dmIconHTML = `
-            <a href="#"
-               class="${this.sel.raw.log.classes.ca_dm_link} ${this.sel.raw.log.classes.ca_dm_right} ${this.sel.raw.log.classes.ca_log_action}"
-               data-action="open-dm"
-               title="Direct message">
-               ${this.util.buildSvgIconString(
-            'lucide lucide-mail',
-            `
-                                <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-                                <polyline points="3 7,12 13,21 7"></polyline>
-                            `)} </a> `;
+        // Build main text HTML (already escaped properly)
+        const detailsHTML = this.buildLogHTML(activityLog);
 
-        const expandIconHTML = `<span class="ca-expand-indicator" title="Click to expand/collapse" data-action="toggle-expand" role="button" tabindex="0" aria-expanded="true">▴</span>`;
-
-        const markHandledIconHTML = `
-        <a href="#"
-           class="${this.sel.raw.log.classes.ca_log_action} ca-log-mark-handled"
-           data-action="mark-handled"
-           title="Mark this message as handled">
-           ${this.util.buildSvgIconString(
-            'lucide lucide-check',
-            `
-                  <polyline points="9 12 11 14 15 10"></polyline>
-                `,
-            false
-        )}
-        </a>`;
-
-
-        const deleteIconHTML = `
-                <a href="#"
-                   class="${this.sel.raw.log.classes.ca_del_link} ${this.sel.raw.log.classes.ca_log_action}"
-                   data-action="delete-log"
-                   title="Delete this log entry">
-                   ${this.util.buildSvgIconString(
-            'lucide lucide-x',
-            `
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        `)}</a> `;
-
-        const guidAttr = guid != null ? ` data-guid="${String(guid)}"` : '';
+        const isSystemUser = String(uid) === 'system';
 
         const entryHTML = `
-                <div class="ca-log-entry ca-log-${mappedKind}"
-                     data-uid="${String(user.uid)}"${guidAttr}>
-                    <span class="ca-log-ts">${displayTs}</span>
-                    <div class="${this.sel.raw.log.classes.ca_log_cell}">
-                        <span class="${user.uid === 'system' ? 'ca-system-log-dot' : this.sel.raw.log.classes.ca_log_dot} ${this.sel.raw.log.classes.ca_log_dot_gray}">
-                            ●
-                        </span>
-                    </div>
-                    ${userHTML}
-                    <span class="${this.sel.raw.log.classes.ca_log_text}">
-                        ${detailsHTML}
-                    </span>
-                    <div class="${this.sel.raw.log.classes.ca_log_actions}">
-                        ${expandIconHTML}
-                        ${dmIconHTML}
-                        ${markHandledIconHTML}
-                        ${deleteIconHTML}
-                    </div>
-                </div>
-            `;
+        <div class="ca-log-entry ca-log-${logType} ${isSystemUser ? 'system-log-entry' : ''}"
+             data-uid="${String(uid)}" data-guid="${String(activityLog.guid)}">
+            <span class="ca-log-ts">${displayTs}</span>
+            <div class="${this.sel.classes.ca_log_cell}">
+                <span title="${isLoggedIn ? 'Online' : 'Offline'}" class="${isSystemUser ? `ca-system-log-dot ${this.sel.classes.ca_log_dot_gray}` : `${this.sel.classes.ca_log_dot} ${isLoggedIn ? this.sel.classes.ca_log_dot_green : this.sel.classes.ca_log_dot_red}`} ">
+                    ●
+                </span>
+            </div>
+            <div class="${this.sel.classes.ca_log_cell}">
+                <span class="${this.sel.classes.ca_log_user}">
+                    ${isSystemUser ? 'System' : this.userLinkHTML(uid, activityLog.title)}
+                </span>
+            </div>
+            <span class="${this.sel.classes.ca_log_text} ca-text-clamped" data-action="toggle-expand" aria-expanded="false">
+                ${detailsHTML}
+            </span>
+            <div class="${this.sel.classes.ca_log_actions}">
+                 <span class="ca-expand-indicator"
+              title="Click to expand/collapse"
+              data-action="toggle-expand"
+              role="button"
+              tabindex="0"
+              aria-expanded="false">▾</span>
+                <a href="#"
+                       class="${this.sel.classes.ca_dm_link} ${this.sel.classes.ca_dm_right} ${this.sel.classes.ca_log_action}"
+                       data-action="open-dm"
+                       title="Direct message">
+                       <i class="fa fa-envelope" aria-hidden="true"></i>
+                    </a>
+                <a href="#"
+                       class="${this.sel.classes.ca_log_action} ca-log-mark-handled"
+                       data-action="mark-handled"
+                       title="Mark this message as handled">
+                       <i class="fa fa-check" aria-hidden="true"></i>
+                    </a>
+                <a href="#"
+                       class="${this.sel.classes.ca_del_link} ${this.sel.classes.ca_log_action}"
+                       data-action="delete-log"
+                       title="Delete this log entry">
+                       <i class="fa fa-times" aria-hidden="true"></i>
+                    </a>
+            </div>
+        </div>
+    `;
 
-        const logEntryEl = this.util.createElementFromString(entryHTML);
-        logEntryEl.classList.add(kind);
-
-        if (user.uid !== 'system') {
-            this.setLogDotLoggedInStatusForElement(this.util.qs(`${this.sel.log.classes.ca_log_dot}`, logEntryEl), user.isLoggedIn);
-        } else {
-            logEntryEl.classList.add('system-log-entry');
-        }
+        // Insert HTML directly (faster than building full DOM tree by hand)
+        targetContainer.insertAdjacentHTML('beforeend', entryHTML);
+        const logEntryEl = targetContainer.lastElementChild;
 
         if (!logEntryEl) {
-            console.error('renderLogEntry: Failed to build log entry element', {activityLog, user});
+            console.error('[renderLogEntry] Failed to create log entry element', activityLog);
             return;
         }
-        targetContainer.appendChild(logEntryEl);
-        this.ensureExpandButtonFor_(logEntryEl);
-        this.util.scrollToBottom(targetContainer);
-    }
 
-    userLinkHTML = (user) => {
+        // Keep scroll behavior for non-initial loads
+        if (!this.hostServices.isInitialLoad) {
+            this.util.scrollToBottom(targetContainer);
+        }
+    };
+
+    userLinkHTML = (uid, username) => {
         return `<a href="#"
-            class="${this.sel.raw.log.classes.ca_user_link}"
+            class="${this.sel.classes.ca_user_link}"
             title="Open profile"
-            data-uid="${user.uid}"
-            data-name="${user.name}"
-            data-action="open-profile"
-            data-avatar="${user.avatar}">
-            <strong>${user.name || "??"}</strong>
+            data-uid="${uid}"
+            data-action="open-profile">
+            <strong>${username || "??"}</strong>
           </a>`;
     }
 
@@ -2037,6 +1960,7 @@ if (!text.includes("Verifieer dat u een mens bent")) {
 } else {
     console.warn("Human verification page detected — not initializing.");
 }
-app.init().then(() => {
+app.init().then(app.hostServices.init).then(() => {
     console.log("ChatApp initialized.");
 });
+

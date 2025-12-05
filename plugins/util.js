@@ -309,24 +309,18 @@ class Util {
         return null;
     }
 
-    escapeHTML = (s) => {
-        return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    escapeAttr = (s) => {
-        return String(s).replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
-
     trim = (s) => {
         return String(s || '').replace(/^\s+|\s+$/g, '');
+    }
+
+    qsId = (selector,
+            options = {}) => {
+        return this.qs(`#${selector}`, options);
+    }
+
+    qsClass = (selector,
+               options = {}) => {
+        return this.qs(`.${selector}`, options);
     }
 
     qs = (
@@ -550,7 +544,7 @@ class Util {
             preview.style.top = `${y}px`;
         };
 
-        const HOVER_SELECTOR = 'img.chat_image, img.avav';
+        const HOVER_SELECTOR = 'img.chat_image, img.avav, .ca-log-image, .ca-host-private-header-inner img, .private_avatar img';
 
 
         const attachHoverHandlers = (container) => {

@@ -734,11 +734,16 @@
     cursor: pointer;
 }
 
-.ca-log-text img {
-    max-height: 20px;
-    max-width: 20px;
+.ca-log-image {
+    max-height: 40px;
+    max-width: 40px;
     vertical-align: middle;
     display: inline-block;
+}
+
+.ca-log-images-container {
+    display: flex;
+    gap: 8px;
 }
 
 .ca-log-text img.chat_image {
@@ -865,6 +870,16 @@
     text-decoration: none;
 }
 
+.ca-log-action i {
+    color: #51b9a6;
+    cursor: pointer;
+}
+
+.ca-log-action:hover {
+    color: #f87171;
+    text-decoration: none;
+}
+
 .ca-log-action svg {
     width: 16px;
     height: 16px;
@@ -875,20 +890,6 @@
     stroke-linejoin: round;
     transition: color 0.2s ease, stroke 0.2s ease;
     cursor: pointer;
-}
-
-.ca-log-action.ca-log-action-filled svg {
-    fill: #51b9a6;
-}
-
-.ca-log-action:hover {
-    color: #f87171;
-    text-decoration: none;
-}
-
-svg.svg-small {
-    width: 16px;
-    height: 16px;
 }
 
 svg.svg-large {
@@ -914,6 +915,25 @@ svg.svg-large {
     display: none;
 }
 
+.input_table {
+    display: flex;
+}
+
+.input_table .input_item.main_item.base_main, #inputt_right {
+    display: flex;
+    align-items: center;
+}
+
+.input_table {
+    display: flex;
+    flex-wrap: wrap; /* allow wrapping */
+    align-items: center;
+}
+
+.input_table > * {
+    flex: 0 0 auto; /* default: size to content */
+}
+
 .ca-expand-indicator:hover {
     background: rgba(147, 197, 253, 0.4);
     color: #ffffff;
@@ -927,7 +947,7 @@ svg.svg-large {
     display: none;
 }
 
-.ca-log-entry.dm-in-unread .ca-log-mark-handled {
+.ca-log-entry.ca-log-dm-in-unread .ca-log-mark-handled {
     display: inline-block;
 }
 
@@ -1155,6 +1175,10 @@ svg.svg-large {
     height: 100% !important;
 }
 
+#chat_center {
+    flex-grow: 1;
+}
+
 #priv_input_extra {
     width: auto;
     position: absolute;
@@ -1175,7 +1199,7 @@ svg.svg-large {
 }
 
 #content,
-#message_content {
+.message_content {
     border-radius: 0;
 }
 
@@ -1305,7 +1329,7 @@ svg.svg-large {
     background: unset;
 }
 
-#message_content {
+.message_content {
     margin-top: auto;
     field-sizing: content;
     min-height: 40px;
@@ -1313,7 +1337,7 @@ svg.svg-large {
     align-content: center;
 }
 
-#message_content::placeholder {
+.message_content::placeholder {
     text-align: center;
 }
 
@@ -1767,8 +1791,12 @@ svg.svg-large {
     min-height: 160px;
 }
 
+#content {
+    background: none;
+}
+
 /* Make the DM textarea a bit taller by default */
-#ca-host-private-popup #message_content {
+.message_content {
     min-height: 64px;
     resize: vertical;
 }
@@ -2004,7 +2032,7 @@ svg.svg-large {
 }
 
 /* Textarea slightly taller & themed (host already controls id) */
-#ca-host-private-popup #message_content {
+.message_content {
     min-height: 70px;
     padding: 8px 10px;
     border-radius: 8px;
@@ -2013,7 +2041,7 @@ svg.svg-large {
     color: #e5e7eb;
 }
 
-#ca-host-private-popup #message_content::placeholder {
+.message_content::placeholder {
     color: #64748b;
     text-align: left;
 }

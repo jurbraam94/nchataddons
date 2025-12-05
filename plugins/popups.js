@@ -1696,7 +1696,7 @@ class Popups {
                     dot.textContent = '●';
                     nameWrapper.appendChild(dot);
 
-                    const html = this.app.userLinkHTML(user);
+                    const html = this.app.userLinkHTML(user.uid, user.name);
 
                     const tmp = document.createElement('span');
                     tmp.innerHTML = html;
