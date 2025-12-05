@@ -191,7 +191,8 @@ class Util {
             rank: this.extractRank(userEl),
             age: this.extractAge(userEl),
             country: this.extractCountry(userEl),
-            mood: this.extractMood(userEl)
+            mood: this.extractMood(userEl),
+            isLoggedIn: !!(userEl && !userEl.classList.contains('offline'))
         }
     }
 

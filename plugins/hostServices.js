@@ -555,7 +555,7 @@ class HostServices {
         if (!user.isLoggedIn) {
             this.util.qs(`.user_item[data-id="${user.uid}"]`, {
                 root: this.app.ui.userContainersWrapper,
-                ignoreWarning: true
+                ignoreWarning: this.isInitialLoad
             })?.remove();
         }
 

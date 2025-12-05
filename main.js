@@ -165,7 +165,7 @@ class App {
         this.ui.loginLogoutBox = this.util.qsId(this.sel.loginLogout);
         this.ui.logClear = this.util.qsId(this.sel.clear);
         this.ui.eventLogBox = this.util.qsId(this.sel.general);
-        
+
         this.util.qsId(this.sel.privateInputBox).innerHTML =
             '<textarea data-paste="1" id="message_content" class="message_content inputbox" rows="4" placeholder="Type a message..."></textarea>';
         this.util.qs(`#main_input_box`).innerHTML =
@@ -644,11 +644,8 @@ class App {
     }
 
     setLogDotsLoggedInStatusForUid = (uid, isLoggedIn) => {
-        console.log('Setting log dots status for uid:', uid, 'to:', isLoggedIn)
         const selector = `.ca-log-entry[data-uid="${uid}"] .${this.sel.classes.ca_log_dot}`;
         const logDots = this.util.qsa(selector);
-
-        console.log(logDots);
 
         logDots.forEach(dotEL => {
             this.setLogDotLoggedInStatusForElement(dotEL, isLoggedIn);
@@ -1818,7 +1815,7 @@ class App {
         ind.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
 
-    renderLogEntry = (activityLog, logType, targetContainer, isLoggedIn = false) => {
+    renderLogEntry = (activityLog, logType, targetContainer, isLoggedIn = null) => {
         const uid = activityLog.uid;
         if (!activityLog || !uid) {
             console.error('[renderLogEntry] Invalid args', {activityLog, uid});
@@ -1828,7 +1825,8 @@ class App {
         this.util.verbose(
             `[renderLogEntry] Rendering entry ts=${activityLog.ts}, uid=${uid}`,
             activityLog,
-            'into'
+            ', isLoggedIn',
+            isLoggedIn
         );
 
         const tsStr = String(activityLog.ts);

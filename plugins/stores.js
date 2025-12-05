@@ -948,7 +948,7 @@ class UserStore {
     }
 
     getAllLoggedIn = () => {
-        return this.list().filter(u => {
+        return this._getAll().filter(u => {
             if (u.isLoggedIn === true) {
                 return true;
             } else if (u.isLoggedIn === undefined) {
