@@ -1376,8 +1376,20 @@ class App {
         content.className = 'ca-user-list-content';
         container.appendChild(content);
 
-        // Only pass the clicked group; logic will find the "other" group.
-        this.util.click(header, this._onUserListHeaderClick, group);
+        header.addEventListener("click", (event) => {
+            const target = event.target;
+
+            if (
+                target instanceof HTMLInputElement ||
+                target instanceof HTMLTextAreaElement ||
+                target instanceof HTMLSelectElement ||
+                target.closest("label")
+            ) {
+                return;
+            }
+
+            this._onUserListHeaderClick(group);
+        });
 
         return {
             group,
