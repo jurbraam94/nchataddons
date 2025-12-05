@@ -1,10 +1,11 @@
 class Popups {
-    constructor({app, settingsStore, util, userStore, api}) {
+    constructor({app, settingsStore, util, userStore, api, hostServices}) {
         this.app = app;
         this.settingsStore = settingsStore;
         this.util = util;
         this.userStore = userStore;
         this.api = api;
+        this.hostServices = hostServices;
 
         this.state = {
             page: 1,
@@ -747,7 +748,7 @@ class Popups {
                 return;
             }
 
-            const broadcastReceiveList = this.util.buildBroadcastList();
+            const broadcastReceiveList = this.hostServices.buildBroadcastList();
 
             if (!broadcastReceiveList.length) {
                 this.app.logEventLine('[BROADCAST] No new recipients for this message (after exclusions/rank filter).');
@@ -755,7 +756,7 @@ class Popups {
             }
 
             broadcastSendEl.disabled = true;
-            this.app._runBroadcast(broadcastReceiveList, text)
+            this.hostServices.startBroadcast(broadcastReceiveList, text)
                 .then(({ok, fail}) => {
                     this.app.logEventLine(`[BROADCAST] Done. Success: ${ok}, Failed: ${fail}.`);
                 })

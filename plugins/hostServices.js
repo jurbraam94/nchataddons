@@ -909,7 +909,7 @@ class HostServices {
         return out;
     }
 
-    _runBroadcast = async (to, text) => {
+    startBroadcast = async (to, text) => {
         const batchSize = 10;
         const secondsBetweenSends = [2000, 5000];
         const secondsBetweenBatches = [10000, 20000];

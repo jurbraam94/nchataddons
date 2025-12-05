@@ -38,15 +38,6 @@ class App {
             });
         }
 
-        // Now UsersPopup gets injected dependencies
-        this.popups = new Popups({
-            app: this,
-            settingsStore: this.settingsStore,
-            util: this.util,
-            userStore: this.userStore,
-            api: this.api
-        });
-
         this.hostServices = new HostServices({
             app: this,
             util: this.util,
@@ -56,6 +47,16 @@ class App {
             api: this.api,
             popups: this.popups
         })
+
+        // Now UsersPopup gets injected dependencies
+        this.popups = new Popups({
+            app: this,
+            settingsStore: this.settingsStore,
+            util: this.util,
+            userStore: this.userStore,
+            api: this.api,
+            hostServices: this.hostServices
+        });
 
         this.options = {};
 
