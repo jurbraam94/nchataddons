@@ -341,10 +341,8 @@ class Util {
 
         const el = root.querySelector(selector);
 
-        if (!el || !(el instanceof elementType) || !(el instanceof HTMLElement)) {
-            if (!ignoreWarning) {
-                console.warn("[CA] qs: element not found or wrong type:", selector);
-            }
+        if (!ignoreWarning && (!el || !(el instanceof elementType) || !(el instanceof HTMLElement))) {
+            console.warn("[CA] qs: element not found or wrong type:", selector, options);
             return null;
         }
 

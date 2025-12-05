@@ -422,81 +422,65 @@ class App {
     }
 
     _onLogClickGeneric = async (e) => {
-        const entry = e.target.closest?.(`.${this.sel.classes.ca_log_entry}`);
+        let target = e.target;
+
+        if (target.nodeType === Node.TEXT_NODE || target.nodeType === 3) {
+            target = target.parentElement;
+        }
+
+        const entry = target.closest(`.${this.sel.classes.ca_log_entry}`);
         if (!entry) {
             console.warn('[CA] _onLogClickGeneric: no entry found');
             return;
         }
 
         const uid = entry.getAttribute('data-uid') || '';
+        const guid = entry.getAttribute('data-guid') || '';
         const isSystem = (uid === 'system');
 
-        this.util.verbose('Log entry clicked:', {entry, uid, isSystem});
+        this.util.verbose('Log entry clicked:', {entry, uid, guid, isSystem});
 
-        const actionEl = e.target.closest?.('[data-action]');
-        if (actionEl) {
-            const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
+        const actionEl = target.closest('[data-action]');
+        if (!actionEl) {
+            return;
+        }
 
-            if (action === 'toggle-expand') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
+        const action = String(actionEl.getAttribute('data-action') || '').toLowerCase();
 
+        switch (action) {
+            case 'toggle-expand': {
                 const textEl = this.util.qsClass(this.sel.classes.ca_log_text, entry);
+                if (!textEl) {
+                    console.warn('[CA] toggle-expand: no text element found in entry', entry);
+                    return;
+                }
 
-                // Flip "expanded" state only
                 textEl.classList.toggle('ca-text-expanded');
-
-                // Re-run sizing logic to clamp/unclamp & update arrow
                 this.ensureExpandButtonFor_(entry);
-
                 return;
             }
 
-            if (action === 'delete-log') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-
-                const guid = entry.getAttribute('data-guid');
-                if (guid && this.activityLogStore.remove) {
-                    this.activityLogStore.remove(guid);
-                } else {
-                    console.warn('[CA] delete-log: no guid or ActivityLogStore.remove missing', {guid});
-                }
+            case 'delete-log': {
+                this.activityLogStore.remove(guid);
                 entry.remove();
                 return;
             }
 
-            if (action === 'mark-handled') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-
-                const guid = entry.getAttribute('data-guid');
-
+            case 'mark-handled': {
                 const updated = this.activityLogStore.markLogHandled(guid);
-
                 this.processHandledStatusForLogsEls([updated]);
-
                 this.updateProfileChipByUid(uid);
-
                 return;
             }
 
-
-            if (action === 'open-profile') {
+            case 'open-profile': {
                 await this.popups.openUserProfilePopupUsingHostEl(uid);
                 return;
             }
 
-            if (action === 'open-dm') {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-
-                if (!uid || isSystem) {
-                    this.util.verbose('[CA] open-dm: ignoring for system or missing uid', {uid});
+            case 'open-dm': {
+                if (isSystem) {
+                    this.util.verbose('[CA] open-dm: ignoring system', {uid});
                     return;
                 }
 
@@ -504,33 +488,14 @@ class App {
                 this.popups.openAndRememberPrivateChat(user);
                 return;
             }
-        }
 
-        const dmArea =
-            e.target.closest?.(`.${this.sel.classes.ca_log_text}`) ||
-            e.target.closest?.(`.${this.sel.classes.ca_dm_link}`) ||
-            e.target.closest?.('img.chat_image');
-
-        if (dmArea && uid && !isSystem) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-
-            const user = await this.userStore.getOrFetch(uid);
-            if (!user || !user.uid) {
-                console.error('[CA] Generic DM click: could not fetch user for uid', uid, user);
+            default: {
+                console.warn('[CA] Unhandled log action:', action);
                 return;
             }
-
-            console.log('[CA] Opening private (generic) with:', uid, user.name, user.avatar);
-            this.popups.openAndRememberPrivateChat(user);
-            return;
         }
+    };
 
-        if (uid && !isSystem) {
-            await this.popups.openUserProfilePopupUsingHostEl(uid);
-        }
-    }
 
     onClickDeleteLog = (guid, logEntry) => {
         //const guid = entry.getAttribute('data-guid');
@@ -769,7 +734,10 @@ class App {
     }
 
     _createChipForUserItem = (userEl) => {
-        let chip = this.util.qsClass(this.sel.classes.ca_sent_chip, userEl);
+        let chip = this.util.qsClass(this.sel.classes.ca_sent_chip, {
+            ignoreWarning: true,
+            parent: userEl
+        });
 
         if (!userEl.classList.contains('chataddons-sent')) {
             userEl.classList.add('chataddons-sent');

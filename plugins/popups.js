@@ -50,7 +50,6 @@ class Popups {
             return;
         }
 
-        this.util.debug('[CA] applyLegacyAndOpenDm', {uid, name, avatar});
         this.settingsStore.setLastDmUid(uid);
         this.openPrivateInCaPopup({uid, name, avatar});
         this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
