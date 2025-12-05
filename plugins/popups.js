@@ -341,7 +341,7 @@ class Popups {
                 }
 
                 if (action === 'open-profile') {
-                    await this.app.openUserProfilePopupUsingHostEl(uid);
+                    await this.openUserProfilePopupUsingHostEl(uid);
                     return;
                 }
 
@@ -639,6 +639,10 @@ class Popups {
             return;
         }
 
+        if (uid) {
+            popup.dataset.caUid = String(uid);
+        }
+
         const popupHeader = popup.querySelector('.ca-popup-header');
         const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
         const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
@@ -665,10 +669,36 @@ class Popups {
         const left = document.createElement('div');
         left.className = 'ca-host-private-header-left';
 
-        this.util.clickE(left, this.openUserProfilePopupUsingHostEl, uid);
+// Store uid on the header for later profile opens
+        if (uid) {
+            left.dataset.caUid = String(uid);
+        }
+
+// When clicking the avatar/name area, open the profile for this DM's uid
+        left.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const headerEl = e.currentTarget;
+            const dmUid =
+                (headerEl && headerEl.dataset && headerEl.dataset.caUid) ||
+                (popup && popup.dataset && popup.dataset.caUid) ||
+                '';
+
+            if (!dmUid) {
+                console.error('[CA] DM header click: missing uid on header/popup', {headerEl, popup});
+                return;
+            }
+
+            try {
+                await this.openUserProfilePopupUsingHostEl(dmUid);
+            } catch (err) {
+                console.error('[CA] DM header click: failed to open profile popup', err);
+            }
+        });
 
         const right = document.createElement('div');
         right.className = 'ca-host-private-header-right';
+
 
         // Avatar
         const hostAvatarWrap = privateTop && privateTop.querySelector('#private_av_wrap');
