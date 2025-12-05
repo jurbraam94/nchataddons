@@ -974,7 +974,7 @@ class UserStore {
         if (!user) {
             const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
             const doc = this.util.createElementFromString(getProfileResponseHtml);
-            const foundUser = await this.getOrFetchByName(doc?.querySelector('.pro_name')?.textContent?.trim());
+            const foundUser = await this.getOrFetchByName(this.util.qs('.pro_name')?.textContent?.trim());
 
             if (foundUser) {
                 user = this.set({...foundUser, uid: String(foundUser.uid ?? id)});

@@ -45,10 +45,9 @@ class App {
             activityLogStore: this.activityLogStore,
             settingStore: this.settingsStore,
             api: this.api,
-            popups: this.popups
-        })
+            popups: null
+        });
 
-        // Now UsersPopup gets injected dependencies
         this.popups = new Popups({
             app: this,
             settingsStore: this.settingsStore,
@@ -57,6 +56,8 @@ class App {
             api: this.api,
             hostServices: this.hostServices
         });
+
+        this.hostServices.popups = this.popups;
 
         this.options = {};
 

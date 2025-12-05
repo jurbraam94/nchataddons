@@ -203,6 +203,22 @@ class Util {
     </svg>`;
     }
 
+    parseQueryStringToObject(raw) {
+        const obj = {};
+        if (!raw || typeof raw !== "string") return obj;
+
+        try {
+            const params = new URLSearchParams(raw);
+            for (const [key, value] of params.entries()) {
+                obj[key] = value;
+            }
+        } catch (e) {
+            console.error("[CA] Failed to parse query string:", raw, e);
+        }
+
+        return obj;
+    }
+
     /**
      * @param {string} className
      * @param {string} svgInnerHTML

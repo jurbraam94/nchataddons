@@ -945,20 +945,53 @@ class HostServices {
                 await sleep(wait);
             }
         }
-
+        this.logEventLine(`Broadcast finished. Sent ${ok} messages, ${fail} failed.`);
         return {ok, fail};
     }
 
+
     processPrivateSendResponse = async (data) => {
+        console.log(data);
         if (data?.code !== 1) {
             console.error(`[PrivateSend] Could not parse response from native message send:`, data);
             return null;
         }
 
         const logData = data.log || {};
-        const uid = logData?.user_id;
+        let uid = data?.target;
+
+// Fallback: extract target from the request body
+        if (!uid && data?.headers?.body) {
+            const qs = this.util.parseQueryStringToObject(data.headers.body);
+            if (qs.target) {
+                uid = Number(qs.target);
+            }
+        }
+
+        if (!uid) {
+            console.error("[PrivateSend] Could not determine target uid", data);
+            return null;
+        }
+
+
+// If the server didn't include "target", fall back to extracting from request body.
+        if (!uid && data?.headers?.body) {
+            try {
+                const params = new URLSearchParams(data.headers.body);
+                const p = params.get("priv");
+                if (p) uid = Number(p);
+            } catch (err) {
+                console.error("[PrivateSend] Failed to parse request body for target UID", err);
+            }
+        }
+
+        if (!uid) {
+            console.error("[PrivateSend] Cannot determine target UID for outgoing private message.", data);
+            return null;
+        }
+
         const content = logData.log_content || '';
-        const dmSentToUser = await this.userStore.getOrFetch(logData.user_id);
+        const dmSentToUser = await this.userStore.getOrFetch(uid);
 
         if (!dmSentToUser) {
             console.error(
@@ -1309,7 +1342,11 @@ class HostServices {
                         await self.processPrivateSendResponse({
                             code: jsonResponse?.code,
                             log: jsonResponse?.log,
+                            headers: {
+                                body: capturedBody,
+                            }
                         });
+
                     }
                 });
             }
