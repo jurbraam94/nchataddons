@@ -377,15 +377,19 @@ class Util {
     }
 
     // Core wrapper: handles prevent/stop + event vs no-event
-    wrapClick = async (e, fn, withEvent, ...params) => {
+    wrapClick = async (e, fn, {preventDefault = true, withEvent = false, stopPropagation = true}, ...params) => {
         if (!e) {
             console.warn('wrapClick called without event object');
             return;
         }
 
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
+        if (preventDefault) {
+            e.preventDefault();
+        }
+        if (stopPropagation) {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
 
         if (typeof fn !== 'function') {
             console.error('wrapClick: fn is not a function', fn);
@@ -403,18 +407,18 @@ class Util {
 
 // ---------- internal helpers (no duplication) ----------
 
-    _bindClick = (el, fn, withEvent, ...params) => {
+    _bindClick = (el, fn, options, ...params) => {
         if (!(el instanceof Element)) {
             console.error('_bindClick: el is not an Element', el);
             return;
         }
 
         el.addEventListener('click', (e) => {
-            void this.wrapClick(e, fn, withEvent, ...params);
+            void this.wrapClick(e, fn, options, ...params);
         });
     };
 
-    _bindclickAll = (elList, fn, withEvent, ...params) => {
+    _bindClickAll = (elList, fn, options, ...params) => {
         if (
             !elList ||
             (!Array.isArray(elList) &&
@@ -428,49 +432,49 @@ class Util {
             return;
         }
 
-        Array.from(elList).forEach((el) => this._bindClick(el, fn, withEvent, ...params));
+        Array.from(elList).forEach((el) => this._bindClick(el, fn, options, ...params));
     };
 
 // ---------- public API (short, readable names) ----------
 
 // Single element, NO event passed
-    click = (el, fn, ...params) => {
-        this._bindClick(el, fn, false, ...params);
+    click = (el, fn, options, ...params) => {
+        this._bindClick(el, fn, {...options, withEvent: false}, ...params);
     };
 
 // Single element, with Event as first arg
-    clickE = (el, fn, ...params) => {
-        this._bindClick(el, fn, true, ...params);
+    clickE = (el, fn, options, ...params) => {
+        this._bindClick(el, fn, {...options, withEvent: true}, ...params);
     };
 
 // By selector, NO event
-    clickSel = (selector, fn, ...params) => {
+    clickSel = (selector, fn, options, ...params) => {
         const el = this.qs(selector);
         if (!el) {
             console.error('clickSel: no element found for selector:', selector);
             return;
         }
-        this.click(el, fn, ...params);
+        this.click(el, fn, {...options, withEvent: false}, ...params);
     };
 
 // By selector, with Event
-    clickSelE = (selector, fn, ...params) => {
+    clickSelE = (selector, fn, options, ...params) => {
         const el = this.qs(selector);
         if (!el) {
             console.error('clickSelE: no element found for selector:', selector);
             return;
         }
-        this.clickE(el, fn, ...params);
+        this.clickE(el, fn, {...options, withEvent: true}, ...params);
     };
 
 // List (NodeList/array), NO event
-    clickAll = (elList, fn, ...params) => {
-        this._bindclickAll(elList, fn, false, ...params);
+    clickAll = (elList, fn, options, ...params) => {
+        this._bindClickAll(elList, f, {...options, withEvent: false}, ...params);
     };
 
 // List (NodeList/array), with Event
-    clickAllE = (elList, fn, ...params) => {
-        this._bindclickAll(elList, fn, true, ...params);
+    clickAllE = (elList, fn, options, ...params) => {
+        this._bindClickAll(elList, fn, {...options, withEvent: true}, ...params);
     };
 
     qsa = (s, r) => {

@@ -372,7 +372,7 @@ class App {
         templatesBtn.title = 'Predefined messages';
         templatesBtn.innerHTML = '<i class="fa fa-comment-dots"></i>';
 
-        this.util.click(templatesBtn, this.popups.openPredefinedPopup, null);
+        this.util.click(templatesBtn, this.popups.openPredefinedPopup, {}, null);
 
         if (existingOption) {
             bar.insertBefore(refreshBtn, existingOption);
@@ -540,8 +540,6 @@ class App {
 
         wrapper.appendChild(nameSpan);
 
-        this.util.click(this.util.qs('.user_item_avatar img.avav'), this.popups.openUserProfilePopupUsingHostEl, updatedUserJson.uid);
-
         if (updatedUserJson?.age > 0) {
             const ageSpan = document.createElement('span');
             ageSpan.className = 'ca-age';
@@ -563,6 +561,8 @@ class App {
         this.updateProfileChip(updatedUserJson.uid, parsedUserItemEl);
         this.util.qs('.username', parsedUserItemEl).replaceWith(wrapper);
         parsedUserItemEl.classList.add('ca-user-item');
+        this.util.click(this.util.qs('.user_item_avatar img.avav', parsedUserItemEl), this.popups.openUserProfilePopupUsingHostEl, {}, updatedUserJson.uid);
+
         containerContent.appendChild(parsedUserItemEl);
     }
 
@@ -827,7 +827,7 @@ class App {
         applyVisualState(include);
 
         // Important: pass the handler directly, don't wrap it
-        this.util.click(toggle, includeForBroadcast);
+        this.util.click(toggle, {}, includeForBroadcast);
 
         userItemDataEl.appendChild(toggle);
     };
@@ -847,7 +847,7 @@ class App {
                        <i class="fa fa-envelope" aria-hidden="true"></i>
                     </a>`));
 
-        this.util.click(dmLink, this.popups.openAndRememberPrivateChat, user);
+        this.util.click(dmLink, this.popups.openAndRememberPrivateChat, {}, user);
         userItemDataEl.appendChild(dmLink);
     }
 
@@ -1515,32 +1515,51 @@ class App {
         label.appendChild(checkbox);
         label.appendChild(textSpan);
 
-        checkbox.addEventListener("change",
-            /** @param {Event} e */
-            async (e) => {
+        this.util.clickE(checkbox, this.onIncludeOtherUsersInParsingClick, {preventDefault: false});
 
-                const target = e.target;
-
-                if (!(target instanceof HTMLInputElement)) {
-                    console.warn(
-                        "[CA] renderAndWireIncludeOtherUsersInParsing: event target is not an input",
-                        e
-                    );
-                    return;
-                }
-
-                const checked = !!target.checked;
-                this.util.debug("[CA] Include other users:", checked);
-                this.shouldIncludeOtherUsers = checked;
-                this.settingsStore.setShouldIncludeOthers(checked);
-                this.applyHideHandledUseritemEls(checked);
-                this.util.qs(`.ca-user-list-content`, this.ui.otherUsersContainer).innerHTML = "";
-                await this.hostServices.refreshUserList();
-            }
+        this.util.debug(
+            '[CA] renderAndWireIncludeOtherUsersInParsing: wired include-other-users checkbox',
+            {shouldIncludeOtherUsers: this.shouldIncludeOtherUsers}
         );
 
         elToAppendTo.appendChild(label);
+    };
+
+    onIncludeOtherUsersInParsingClick = async (e) => {
+        const input = e.currentTarget;
+        if (!(input instanceof HTMLInputElement)) {
+            console.error(
+                '[CA] renderAndWireIncludeOtherUsersInParsing: currentTarget is not an input',
+                {
+                    currentTarget: e.currentTarget,
+                    target: e.target
+                }
+            );
+            return;
+        }
+
+        const checked = !!input.checked;
+        this.util.debug('[CA] Include other users (click):', checked);
+
+        this.shouldIncludeOtherUsers = checked;
+        this.settingsStore.setShouldIncludeOthers(checked);
+
+        const otherUsersContent = this.util.qs(
+            '.ca-user-list-content',
+            this.ui.otherUsersContainer
+        );
+
+        if (!otherUsersContent) {
+            console.error(
+                '[CA] renderAndWireIncludeOtherUsersInParsing: otherUsersContent not found'
+            );
+        } else {
+            otherUsersContent.innerHTML = '';
+        }
+
+        await this.hostServices.refreshUserList();
     }
+
 
     renderAndWireHideHandledToggle = (elToAppendTo, targetContainer) => {
         const label = document.createElement('label');
@@ -1557,34 +1576,47 @@ class App {
         label.appendChild(checkbox);
         label.appendChild(textSpan);
 
-        checkbox.addEventListener("change",
-            (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                this.util.debug("[CA] Hide handled users:", checkbox.checked);
+        this.util.clickE(checkbox, this.onHideHandledCheckboxClick, {preventDefault: false}, targetContainer);
 
-                const target = e.target;
-
-                if (!(target instanceof HTMLInputElement)) {
-                    console.warn(
-                        "[CA] renderAndWireHideHandledToggle: event target is not an input",
-                        e
-                    );
-                    return;
-                }
-
-                const checked = !!target.checked;
-                this.util.debug("[CA] Hide handled users:", checked);
-                this.shouldHideHandledUsers = checked;
-                this.settingsStore.setHideHandled(checked);
-                targetContainer.classList.toggle("ca-hide-handled-ck-toggle", checked);
-                this.applyHideHandledUseritemEls(checked);
-            }
+        this.util.debug(
+            '[CA] renderAndWireHideHandledToggle: wired hide-handled checkbox',
+            {shouldHideHandledUsers: this.shouldHideHandledUsers}
         );
 
         elToAppendTo.appendChild(label);
+    };
+
+    onHideHandledCheckboxClick = (e, targetContainer) => {
+
+        const input = e.currentTarget;
+        if (!(input instanceof HTMLInputElement)) {
+            console.error(
+                '[CA] renderAndWireHideHandledToggle: currentTarget is not an input',
+                {
+                    currentTarget: e.currentTarget,
+                    target: e.target
+                }
+            );
+            return;
+        }
+
+        if (!targetContainer) {
+            console.error(
+                '[CA] renderAndWireHideHandledToggle: targetContainer missing'
+            );
+            return;
+        }
+
+        const checked = !!input.checked;
+        this.util.debug('[CA] Hide handled users (click):', checked);
+
+        this.shouldHideHandledUsers = checked;
+        this.settingsStore.setHideHandled(checked);
+
+        targetContainer.classList.toggle('ca-hide-handled-ck-toggle', checked);
+        this.applyHideHandledUseritemEls(checked);
     }
+
 
     renderAndWireEnableBroadcastCheckbox = (elToAppendTo, targetContainer) => {
         const label = document.createElement('label');
@@ -1600,19 +1632,47 @@ class App {
         label.appendChild(checkbox);
         label.appendChild(textSpan);
 
-        checkbox.addEventListener('change', (e) => {
-            const checked = !!e.target.checked;
-            this.shouldShowBroadcastCheckboxes = checked;
-            this.settingsStore.setShowBroadcastSelectionBoxes(checked);
-            targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
-            this.util.debug(
-                '[CA] Female user checkbox visibility:',
-                checked ? 'shown' : 'hidden'
-            );
-        });
+        this.util.clickE(checkbox, this.onBroadcastCheckboxClick, {preventDefault: false}, targetContainer);
+
+        this.util.debug(
+            '[CA] renderAndWireEnableBroadcastCheckbox: wired broadcast checkbox',
+            {shouldShowBroadcastCheckboxes: this.shouldShowBroadcastCheckboxes}
+        );
 
         elToAppendTo.appendChild(label);
+    };
+
+    onBroadcastCheckboxClick = async (e, targetContainer) => {
+        const input = e.currentTarget;
+        if (!(input instanceof HTMLInputElement)) {
+            console.error(
+                '[CA] renderAndWireEnableBroadcastCheckbox: currentTarget is not an input',
+                {
+                    currentTarget: e.currentTarget,
+                    target: e.target
+                }
+            );
+            return;
+        }
+
+        if (!targetContainer) {
+            console.error(
+                '[CA] renderAndWireEnableBroadcastCheckbox: targetContainer missing'
+            );
+            return;
+        }
+
+        const checked = !!input.checked;
+        this.shouldShowBroadcastCheckboxes = checked;
+        this.settingsStore.setShowBroadcastSelectionBoxes(checked);
+
+        targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
+        this.util.debug(
+            '[CA] Female user checkbox visibility (click):',
+            checked ? 'shown' : 'hidden'
+        );
     }
+
 
     applyHideHandledUseritemEls = (hide) => {
         const handledEls = this.util.qsa(`.${this.sel.classes.user_item}.${this.sel.classes.ca_handled_messages}`, this.ui.femaleUsersContainer);
@@ -1709,7 +1769,7 @@ class App {
         const usersBtn = this.util.qs('#users_option');
         const searchBtn = this.util.qs('#search_option');
 
-        [friendsBtn, searchBtn].forEach(btn => this.util.click(btn, this.toggleOriginalUserList, true));
+        [friendsBtn, searchBtn].forEach(btn => this.util.click(btn, this.toggleOriginalUserList, {}, true));
         this.util.click(usersBtn, this.toggleOriginalUserList, false);
     }
 
