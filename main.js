@@ -1721,7 +1721,7 @@ class App {
         const hasInHandled = logType.includes('dm-in-handled');
         const hasInUnread = logType.includes('dm-in-unread');
         const hasEvt = logType.includes('event');
-        const hasLoginLogout = logType.includes('login-logout');
+        const hasLoginLogout = logType.includes('login') || logType.includes('logout');
 
         if (hasOut) {
             boxes.add(this.ui.sentMessagesBox);
