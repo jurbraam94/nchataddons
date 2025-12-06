@@ -82,6 +82,13 @@ class HostServices {
         };
     }
 
+    cloneAndRenderOtherUsers = () => {
+        this.userStore.getAllLoggedInOthers().forEach(user => {
+            console.log(this.util.qs('#container_user'))
+            this.app.cloneAndRenderNewUserElement(this.util.qs(`.user_item[data-id="${user.uid}"]`, {root: this.app.ui.otherUsersContainer}), user);
+        })
+    }
+
     syncUsersFromDom = async (currentOnlineUserEls) => {
         // Build the "maybe logged out" map without creating an extra array via .map()
         const maybeLoggedOutMap = new Map();
@@ -100,10 +107,11 @@ class HostServices {
         let totalFemaleLoggedInCount = 0;
         let updatedProfileCount = 0;
 
-        // Main pass over the current online users
         for (let i = 0; i < currentOnlineUserEls.length; i++) {
             const parsedUserItemEl = currentOnlineUserEls[i];
             const parsedUserJson = this.util.extractUserInfoFromEl(parsedUserItemEl);
+            const shouldRender = (parsedUserJson.isFemale && this.app.expandedState['femaleUsers']) ||
+                (parsedUserJson.isFemale === false && this.app.expandedState['otherUsers']);
 
             // Find the existing DOM element for this user (if any)
             let existingUserEl = null;
@@ -132,7 +140,8 @@ class HostServices {
                 } = this.updateExistingUserMetadata(
                     existingUserJsonFromStore,
                     newUserJson,
-                    existingUserEl
+                    existingUserEl,
+                    shouldRender
                 );
 
                 updatedUserJson = updatedExistingUserJson;
@@ -166,10 +175,8 @@ class HostServices {
             }
 
             // If there's still no DOM element for this user, clone + render a new one
-            if (!existingUserEl) {
-                await this.app.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson);
-            } else {
-                parsedUserItemEl.remove();
+            if (!existingUserEl && shouldRender) {
+                this.app.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson);
             }
 
             if (this.isInitialLoad) {
@@ -272,7 +279,7 @@ class HostServices {
 
         await this.syncUsersFromDom(currentOnlineUserEls);
 
-        if (!this.app.shouldIncludeOtherUsers) {
+        if (!this.app.shouldIncludeOtherUsers || !this.app.expandedState.otherUsers) {
             const otherUsersContent = this.util.qs(`.ca-user-list-content`, this.app.ui.otherUsersContainer);
             otherUsersContent.innerHTML = this.util.qs(".online_user", tempContainer).innerHTML;
             this.app.updateOtherUsersCountEl(otherUsersContent.children.length);
@@ -281,7 +288,7 @@ class HostServices {
         this.userParsingInProgress = false;
     }
 
-    updateExistingUserMetadata = (existingUserJsonFromStore, parsedUserJson, existingUserEl) => {
+    updateExistingUserMetadata = (existingUserJsonFromStore, parsedUserJson, existingUserEl, shouldRender) => {
         const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
         let hasUpdatedUser = false;
         const updatedExistingUserJson = {
@@ -337,8 +344,10 @@ class HostServices {
             this.util.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
             hasUpdatedUser = true;
 
-            if (existingUserEl) {
+            if (existingUserEl && shouldRender) {
                 this.app.applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
+            } else if (!shouldRender) {
+                this.util.verbose(`[USER_UPDATE] Not rendering user update for ${updatedExistingUserJson.name} uid because its not visible`);
             } else {
                 this.util.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
             }

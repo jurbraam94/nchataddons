@@ -961,7 +961,7 @@ class UserStore {
         return this.getAllLoggedIn().filter(u => u.isFemale);
     }
 
-    getMalesLoggedIn = () => {
+    getAllLoggedInOthers = () => {
         return this.getAllLoggedIn().filter(u => !u.isFemale);
     }
 

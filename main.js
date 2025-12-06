@@ -4,6 +4,13 @@ class App {
         this.util = new Util();
         this.keyValueStore = new KeyValueStore();
 
+        this.expandedState = {
+            femaleUsers: true,
+            otherUsers: false
+        }
+
+        this.otherUsersRendered = false;
+
         this.settingsStore = new SettingsStore({
             keyValueStore: this.keyValueStore,
             util: this.util
@@ -1361,9 +1368,8 @@ class App {
         const content = document.createElement('div');
         content.className = 'ca-user-list-content';
         container.appendChild(content);
-
-        header.addEventListener("click", (event) => {
-            const target = event.target;
+        this.util.clickE(header, async (e) => {
+            const target = e.target;
 
             if (
                 target instanceof HTMLInputElement ||
@@ -1374,8 +1380,8 @@ class App {
                 return;
             }
 
-            this._onUserListHeaderClick(group);
-        });
+            await this._onUserListHeaderClick(group);
+        }, null);
 
         return {
             group,
@@ -1390,7 +1396,7 @@ class App {
         };
     }
 
-    _onUserListHeaderClick = (group) => {
+    _onUserListHeaderClick = async (group) => {
         if (!group) {
             console.error("[CA] _onUserListHeaderClick: group is missing");
             return;
@@ -1398,11 +1404,16 @@ class App {
 
         // Determine the opposite container group
         let otherGroup = null;
+        let name, otherName;
 
         if (group === this.ui.femaleUserContainerGroup) {
             otherGroup = this.ui.otherUserContainerGroup;
+            name = 'femaleUsers';
+            otherName = 'otherUsers';
         } else if (group === this.ui.otherUserContainerGroup) {
             otherGroup = this.ui.femaleUserContainerGroup;
+            name = 'otherUsers';
+            otherName = 'femaleUsers';
         } else {
             console.warn("[CA] _onUserListHeaderClick: group is not a known user container group", group);
         }
@@ -1420,7 +1431,9 @@ class App {
             return;
         }
 
-        this._setExpanded(group, otherGroup);
+
+        await this._setExpanded(group, otherGroup, name, otherName);
+
     };
 
     createOtherUsersContainer = () => {
@@ -1599,7 +1612,7 @@ class App {
         });
     }
 
-    _setExpanded = (container, otherContainer) => {
+    _setExpanded = async (container, otherContainer, name, otherName) => {
         if (!container || !otherContainer) {
             console.error("_setExpanded: missing container or otherContainer");
             return;
@@ -1607,6 +1620,14 @@ class App {
 
         const isExpanded = this._isExpanded(container);
         const otherExpanded = this._isExpanded(otherContainer);
+
+        this.expandedState[name] = isExpanded !== true;
+        this.expandedState[otherName] = otherExpanded !== true;
+
+        if (this.expandedState.otherUsers && !this.otherUsersRendered) {
+            await this.hostServices.cloneAndRenderOtherUsers();
+            this.otherUsersRendered = true;
+        }
 
         // CASE 1: Clicked container is collapsed → expand it
         if (!isExpanded) {
