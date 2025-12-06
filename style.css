@@ -397,6 +397,10 @@
     position: relative;
 }
 
+.ca-user-list-container.ca-hide-handled-ck-toggle .user_item.ca-handled-messages {
+    display: none;
+}
+
 .user_item_icon.icrank {
     display: none;
 }

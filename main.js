@@ -1500,186 +1500,145 @@ class App {
         this.util.verbose('Created female users container');
     }
 
-    renderAndWireIncludeOtherUsersInParsing = (elToAppendTo) => {
-        const label = document.createElement('label');
-        label.style.marginLeft = '8px';
+    _wireCheckboxClick = (checkbox, handler, debugName, ...extraArgs) => {
+        if (!(checkbox instanceof HTMLInputElement)) {
+            console.error(
+                '[CA] _wireCheckboxClick: checkbox is not an input element',
+                {checkbox, debugName}
+            );
+            return;
+        }
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'ca-include-other-users-ck-toggle';
-        checkbox.checked = !!this.shouldIncludeOtherUsers;
-
-        const textSpan = document.createElement('span');
-        textSpan.textContent = 'Also parse other users';
-
-        label.appendChild(checkbox);
-        label.appendChild(textSpan);
-
-        this.util.clickE(checkbox, this.onIncludeOtherUsersInParsingClick, {preventDefault: false});
-
-        this.util.debug(
-            '[CA] renderAndWireIncludeOtherUsersInParsing: wired include-other-users checkbox',
+        this.util.verbose(
+            '[CA] Wired checkbox with onclick handler ',
+            handler,
             {shouldIncludeOtherUsers: this.shouldIncludeOtherUsers}
         );
 
-        elToAppendTo.appendChild(label);
+        this.util.clickE(
+            checkbox,
+            (e, ...handlerArgs) => {
+                const input = e.currentTarget;
+
+                if (!(input instanceof HTMLInputElement)) {
+                    console.error(
+                        `[CA] ${debugName}: currentTarget is not an input`,
+                        {
+                            currentTarget: e.currentTarget,
+                            target: e.target
+                        }
+                    );
+                    return;
+                }
+
+                const checked = !!input.checked;
+
+                this.util.debug('[CA] on checkbox click:', handler, checked);
+                handler.call(this, checked, ...handlerArgs);
+            },
+            {preventDefault: false},
+            ...extraArgs
+        );
     };
 
-    onIncludeOtherUsersInParsingClick = async (e) => {
-        const input = e.currentTarget;
-        if (!(input instanceof HTMLInputElement)) {
-            console.error(
-                '[CA] renderAndWireIncludeOtherUsersInParsing: currentTarget is not an input',
-                {
-                    currentTarget: e.currentTarget,
-                    target: e.target
-                }
-            );
-            return;
+    _createLabeledCheckbox = (parentEl, options) => {
+        const {
+            id,
+            text,
+            checked = false
+        } = options || {};
+
+        if (!parentEl) {
+            console.error('[CA] _createLabeledCheckbox: parentEl is missing', {
+                options
+            });
+            return null;
         }
 
-        const checked = !!input.checked;
-        this.util.debug('[CA] Include other users (click):', checked);
+        const label = document.createElement('label');
 
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+
+        if (id) {
+            checkbox.id = id;
+        }
+
+        checkbox.checked = !!checked;
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = text || '';
+
+        label.appendChild(checkbox);
+        label.appendChild(textSpan);
+
+        parentEl.appendChild(label);
+
+        return checkbox;
+    };
+
+
+    renderAndWireIncludeOtherUsersInParsing = (elToAppendTo) => {
+        const checkbox = this._createLabeledCheckbox(elToAppendTo, {
+            id: 'ca-include-other-users-ck-toggle',
+            text: 'Also parse other users',
+            checked: !!this.shouldIncludeOtherUsers
+        });
+
+        this._wireCheckboxClick(
+            checkbox,
+            this.onIncludeOtherUsersInParsingClick,
+            'onIncludeOtherUsersInParsingClick'
+        );
+    };
+
+    onIncludeOtherUsersInParsingClick = async (checked) => {
         this.shouldIncludeOtherUsers = checked;
         this.settingsStore.setShouldIncludeOthers(checked);
-
-        const otherUsersContent = this.util.qs(
-            '.ca-user-list-content',
-            this.ui.otherUsersContainer
-        );
-
-        if (!otherUsersContent) {
-            console.error(
-                '[CA] renderAndWireIncludeOtherUsersInParsing: otherUsersContent not found'
-            );
-        } else {
-            otherUsersContent.innerHTML = '';
-        }
-
         await this.hostServices.refreshUserList();
-    }
-
+    };
 
     renderAndWireHideHandledToggle = (elToAppendTo, targetContainer) => {
-        const label = document.createElement('label');
-        label.style.marginLeft = '8px';
+        const checkbox = this._createLabeledCheckbox(elToAppendTo, {
+            id: 'ca-hide-handled-ck-toggle',
+            text: 'Hide handled users',
+            checked: !!this.shouldHideHandledUsers
+        });
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'ca-hide-handled-ck-toggle';
-        checkbox.checked = !!this.shouldHideHandledUsers;
-
-        const textSpan = document.createElement('span');
-        textSpan.textContent = 'Hide handled users';
-
-        label.appendChild(checkbox);
-        label.appendChild(textSpan);
-
-        this.util.clickE(checkbox, this.onHideHandledCheckboxClick, {preventDefault: false}, targetContainer);
-
-        this.util.debug(
-            '[CA] renderAndWireHideHandledToggle: wired hide-handled checkbox',
-            {shouldHideHandledUsers: this.shouldHideHandledUsers}
+        this._wireCheckboxClick(
+            checkbox,
+            this.onHideHandledCheckboxClick,
+            'onHideHandledCheckboxClick',
+            targetContainer
         );
-
-        elToAppendTo.appendChild(label);
     };
 
-    onHideHandledCheckboxClick = (e, targetContainer) => {
-
-        const input = e.currentTarget;
-        if (!(input instanceof HTMLInputElement)) {
-            console.error(
-                '[CA] renderAndWireHideHandledToggle: currentTarget is not an input',
-                {
-                    currentTarget: e.currentTarget,
-                    target: e.target
-                }
-            );
-            return;
-        }
-
-        if (!targetContainer) {
-            console.error(
-                '[CA] renderAndWireHideHandledToggle: targetContainer missing'
-            );
-            return;
-        }
-
-        const checked = !!input.checked;
-        this.util.debug('[CA] Hide handled users (click):', checked);
-
+    onHideHandledCheckboxClick = (checked, targetContainer) => {
         this.shouldHideHandledUsers = checked;
         this.settingsStore.setHideHandled(checked);
-
         targetContainer.classList.toggle('ca-hide-handled-ck-toggle', checked);
-        this.applyHideHandledUseritemEls(checked);
-    }
-
-
-    renderAndWireEnableBroadcastCheckbox = (elToAppendTo, targetContainer) => {
-        const label = document.createElement('label');
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'ca-broadcast-ck-toggle';
-        checkbox.checked = !!this.shouldShowBroadcastCheckboxes;
-
-        const textSpan = document.createElement('span');
-        textSpan.textContent = 'Show broadcast boxes';
-
-        label.appendChild(checkbox);
-        label.appendChild(textSpan);
-
-        this.util.clickE(checkbox, this.onBroadcastCheckboxClick, {preventDefault: false}, targetContainer);
-
-        this.util.debug(
-            '[CA] renderAndWireEnableBroadcastCheckbox: wired broadcast checkbox',
-            {shouldShowBroadcastCheckboxes: this.shouldShowBroadcastCheckboxes}
-        );
-
-        elToAppendTo.appendChild(label);
     };
 
-    onBroadcastCheckboxClick = async (e, targetContainer) => {
-        const input = e.currentTarget;
-        if (!(input instanceof HTMLInputElement)) {
-            console.error(
-                '[CA] renderAndWireEnableBroadcastCheckbox: currentTarget is not an input',
-                {
-                    currentTarget: e.currentTarget,
-                    target: e.target
-                }
-            );
-            return;
-        }
+    renderAndWireEnableBroadcastCheckbox = (elToAppendTo, targetContainer) => {
+        const checkbox = this._createLabeledCheckbox(elToAppendTo, {
+            id: 'ca-broadcast-ck-toggle',
+            text: 'Show broadcast boxes',
+            checked: !!this.shouldShowBroadcastCheckboxes
+        });
 
-        if (!targetContainer) {
-            console.error(
-                '[CA] renderAndWireEnableBroadcastCheckbox: targetContainer missing'
-            );
-            return;
-        }
+        this._wireCheckboxClick(
+            checkbox,
+            this.onBroadcastCheckboxClick,
+            'onBroadcastCheckboxClick',
+            targetContainer
+        );
+    };
 
-        const checked = !!input.checked;
+    onBroadcastCheckboxClick = async (checked, targetContainer) => {
         this.shouldShowBroadcastCheckboxes = checked;
         this.settingsStore.setShowBroadcastSelectionBoxes(checked);
-
         targetContainer.classList.toggle('ca-show-broadcast-ck', checked);
-        this.util.debug(
-            '[CA] Female user checkbox visibility (click):',
-            checked ? 'shown' : 'hidden'
-        );
-    }
-
-
-    applyHideHandledUseritemEls = (hide) => {
-        const handledEls = this.util.qsa(`.${this.sel.classes.user_item}.${this.sel.classes.ca_handled_messages}`, this.ui.femaleUsersContainer);
-        handledEls.forEach((el) => {
-            el.style.display = hide ? 'none' : '';
-        });
-    }
+    };
 
     _setExpanded = async (container, otherContainer, name, otherName) => {
         if (!container || !otherContainer) {
