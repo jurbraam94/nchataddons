@@ -51,7 +51,7 @@ class HostServices {
 
     init = async () => {
         this.restoreAllLogs();
-        await this.syncUsersFromDom(document.querySelectorAll('.online_user .user_item'));
+        await this.syncUsersFromDom();
 
         this.installNetworkTaps();
         this.installPrivateSendInterceptor();
@@ -82,17 +82,28 @@ class HostServices {
         };
     }
 
-    cloneAndRenderOtherUsers = () => {
-        this.userStore.getAllLoggedInOthers().forEach(user => {
-            console.log(this.util.qs('#container_user'))
-            this.app.cloneAndRenderNewUserElement(this.util.qs(`.user_item[data-id="${user.uid}"]`, {root: this.app.ui.otherUsersContainer}), user);
-        })
-    }
+    syncUsersFromDom = async () => {
+        let currentOnlineUserEls;
+        let loggedInUsers;
+        let targetContainer;
+        const totalUsersCount = this.util.qsa('.user_item', this.app.ui.hostUsersContainer).length;
+        let totalOthersLoggedInCount;
+        let totalFemaleLoggedInCount;
+        if (this.app.expandedState.femaleUsers) {
+            targetContainer = this.app.ui.femaleUsersContainer;
+            loggedInUsers = this.userStore.getAllLoggedInFemales();
+            currentOnlineUserEls = this.util.qsa(`.user_item[data-gender="${this.FEMALE_CODE}"]`, this.app.ui.hostUsersContainer);
+            totalFemaleLoggedInCount = currentOnlineUserEls.length;
+            totalOthersLoggedInCount = totalUsersCount - totalFemaleLoggedInCount;
+        } else if (this.app.expandedState.otherUsers) {
+            targetContainer = this.app.ui.otherUsersContainer;
+            loggedInUsers = this.userStore.getAllLoggedInOthers();
+            currentOnlineUserEls = this.util.qsa(`.user_item[data-gender]:not([data-gender="${this.FEMALE_CODE}"])`, this.app.ui.hostUsersContainer);
+            totalOthersLoggedInCount = currentOnlineUserEls.length;
+            totalFemaleLoggedInCount = totalUsersCount - totalOthersLoggedInCount;
+        }
 
-    syncUsersFromDom = async (currentOnlineUserEls) => {
-        // Build the "maybe logged out" map without creating an extra array via .map()
         const maybeLoggedOutMap = new Map();
-        const loggedInUsers = this.userStore.getAllLoggedIn();
         for (let i = 0; i < loggedInUsers.length; i++) {
             const user = loggedInUsers[i];
             maybeLoggedOutMap.set(String(user.uid), user);
@@ -103,15 +114,11 @@ class HostServices {
         let othersLoggedOutCount = 0;
         let femaleLoggedInCount = 0;
         let othersLoggedInCount = 0;
-        let totalOthersLoggedInCount = 0;
-        let totalFemaleLoggedInCount = 0;
         let updatedProfileCount = 0;
 
         for (let i = 0; i < currentOnlineUserEls.length; i++) {
             const parsedUserItemEl = currentOnlineUserEls[i];
             const parsedUserJson = this.util.extractUserInfoFromEl(parsedUserItemEl);
-            const shouldRender = (parsedUserJson.isFemale && this.app.expandedState['femaleUsers']) ||
-                (parsedUserJson.isFemale === false && this.app.expandedState['otherUsers']);
 
             // Find the existing DOM element for this user (if any)
             let existingUserEl = null;
@@ -126,7 +133,7 @@ class HostServices {
             const existingUserJsonFromStore = this.userStore.get(parsedUserJson.uid);
             if (existingUserJsonFromStore) {
                 if (!this.isInitialLoad) {
-                    existingUserEl = this.util.qs(`.user_item[data-id="${parsedUserJson.uid}"]`, {
+                    existingUserEl = this.util.qs(`.ca-user-item.user_item[data-id="${parsedUserJson.uid}"]`, {
                         root: this.app.ui.userContainersWrapper,
                         ignoreWarning: true
                     });
@@ -140,8 +147,7 @@ class HostServices {
                 } = this.updateExistingUserMetadata(
                     existingUserJsonFromStore,
                     newUserJson,
-                    existingUserEl,
-                    shouldRender
+                    existingUserEl
                 );
 
                 updatedUserJson = updatedExistingUserJson;
@@ -175,8 +181,8 @@ class HostServices {
             }
 
             // If there's still no DOM element for this user, clone + render a new one
-            if (!existingUserEl && shouldRender) {
-                this.app.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson);
+            if (!existingUserEl) {
+                this.app.cloneAndRenderNewUserElement(parsedUserItemEl, updatedUserJson, targetContainer);
             }
 
             if (this.isInitialLoad) {
@@ -187,12 +193,6 @@ class HostServices {
             // User is no longer a candidate for "logged out"
             if (maybeLoggedOutMap.has(parsedUserJson.uid)) {
                 maybeLoggedOutMap.delete(parsedUserJson.uid);
-            }
-
-            if (updatedUserJson.isFemale) {
-                totalFemaleLoggedInCount++;
-            } else {
-                totalOthersLoggedInCount++;
             }
         }
 
@@ -222,17 +222,13 @@ class HostServices {
 
         this.userStore._saveAll(resultPatches);
 
-        // Update UI counts
-        this.app.updateFemaleUserCountEl(totalFemaleLoggedInCount);
-        this.app.updateOtherUsersCountEl(totalOthersLoggedInCount);
+        this.util.qsId(this.app.sel.otherUserCount).textContent = `${totalOthersLoggedInCount}`;
+        this.util.qsId(this.app.sel.femaleUserCount).textContent = `${totalFemaleLoggedInCount}`;
 
         // Logging (unchanged)
         console.log('\n');
         this.util.logSummaryDouble('Female online status changed:', femaleLoggedInCount, femaleLoggedOutCount);
         this.util.logSummaryDouble('Others online status changed:', othersLoggedInCount, othersLoggedOutCount);
-        this.util.logSummarySingle('Total female online:', totalFemaleLoggedInCount);
-        this.util.logSummarySingle('Others online:', totalOthersLoggedInCount);
-        this.util.logSummarySingle('Total users online: ', currentOnlineUserEls.length);
         console.log('\n');
 
         if (updatedProfileCount > 0) {
@@ -257,38 +253,17 @@ class HostServices {
             return;
         }
         this.userParsingInProgress = true;
-        const tempContainer = document.createElement("div");
-        tempContainer.innerHTML = html;
 
-        const currentOnlineUserEls = Array.from(
-            this.util.qsa(this.app.shouldIncludeOtherUsers ? `.user_item` : `.user_item[data-gender="${this.FEMALE_CODE}"]`, tempContainer)
-        );
+        const newHostContainer = this.util.createElementFromString(html);
+        this.app.ui.hostUsersContainer.replaceWith(newHostContainer);
+        this.app.ui.hostUsersContainer = newHostContainer;
 
-        console.log(`\n==== Retrieved ${currentOnlineUserEls.length} users from the online list in this room. Starting to parse, process and render them.`);
-
-        if (currentOnlineUserEls.length === 0) {
-            console.warn(
-                "[processUserListResponse] No .user_item elements found in response HTML"
-            );
-        }
-
-        this.util.verbose(
-            "[processUserListResponse] Parsed online users from HTML:",
-            currentOnlineUserEls.length
-        );
-
-        await this.syncUsersFromDom(currentOnlineUserEls);
-
-        if (!this.app.shouldIncludeOtherUsers || !this.app.expandedState.otherUsers) {
-            const otherUsersContent = this.util.qs(`.ca-user-list-content`, this.app.ui.otherUsersContainer);
-            otherUsersContent.innerHTML = this.util.qs(".online_user", tempContainer).innerHTML;
-            this.app.updateOtherUsersCountEl(otherUsersContent.children.length);
-        }
+        await this.syncUsersFromDom();
 
         this.userParsingInProgress = false;
     }
 
-    updateExistingUserMetadata = (existingUserJsonFromStore, parsedUserJson, existingUserEl, shouldRender) => {
+    updateExistingUserMetadata = (existingUserJsonFromStore, parsedUserJson, existingUserEl) => {
         const uid = existingUserJsonFromStore.uid || parsedUserJson.uid;
         let hasUpdatedUser = false;
         const updatedExistingUserJson = {
@@ -344,10 +319,8 @@ class HostServices {
             this.util.verbose('[USER_UPDATE] JSON changes for user', uid, changedKeys);
             hasUpdatedUser = true;
 
-            if (existingUserEl && shouldRender) {
+            if (existingUserEl) {
                 this.app.applyUserDomChanges(existingUserEl, updatedExistingUserJson, changedKeys);
-            } else if (!shouldRender) {
-                this.util.verbose(`[USER_UPDATE] Not rendering user update for ${updatedExistingUserJson.name} uid because its not visible`);
             } else {
                 this.util.verbose('[USER_UPDATE] No DOM element found — only JSON updated for uid:', uid);
             }

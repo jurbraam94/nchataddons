@@ -83,9 +83,13 @@ class App {
             otherUserContainerGroup: null,
             femaleUsersContainer: null,
             otherUsersContainer: null,
+            hostUsersContainer: null,
             caChatRight: null,
             globalChat: null,
-            caPrivateMessagesSlot: null
+            caPrivateMessagesSlot: null,
+            chatRightData: null,
+            femaleUserCount: null,
+            otherUserCount: null
         };
 
         this.sel = {
@@ -121,6 +125,8 @@ class App {
             loginLogout: 'ca-log-box-login-logout',
             clear: 'ca-log-clear',
             general: 'ca-logs-box',
+            hostUsersContainer: 'container_user',
+            chatRightData: 'chat_right_data',
             privateInputBox: 'private_input_box',
             femaleUserCount: 'ca-female-users-count',
             otherUsersContainer: 'ca-other-users-container',
@@ -172,6 +178,8 @@ class App {
         this.ui.loginLogoutBox = this.util.qsId(this.sel.loginLogout);
         this.ui.logClear = this.util.qsId(this.sel.clear);
         this.ui.eventLogBox = this.util.qsId(this.sel.general);
+        this.ui.hostUsersContainer = this.util.qsId(this.sel.hostUsersContainer);
+        this.ui.chatRightData = this.util.qsId(this.sel.chatRightData);
 
         this.util.qsId(this.sel.privateInputBox).innerHTML =
             '<textarea data-paste="1" id="message_content" class="message_content inputbox" rows="4" placeholder="Type a message..."></textarea>';
@@ -520,11 +528,9 @@ class App {
         return this._decodeTextarea.value;
     }
 
-    cloneAndRenderNewUserElement = (parsedUserItemEl, updatedUserJson) => {
+    cloneAndRenderNewUserElement = (parsedUserItemEl, updatedUserJson, targetContainer) => {
         const containerContent = this.util.qs(
-            `.ca-user-list-content`,
-            updatedUserJson.isFemale ? this.ui.femaleUsersContainer : this.ui.otherUsersContainer
-        );
+            `.ca-user-list-content`, targetContainer);
 
         const wrapper = document.createElement('div');
         wrapper.className = 'ca-us';
@@ -556,6 +562,7 @@ class App {
         this.ensureBroadcastCheckbox(iconRow, updatedUserJson);
         this.updateProfileChip(updatedUserJson.uid, parsedUserItemEl);
         this.util.qs('.username', parsedUserItemEl).replaceWith(wrapper);
+        parsedUserItemEl.classList.add('ca-user-item');
         containerContent.appendChild(parsedUserItemEl);
     }
 
@@ -1460,6 +1467,7 @@ class App {
 
         this.ui.otherUserContainerGroup = refs.group;
         this.ui.otherUsersContainer = refs.container;
+        this.ui.otherUserCount = refs.countSpan;
     }
 
     createFemaleUsersContainer = () => {
@@ -1480,6 +1488,7 @@ class App {
 
         this.ui.femaleUserContainerGroup = refs.group;
         this.ui.femaleUsersContainer = refs.container;
+        this.ui.femaleUserCount = refs.countSpan;
 
         if (refs.subrow) {
             this.renderAndWireEnableBroadcastCheckbox(refs.subrow, this.ui.femaleUsersContainer);
@@ -1625,7 +1634,7 @@ class App {
         this.expandedState[otherName] = otherExpanded !== true;
 
         if (this.expandedState.otherUsers && !this.otherUsersRendered) {
-            await this.hostServices.cloneAndRenderOtherUsers();
+            await this.hostServices.syncUsersFromDom();
             this.otherUsersRendered = true;
         }
 
@@ -1690,9 +1699,9 @@ class App {
     }
 
     toggleOriginalUserList = (visible) => {
-        this.util.qs(`#chat_right_data`).style.display = visible ? 'block' : 'none';
-        this.util.qsId(this.sel.otherUsersContainer).style.display = !visible ? 'block' : 'none';
-        this.util.qsId(this.sel.femaleUsersContainer).style.display = !visible ? 'block' : 'none';
+        this.ui.chatRightData.style.display = visible ? 'block' : 'none';
+        this.ui.otherUsersContainer.style.display = !visible ? 'block' : 'none';
+        this.ui.femaleUsersContainer.style.display = !visible ? 'block' : 'none';
     }
 
     wireListOptionClicks = () => {
@@ -1702,17 +1711,6 @@ class App {
 
         [friendsBtn, searchBtn].forEach(btn => this.util.click(btn, this.toggleOriginalUserList, true));
         this.util.click(usersBtn, this.toggleOriginalUserList, false);
-    }
-
-    updateFemaleUserCountEl = (count) => {
-        this.util.verbose('Updating female user count:', count);
-        const headerCounter = this.util.qsId(this.sel.femaleUserCount);
-        headerCounter.textContent = `${count}`;
-    }
-
-    updateOtherUsersCountEl = (count) => {
-        const headerCounter = this.util.qsId(this.sel.otherUserCount);
-        headerCounter.textContent = `${count}`;
     }
 
     _boxesForLogType = (logType) => {
