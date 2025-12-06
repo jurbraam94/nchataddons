@@ -355,17 +355,15 @@ class HostServices {
                 caction: String(this.state.CHAT_CTX.caction),
                 last: 99999999999999, //prevents regular chat messages to be fetched too.
                 priv: uid,
-                lastp: this.userStore.getlastPrivateHandledId(uid),
+                lastp: this.userStore.getlastPrivateHandledLogId(uid),
                 pcount: this.userStore.getLastPCountProcessed(uid),
                 room: String(this.state.CHAT_CTX.room),
                 notify: String(this.state.CHAT_CTX.notify),
                 curset: String(this.state.CHAT_CTX.curset)
             };
 
-            console.log('[CA] fetchPrivateMessagesForUid body -> ', bodyObj);
-            const result = await this.api.fetchChatLog(bodyObj);
-            console.log(result);
-            return result;
+            this.util.verbose('[CA] fetchPrivateMessagesForUid body -> ', bodyObj);
+            return await this.api.fetchChatLog(bodyObj);
         } catch (e) {
             // Attach a readable label for the error handler
             e._ca_loopLabel = 'FETCH_PRIVATE_MESSAGES_FOR_UID';
@@ -374,7 +372,7 @@ class HostServices {
             e._ca_context = {
                 function: 'f etchPrivateMessagesForUid',
                 user: {
-                    lastPrivateHandledId: this.userStore.getlastPrivateHandledId(uid),
+                    lastPrivateHandledLogId: this.userStore.getlastPrivateHandledLogId(uid),
                     pcount: this.userStore.getLastPCountProcessed(uid)
                 },
                 chatCtx: {
@@ -392,9 +390,9 @@ class HostServices {
     }
 
     processNewIncomingPrivateMessage = (newPrivateConversationMessage, user) => {
-        console.log(`New incoming private message ${newPrivateConversationMessage.logId} for user ${user.uid}`, newPrivateConversationMessage);
-        this.logDmInUnread(this.app.decodeHTMLEntities(newPrivateConversationMessage?.log_content), user);
-        if (user.isLoggedIn) {
+        this.util.debug(`New incoming private message ${newPrivateConversationMessage.log_id} for user ${user.uid}`, newPrivateConversationMessage);
+        this.logDmInUnread(this.app.decodeHTMLEntities(newPrivateConversationMessage.log_content), newPrivateConversationMessage.log_id, user);
+        if (user.isLoggedIn && (user.isFemale && this.app.expandedState.femaleUsers) || (!user.isFemale && this.app.expandedState.otherUsers)) {
             this.app.updateProfileChipByUid(user.uid);
         } else {
             this.util.verbose('[CA] Skipping profile chip update for uid', user.uid, 'because user is not logged in');
@@ -406,13 +404,13 @@ class HostServices {
         let skippedMessages = 0;
         let skippedReasons = '';
         let user = await this.userStore.getOrFetch(fromUid);
-        let lastPrivateHandledId = user.lastPrivateHandledId;
+        let lastPrivateHandledLogId = user.lastPrivateHandledLogId;
 
         if (privateConversationMessages.length > 0) {
             for (const privateConversationMessage of privateConversationMessages) {
                 const validationResult = this.validatePrivateChatLog(
                     privateConversationMessage,
-                    lastPrivateHandledId
+                    lastPrivateHandledLogId
                 );
 
                 if (!validationResult.accepted) {
@@ -423,16 +421,19 @@ class HostServices {
 
                 this.processNewIncomingPrivateMessage(privateConversationMessage, user);
 
-                if (validationResult.logId > lastPrivateHandledId) {
-                    lastPrivateHandledId = validationResult.logId;
+                if (validationResult.logId > lastPrivateHandledLogId) {
+                    lastPrivateHandledLogId = validationResult.logId;
                 }
 
                 newMessages++;
             }
-
-            this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
+            
+            if (String(this.settingsStore.getCurrentOpenDmUid()) === String(fromUid)) {
+                console.error('scroll', this.app.ui.caPrivateMessagesSlot)
+                this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
+            }
         } else {
-            console.log(`No new private chat logs for user ${user.uid}`);
+            this.util.debug(`No new private chat logs for user ${user.uid}`);
         }
 
         const updatedUser = {
@@ -441,10 +442,10 @@ class HostServices {
         };
 
         if (newMessages > 0) {
-            if (lastPrivateHandledId > (user.lastPrivateHandledId)) {
-                updatedUser.lastPrivateHandledId = lastPrivateHandledId;
+            if (lastPrivateHandledLogId > (user.lastPrivateHandledLogId)) {
+                updatedUser.lastPrivateHandledLogId = lastPrivateHandledLogId;
                 this.util.verbose(
-                    `[PrivateChat] Setting lastPrivateHandledId for user ${user.uid} to ${lastPrivateHandledId}`
+                    `[PrivateChat] Setting lastPrivateHandledLogId for user ${user.uid} to ${lastPrivateHandledLogId}`
                 );
             }
 
@@ -462,25 +463,25 @@ class HostServices {
             );
 
             if (tries >= 3) {
-                const hadNonZeroParsedBefore = (user.lastPrivateHandledId || 0) > 0;
+                const hadNonZeroParsedBefore = (user.lastPrivateHandledLogId || 0) > 0;
 
                 if (hadNonZeroParsedBefore) {
-                    updatedUser.lastPrivateHandledId = 0;
+                    updatedUser.lastPrivateHandledLogId = 0;
                     console.warn(
                         `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid}; ` +
-                        `resetting complete chat history (setting lastPrivateHandledId to 0)`
+                        `resetting complete chat history (setting lastPrivateHandledLogId to 0)`
                     );
                 } else {
-                    // // Stage 2: we are ALREADY at lastPrivateHandledId === 0 and still
+                    // // Stage 2: we are ALREADY at lastPrivateHandledLogId === 0 and still
                     // // getting nothing accepted after multiple tries -> hard abort.
                     // console.error(
-                    //     `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with lastPrivateHandledId already 0. ` +
+                    //     `[PrivateChat] ${tries}x nothing parsed for uid ${user.uid} with lastPrivateHandledLogId already 0. ` +
                     //     `Aborting private DM polling via killswitch.`
                     // );
                     //
                     // const err = new Error(
                     //     `[PrivateChat] Repeatedly failed to parse any private DM logs for uid ${user.uid} ` +
-                    //     `even from lastPrivateHandledId=0 (attempts=${tries}).`
+                    //     `even from lastPrivateHandledLogId=0 (attempts=${tries}).`
                     // );
                     //
                     // // Label for our global error handler
@@ -492,8 +493,8 @@ class HostServices {
                     //     uid: user.uid,
                     //     initialFetch,
                     //     attemptsWithoutMessages: tries,
-                    //     lastPrivateHandledIdBefore: user.lastPrivateHandledId || 0,
-                    //     lastPrivateHandledIdAfter: updatedUser.lastPrivateHandledId || 0,
+                    //     lastPrivateHandledLogIdBefore: user.lastPrivateHandledLogId || 0,
+                    //     lastPrivateHandledLogIdAfter: updatedUser.lastPrivateHandledLogId || 0,
                     //     hasLogs,
                     //     privateChatLogsLength: hasLogs ? privateChatLogs.length : 0,
                     //     // Keep this small – we don't want to flood logs with full history
@@ -515,7 +516,7 @@ class HostServices {
     }
 
     processPrivateConversationMessages = async (privateConversation, lastPCountProcessed) => {
-        console.log('Fetch private messages for conversation', privateConversation.uid);
+        this.util.debug('Fetch private messages for conversation', privateConversation.uid);
 
         const fetchedConversationPrivateMessages = await this.fetchPrivateMessagesForUid(privateConversation.uid);
 
@@ -558,7 +559,7 @@ class HostServices {
     }
 
     restoreLastDmFromStore = async () => {
-        const uid = this.settingsStore.getLastDmUid();
+        const uid = this.settingsStore.getCurrentOpenDmUid();
         if (!uid) {
             this.util.debug('There was no uid for a last dm');
             return;
@@ -583,7 +584,7 @@ class HostServices {
                 const t = (cntEl.textContent || '').trim();
                 unread = parseInt(t.replace(/\D+/g, ''), 10) || 0;
             }
-            if (id && id.length) {
+            if (id && id.length && unread > 0) {
                 out.push({uid: Number(id)});
             }
         }
@@ -597,7 +598,6 @@ class HostServices {
         const privateConversationsHtmlResponse = await this.api.fetchPrivateNotify();
         const privateConversationsToProcess = this.parsePrivateConversationsHtmlResponse(privateConversationsHtmlResponse);
 
-        this.util.debug('Sorted private conversations:', privateConversationsToProcess);
         this.util.verbose('Private conversations returned:', privateConversationsToProcess.length, privateConversationsToProcess);
 
         if (!privateConversationsToProcess.length) {
@@ -612,8 +612,8 @@ class HostServices {
         }
     }
 
-    validatePrivateChatLog = (privateConversationMessage, lastPrivateHandledId) => {
-        const initialFetch = lastPrivateHandledId === 0;
+    validatePrivateChatLog = (privateConversationMessage, lastPrivateHandledLogId) => {
+        const initialFetch = lastPrivateHandledLogId === 0;
         if (String(privateConversationMessage.user_id) === String(user_id)) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'from myself'};
         }
@@ -627,7 +627,7 @@ class HostServices {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'too old'};
         }
 
-        if (privateConversationMessage.log_id <= lastPrivateHandledId) {
+        if (privateConversationMessage.log_id <= lastPrivateHandledLogId) {
             return {accepted: false, logId: privateConversationMessage.log_id, reason: 'already shown'};
         }
 
@@ -644,13 +644,14 @@ class HostServices {
         const pico = data?.pico ? Number(data.pico) : 0;
 
         // If the response already contained new private messages
-        if (data.pload?.length > 0) {
-            console.log(`Pload count: ${data.pload?.length || 0}, start processing private messages..`);
-            await this.processFetchedPrivateConversationMessages(
-                data.pload, fromUid, lastPCountProcessed
-            );
-        } else if (data.plogs?.length > 0) {
-            console.log(`Plogs count: ${data.pload?.length || 0}, start processing private messages..`);
+        // if (data.pload?.length > 0) {
+        //     console.log(`Pload count: ${data.pload?.length || 0}, start processing private messages..`);
+        //     await this.processFetchedPrivateConversationMessages(
+        //         data.pload, fromUid, lastPCountProcessed
+        //     );
+        //  } else
+        if (data.plogs?.length > 0) {
+            console.log(`Plogs count: ${data.plogs?.length || 0}, start processing private messages..`);
             await this.processFetchedPrivateConversationMessages(
                 data.plogs, fromUid, lastPCountProcessed
             );
@@ -796,39 +797,41 @@ class HostServices {
     }
 
     logLogin = (user) => {
-        const log = {
-            ...this.createLogObject('has logged in.', user),
-            action: 'login',
-        };
-        //this.activityLogStore.saveLoginLogout(log);
+        const log = this.createLogObject('has logged in.', user);
+        this.activityLogStore.saveLoginLogout(log);
         this.app.renderLogEntry(log, 'login', this.app.ui.loginLogoutBox, user.isLoggedIn);
     }
 
     logLogout = (user) => {
-        const log = {
-            ...this.createLogObject('has logged out.', user),
-            action: 'logout',
-        };
-        //this.activityLogStore.saveLoginLogout(log);
+        const log = this.createLogObject('has logged out.', user);
+        this.activityLogStore.saveLoginLogout(log);
         this.app.renderLogEntry(log, 'logout', this.app.ui.loginLogoutBox, user.isLoggedIn);
     }
 
-    logDmOut = (content, user) => {
-        const log = this.createLogObject(content, user);
+    logDmOut = (content, log_id, user) => {
+        this.util.debug(`logDmOut: ${content} (${log_id})`, content, log_id, user);
+        const log = this.createLogObjectForHostMessage(content, log_id, user);
         this.activityLogStore.saveDmOut(log);
         this.app.renderLogEntry(log, 'dm-out', this.app.ui.sentMessagesBox, user.isLoggedIn);
     }
 
-    logDmInHandled = (content, user) => {
-        const log = this.createLogObject(content, user);
+    logDmInHandled = (content, log_id, user) => {
+        const log = this.createLogObjectForHostMessage(content, log_id, user);
         this.activityLogStore.saveDmInHandled(log);
         this.app.renderLogEntry(log, 'dm-in-handled', this.app.ui.handledMessagesBox, user.isLoggedIn);
     }
 
-    logDmInUnread = (content, user) => {
-        const log = this.createLogObject(content, user);
+    logDmInUnread = (content, log_id, user) => {
+        const log = this.createLogObjectForHostMessage(content, log_id, user);
         this.activityLogStore.saveDmInUnread(log);
         this.app.renderLogEntry(log, 'dm-in-unread', this.app.ui.unreadMessagesBox, user.isLoggedIn);
+    }
+
+    createLogObjectForHostMessage = (content, log_id, user, images = []) => {
+        return {
+            ...this.createLogObject(content, user, images),
+            log_id
+        }
     }
 
     createLogObject(content, user, images = []) {
@@ -1019,15 +1022,16 @@ class HostServices {
             uid,
             ')'
         );
-        this.logDmOut(content, dmSentToUser);
+        this.logDmOut(content, logData.log_id, dmSentToUser);
 
-        this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
-        const userEl = this.app.findUserElById(dmSentToUser.uid);
-        if (userEl) {
-            this.app.updateProfileChip(dmSentToUser.uid, userEl);
+        this.util.scrollToBottom(this.app.ui.handledMessagesBox);
+
+        if (dmSentToUser.isLoggedIn) {
+            const userEl = this.app.findUserElById(dmSentToUser.uid);
+            this.app.updateProfileChip(dmSentToUser.uid, userEl, {ignoreWarning: true});
         } else {
             this.util.debug(
-                '[PrivateSend] Skipping profile chip update; user element not found for uid:',
+                '[PrivateSend] Skipping profile chip update; user not logged in:',
                 dmSentToUser.uid
             );
         }
@@ -1035,7 +1039,7 @@ class HostServices {
         const affectedLogs =
             this.activityLogStore.markHandledUntilChatLogId(
                 uid,
-                dmSentToUser.lastPrivateHandledId
+                dmSentToUser.lastPrivateHandledLogId
             );
 
         if (!Array.isArray(affectedLogs) || !affectedLogs.length) {
@@ -1371,7 +1375,7 @@ class HostServices {
         this.stopClearEventLogLoop();
 
         const clearEvents = () => {
-            const removed = this.activityLogStore.clearByKind?.('event') || 0;
+            const removed = this.activityLogStore.clearByLogType('event') || 0;
             this.app.ui.eventLogBox.innerHTML = '';
 
             this.logEvent(`Event logs cleared automatically (${removed} removed) at ${this.util.timeHHMM()}`);

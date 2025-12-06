@@ -1533,7 +1533,7 @@ class App {
 
                 const checked = !!input.checked;
 
-                this.util.debug('[CA] on checkbox click:', handler, checked);
+                this.util.verbose('[CA] on checkbox click:', handler, checked);
                 handler.call(this, checked, ...handlerArgs);
             },
             {preventDefault: false},

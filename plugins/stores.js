@@ -10,8 +10,8 @@ class SettingsStore {
         this.SHOULD_INCLUDE_OTHER_USERS_KEY = `shouldIncludeOtherUsers`;
         this.SHOULD_SHOW_BROADCAST_SELECTION_BOXES_KEY = `shouldShowBroadcastCheckboxes`;
         this.USER_MANAGER_VISIBLE_COLUMNS_PREFS_KEY = `userManagerVisibleColumns`;
-        this.LAST_DM_UID_KEY = `lastDmUid`;
-        this.LAST_PRIVATE_HANDLED_KEY = `lastPrivateHandledId`;
+        this.LAST_DM_UID_KEY = `currentOpenDmUid`;
+        this.LAST_PRIVATE_HANDLED_KEY = `lastPrivateHandledLogId`;
         this.PCOUNT_PROCESSED_KEY = `pcountProcessed`;
 
         this.store = keyValueStore;
@@ -36,20 +36,20 @@ class SettingsStore {
         this.store._writeStorageMode(mode);
     }
 
-    getLastDmUid = () => {
+    getCurrentOpenDmUid = () => {
         return this.store.get(this.LAST_DM_UID_KEY) || '';
     }
 
-    setLastDmUid = (lastDmUid) => {
-        this.store.set(this.LAST_DM_UID_KEY, String(lastDmUid));
+    setCurrentOpenDmUid = (currentOpenDmUid) => {
+        this.store.set(this.LAST_DM_UID_KEY, String(currentOpenDmUid));
     }
 
-    getlastPrivateHandledId = () => {
+    geLastPrivateHandledLogId = () => {
         return Number(this.store.get(this.LAST_PRIVATE_HANDLED_KEY)) || 0;
     }
 
-    setlastPrivateHandledId = (lastPrivateHandledId) => {
-        this.store.set(this.LAST_PRIVATE_HANDLED_KEY, String(lastPrivateHandledId));
+    setLastPrivateHandledLogId = (lastPrivateHandledLogId) => {
+        this.store.set(this.LAST_PRIVATE_HANDLED_KEY, String(lastPrivateHandledLogId));
     }
 
     getPCountProcessed = () => {
@@ -60,7 +60,7 @@ class SettingsStore {
         this.store.set(this.PCOUNT_PROCESSED_KEY, String(pCountProcessed));
     }
 
-    clearLastDmUid = () => {
+    clearCurrentOpenDmUid = () => {
         this.store.set(this.LAST_DM_UID_KEY, '');
     }
 
@@ -384,20 +384,21 @@ class ActivityLogStore {
     };
 
 
-    markHandledUntilChatLogId = (uid, lastPrivateHandledId) => {
-        if (!uid || lastPrivateHandledId === undefined) {
-            console.error(`Uid ${uid} or lastPrivateHandledId ${lastPrivateHandledId} is invalid`);
+    markHandledUntilChatLogId = (uid, lastPrivateHandledLogId) => {
+        console.log(`[ActivityLogStore] markHandledUntilChatLogId(${uid}, ${lastPrivateHandledLogId})`);
+        if (!uid || lastPrivateHandledLogId === undefined) {
+            console.error(`Uid ${uid} or lastPrivateHandledLogId ${lastPrivateHandledLogId} is invalid`);
             return [];
-        } else if (lastPrivateHandledId === 0) {
+        } else if (lastPrivateHandledLogId === 0) {
             console.log(
-                `lastPrivateHandledId is 0 (this means there are no logs for user ${uid}, nothing to do`
+                `lastPrivateHandledLogId is 0 (this means there are no logs for user ${uid}, nothing to do`
             );
             return [];
         }
 
         const allUnreadMessagesForUid = this._getAllDmInUnread(uid, true)
             .filter(log =>
-                log.guid <= lastPrivateHandledId
+                log.log_id <= lastPrivateHandledLogId
             );
 
         this.util.verbose(`Unread messages for Uid:`, allUnreadMessagesForUid);
@@ -436,7 +437,7 @@ class ActivityLogStore {
 
             default:
                 console.warn(
-                    '[ActivityLogStore] clearByKind: unknown kind, nothing cleared',
+                    '[ActivityLogStore] clearByLogType: unknown kind, nothing cleared',
                     logType
                 );
                 return 0;
@@ -517,14 +518,17 @@ class ActivityLogStore {
     }
 
     saveDmInUnread(log) {
+        this.util.verbose(`[ActivityLogStore] saveDmInUnread: ${log.guid} (${log.ts})`, log);
         this._saveAll([log], this.ACTIVITY_LOG_DM_IN_UNREAD_KEY);
     }
 
     saveDmInHandled(log) {
+        this.util.verbose(`[ActivityLogStore] saveDmInHandled: ${log.guid} (${log.ts})`, log);
         this._saveAll([log], this.ACTIVITY_LOG_DM_IN_HANDLED_KEY);
     }
 
     saveDmOut(log) {
+        this.util.verbose(`[ActivityLogStore] saveDmOut: ${log.guid} (${log.ts})`, log);
         this._saveAll([log], this.ACTIVITY_LOG_DM_OUT_KEY);
     }
 
@@ -747,7 +751,7 @@ class UserStore {
         this.api = api;
         this.util = util;
         this.newUserBaseData = {
-            lastPrivateHandledId: 0,
+            lastPrivateHandledLogId: 0,
             lastPCountProcessed: 0,
             isIncludedForBroadcast: true,
             privateDmFetchRetries: 0
@@ -789,18 +793,18 @@ class UserStore {
         return Array.isArray(raw) ? raw : [];
     }
 
-    getlastPrivateHandledId = (uid) => {
-        return this.get(uid)?.lastPrivateHandledId;
+    getlastPrivateHandledLogId = (uid) => {
+        return this.get(uid)?.lastPrivateHandledLogId;
     }
 
-    setlastPrivateHandledId = (uid, lastPrivateHandledId) => {
+    setlastPrivateHandledLogId = (uid, lastPrivateHandledLogId) => {
         const u = this.get(uid);
         if (!u) {
-            console.error(`User ${uid} not found, cannot set lastPrivateHandledId`);
+            console.error(`User ${uid} not found, cannot set lastPrivateHandledLogId`);
             return null;
         }
-        this.util.debug(`Setting last read for user ${uid} to ${lastPrivateHandledId}`);
-        const updated = {...u, lastPrivateHandledId};
+        this.util.debug(`Setting last read for user ${uid} to ${lastPrivateHandledLogId}`);
+        const updated = {...u, lastPrivateHandledLogId};
         return this.set(updated);
     }
 
@@ -969,8 +973,7 @@ class UserStore {
         let user = this.get(id);
         if (!user) {
             const getProfileResponseHtml = await this.api.searchUserNameRemote(String(id));
-            this.util.createElementFromString(getProfileResponseHtml);
-            const foundUser = await this.getOrFetchByName(this.util.qs('.pro_name')?.textContent?.trim());
+            const foundUser = await this.getOrFetchByName(this.util.qs('.pro_name', this.util.createElementFromString(getProfileResponseHtml))?.textContent?.trim());
 
             if (foundUser) {
                 user = this.set({...foundUser, uid: String(foundUser.uid ?? id)});

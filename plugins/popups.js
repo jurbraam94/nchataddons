@@ -50,9 +50,14 @@ class Popups {
             return;
         }
 
-        this.settingsStore.setLastDmUid(uid);
+        this.settingsStore.setCurrentOpenDmUid(uid);
         this.openPrivateInCaPopup({uid, name, avatar});
-        this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot);
+
+        this.scrollPrivateMessagesToBottom();
+    }
+
+    scrollPrivateMessagesToBottom = () => {
+        setTimeout(() => this.util.scrollToBottom(this.app.ui.caPrivateMessagesSlot), 200);
     }
 
     _wirePrivateEmojiEsc = () => {
@@ -585,7 +590,7 @@ class Popups {
 
     openPrivateInCaPopup = ({uid, name, avatar}) => {
         this.util.debug('[CA] openPrivateInCaPopup called', {uid, name, avatar});
-        this.settingsStore.setLastDmUid(uid);
+        this.settingsStore.setCurrentOpenDmUid(uid);
 
         if (!this.safeSet(window, 'morePriv', 0)) throw Error('Failed to set morePriv');
         if (!this.safeSet(window, 'privReload', 1)) throw Error('Failed to set privReload');
@@ -637,7 +642,7 @@ class Popups {
         const titleSpan = popupHeader ? popupHeader.querySelector('.ca-popup-title') : null;
         const closeBtn = popupHeader ? popupHeader.querySelector('.ca-popup-close') : null;
 
-        closeBtn.addEventListener('click', () => this.settingsStore.setLastDmUid(''));
+        closeBtn.addEventListener('click', () => this.settingsStore.setCurrentOpenDmUid(''));
 
         if (titleSpan) {
             titleSpan.remove();
