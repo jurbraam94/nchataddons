@@ -154,6 +154,11 @@ class HostServices {
 
                 if (loggedInChanged) {
                     this.handleLoggedInStatus(updatedUserJson);
+                    if (updatedUserJson.isFemale) {
+                        femaleLoggedInCount++;
+                    } else {
+                        othersLoggedInCount++;
+                    }
                 }
 
                 if (hasUpdatedUser) {

@@ -818,7 +818,7 @@ class App {
 
             applyVisualState(nextInclude);
             this.userStore.includeUserForBroadcast(user.uid, nextInclude);
-            this.util.debug(
+            this.util.verbose(
                 `[BC] isIncludedForBroadcast → uid=${user.uid}, include=${nextInclude}`
             );
         };
